@@ -52,3 +52,30 @@ Never expose an endpoint that lets ordinary authenticated users change `public.u
 ## Ownership constraints
 
 Tenant creation uses the atomic `create_tenant_with_owner` RPC. A tenant cannot be left without an owner, and an owner cannot remove or downgrade their own membership. The current foundation does not implement ownership transfer. Because `tenants.created_by` uses `ON DELETE RESTRICT`, a creator account cannot be deleted while its tenant still exists.
+
+## Development database integration test
+
+Run `supabase/tests/rls_auth_tenant.sql` only against a development project after applying both migrations. The test covers:
+
+- profile creation and contact synchronization triggers;
+- rejection of role escalation through user metadata;
+- owner, tenant-admin, member, outsider, and platform-admin RLS behavior;
+- cross-tenant read and write isolation;
+- atomic tenant/owner creation through the RPC;
+- prevention of self-downgrade and ownerless tenants;
+- `anon` and `authenticated` grants.
+
+All fixtures use reserved test UUIDs and `.invalid` email addresses inside a transaction. The script always rolls them back and reports the number of leftover fixtures, which must all be zero.
+
+## Advisor notes
+
+The Security Advisor intentionally reports `public.create_tenant_with_owner` as an authenticated `SECURITY DEFINER` function. This is the public RPC used to atomically create a tenant and its first owner without granting direct tenant insertion to clients. It is intentionally retained because it:
+
+- rejects requests without `auth.uid()`;
+- validates all inputs;
+- fixes `search_path` to `pg_catalog`;
+- is executable by `authenticated` only;
+- performs both inserts in one database statement;
+- has a dedicated integration test.
+
+Internal membership helpers live in the unexposed `private` schema and are not callable through the Data API. Performance Advisor may report new indexes as unused while the development database is empty; this is expected until representative data and traffic exist.
