@@ -183,19 +183,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: null }
     }
 
-    const isEmail = isEmailIdentifier(identifier)
     const creds = buildCredentials(identifier, password)
     const { data, error } = await supabase.auth.signUp(creds)
     if (error) return { error: error.message }
+
     const userId = data.user?.id
     if (!userId) return { error: 'خطا در ثبت‌نام' }
-    const { error: profileError } = await supabase.from('users').insert({
-      id: userId,
-      email: isEmail ? identifier : null,
-      phone: !isEmail ? normalizeIranPhone(identifier) : null,
-      role: 'BUSINESS_USER',
-    })
-    if (profileError) return { error: profileError.message }
+
+    // With Confirm Email enabled Supabase intentionally returns no session.
+    // The database trigger creates the profile; it becomes readable after login.
+    if (!data.session) {
+      setSession(null)
+      setProfile(null)
+      return { error: null }
+    }
+
+    const createdProfile = await fetchProfile(userId)
+    if (!createdProfile) {
+      await supabase.auth.signOut()
+      setSession(null)
+      setProfile(null)
+      return { error: 'پروفایل کاربری ایجاد نشد. لطفاً با پشتیبانی تماس بگیرید.' }
+    }
+
+    setSession(data.session)
+    setProfile(createdProfile)
     return { error: null }
   }
 

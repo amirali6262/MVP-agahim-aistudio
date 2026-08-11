@@ -75,34 +75,16 @@ export default function AddTenantForm({ onBack, onSuccess }: Props) {
       return
     }
 
-    // 1. Insert into tenants
-    const { data: tenantData, error: tenantError } = await supabase
-      .from('tenants')
-      .insert({
-        name: name.trim(),
-        entity_type: entityType,
-        national_id: nationalId.trim() || null,
-        economic_code: economicCode.trim() || null,
-        province: province || null,
-      })
-      .select('id')
-      .single()
-
-    if (tenantError || !tenantData) {
-      toast.error('خطا در ثبت شرکت: ' + (tenantError?.message ?? 'خطای نامشخص'))
-      setSubmitting(false)
-      return
-    }
-
-    // 2. Insert into user_tenants
-    const { error: linkError } = await supabase.from('user_tenants').insert({
-      user_id: session.user.id,
-      tenant_id: tenantData['id'],
-      role: 'OWNER',
+    const { error: tenantError } = await supabase.rpc('create_tenant_with_owner', {
+      p_name: name.trim(),
+      p_entity_type: entityType,
+      p_national_id: nationalId.trim() || null,
+      p_economic_code: economicCode.trim() || null,
+      p_province: province || null,
     })
 
-    if (linkError) {
-      toast.error('خطا در اتصال شرکت به حساب: ' + linkError.message)
+    if (tenantError) {
+      toast.error('خطا در ثبت شرکت: ' + tenantError.message)
       setSubmitting(false)
       return
     }
