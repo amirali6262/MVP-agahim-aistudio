@@ -14,11 +14,12 @@ insert into auth.users (
   ('10000000-0000-0000-0000-000000000003', 'authenticated', 'authenticated', 'rls-member@example.invalid', '+989100000003', '{"provider":"email","providers":["email"]}', '{}', now(), now(), false, false),
   ('10000000-0000-0000-0000-000000000004', 'authenticated', 'authenticated', 'rls-outsider@example.invalid', '+989100000004', '{"provider":"email","providers":["email"]}', '{}', now(), now(), false, false),
   ('10000000-0000-0000-0000-000000000005', 'authenticated', 'authenticated', 'rls-platform-admin@example.invalid', '+989100000005', '{"provider":"email","providers":["email"]}', '{}', now(), now(), false, false),
-  ('10000000-0000-0000-0000-000000000006', 'authenticated', 'authenticated', 'rls-extra@example.invalid', '+989100000006', '{"provider":"email","providers":["email"]}', '{}', now(), now(), false, false);
+  ('10000000-0000-0000-0000-000000000006', 'authenticated', 'authenticated', 'rls-extra@example.invalid', '+989100000006', '{"provider":"email","providers":["email"]}', '{}', now(), now(), false, false),
+  ('10000000-0000-0000-0000-000000000007', 'authenticated', 'authenticated', 'rls-profileless@example.invalid', '+989100000007', '{"provider":"email","providers":["email"]}', '{}', now(), now(), false, false);
 
 do $$
 begin
-  if (select count(*) from public.users where id::text like '10000000-0000-0000-0000-00000000000%') <> 6 then
+  if (select count(*) from public.users where id::text like '10000000-0000-0000-0000-00000000000%') <> 7 then
     raise exception 'auth insert trigger did not create all profiles';
   end if;
   if (select role from public.users where id = '10000000-0000-0000-0000-000000000001') <> 'BUSINESS_USER' then
@@ -48,6 +49,10 @@ $$;
 update public.users
 set role = 'PLATFORM_ADMIN'
 where id = '10000000-0000-0000-0000-000000000005';
+
+-- Simulate a legacy or damaged Auth user whose public profile is missing.
+delete from public.users
+where id = '10000000-0000-0000-0000-000000000007';
 
 insert into public.tenants (id, name, entity_type, created_by)
 values
@@ -281,8 +286,45 @@ begin
 end
 $$;
 
+-- Anonymous Auth users have an authenticated database role but must not
+-- receive tenant access or create a tenant.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":true}', true);
+do $
+begin
+  if (select count(*) from public.tenants) <> 0 then
+    raise exception 'anonymous Auth user could read tenant data';
+  end if;
+
+  begin
+    perform public.create_tenant_with_owner('Anonymous Auth Tenant', 'حقوقی', null, null, null);
+    raise exception 'anonymous Auth user was able to create a tenant';
+  exception when insufficient_privilege then
+    null;
+  end;
+end
+$;
+reset role;
+
+-- A valid Auth session without a corresponding public profile must fail closed.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000007', true);
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000007","role":"authenticated","is_anonymous":false}', true);
+do $
+begin
+  begin
+    perform public.create_tenant_with_owner('Profileless Tenant', 'حقوقی', null, null, null);
+    raise exception 'profileless Auth user was able to create a tenant';
+  exception when insufficient_privilege then
+    null;
+  end;
+end
+$;
+reset role;
+
 set local role anon;
-do $$
+do $
 begin
   begin
     perform 1 from public.users limit 1;
@@ -324,6 +366,34 @@ begin
 end
 $$;
 reset role;
+
+-- New public objects created by postgres must not be exposed to Data API
+-- client roles unless a migration grants access explicitly.
+create table public.rls_default_acl_probe (id integer);
+create sequence public.rls_default_acl_probe_seq;
+create function public.rls_default_acl_probe_fn()
+returns integer
+language sql
+as $ select 1 $;
+
+do $
+begin
+  if has_table_privilege('anon', 'public.rls_default_acl_probe', 'select')
+     or has_table_privilege('authenticated', 'public.rls_default_acl_probe', 'select') then
+    raise exception 'default table privileges expose new public tables';
+  end if;
+
+  if has_sequence_privilege('anon', 'public.rls_default_acl_probe_seq', 'usage')
+     or has_sequence_privilege('authenticated', 'public.rls_default_acl_probe_seq', 'usage') then
+    raise exception 'default sequence privileges expose new public sequences';
+  end if;
+
+  if has_function_privilege('anon', 'public.rls_default_acl_probe_fn()', 'execute')
+     or has_function_privilege('authenticated', 'public.rls_default_acl_probe_fn()', 'execute') then
+    raise exception 'default function privileges expose new public functions';
+  end if;
+end
+$;
 
 rollback;
 
