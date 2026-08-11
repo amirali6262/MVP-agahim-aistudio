@@ -28,7 +28,7 @@ interface AuthContextValue {
   loading: boolean
   signIn: (identifier: string, password: string) => Promise<{ error: string | null }>
   signInAdmin: (identifier: string, password: string) => Promise<{ error: string | null }>
-  signUp: (identifier: string, password: string) => Promise<{ error: string | null }>
+  signUp: (identifier: string, password: string) => Promise<{ error: string | null; requiresEmailConfirmation?: boolean }>
   signOut: () => Promise<void>
 }
 
@@ -83,27 +83,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      const sess = data.session
-      setSession(sess)
-      if (sess?.user) {
-        const p = await fetchProfile(sess.user.id)
-        setProfile(p)
-      }
-      setLoading(false)
-    })
+    let cancelled = false
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, sess) => {
-      setSession(sess)
-      if (sess?.user) {
-        const p = await fetchProfile(sess.user.id)
-        setProfile(p)
-      } else {
+    const applyValidatedSession = async (nextSession: Session | null) => {
+      if (!nextSession?.user) {
+        if (!cancelled) {
+          setSession(null)
+          setProfile(null)
+        }
+        return
+      }
+
+      const nextProfile = await fetchProfile(nextSession.user.id)
+      if (cancelled) return
+
+      if (!nextProfile) {
+        setSession(null)
         setProfile(null)
+        await supabase.auth.signOut()
+        return
       }
+
+      setSession(nextSession)
+      setProfile(nextProfile)
+    }
+
+    void supabase.auth
+      .getSession()
+      .then(async ({ data, error }) => {
+        if (error) {
+          setSession(null)
+          setProfile(null)
+          return
+        }
+        await applyValidatedSession(data.session)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSession(null)
+          setProfile(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!nextSession?.user) {
+        setSession(null)
+        setProfile(null)
+        return
+      }
+
+      // Defer database access until the auth callback has returned.
+      setTimeout(() => {
+        void applyValidatedSession(nextSession)
+      }, 0)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   }, [fetchProfile])
 
   function buildCredentials(identifier: string, password: string) {
@@ -130,11 +171,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const creds = buildCredentials(identifier, password)
     const { data, error } = await supabase.auth.signInWithPassword(creds)
     if (error) return { error: error.message }
+
     const userId = data.user?.id
-    if (!userId) return { error: 'خطا در ورود' }
-    const p = await fetchProfile(userId)
-    if (!p) return { error: 'پروفایل کاربری یافت نشد' }
-    setProfile(p)
+    if (!userId || !data.session) {
+      await supabase.auth.signOut()
+      setSession(null)
+      setProfile(null)
+      return { error: 'خطا در ورود' }
+    }
+
+    const nextProfile = await fetchProfile(userId)
+    if (!nextProfile) {
+      await supabase.auth.signOut()
+      setSession(null)
+      setProfile(null)
+      return { error: 'پروفایل کاربری یافت نشد' }
+    }
+
+    if (nextProfile.role !== 'BUSINESS_USER') {
+      await supabase.auth.signOut()
+      setSession(null)
+      setProfile(null)
+      return { error: 'برای ورود به پنل کاربری از صفحه ورود مدیر استفاده کنید.' }
+    }
+
+    setSession(data.session)
+    setProfile(nextProfile)
     return { error: null }
   }
 
@@ -157,17 +219,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const creds = buildCredentials(identifier, password)
     const { data, error } = await supabase.auth.signInWithPassword(creds)
     if (error) return { error: error.message }
+
     const userId = data.user?.id
-    if (!userId) return { error: 'خطا در ورود' }
-    const p = await fetchProfile(userId)
-    if (!p) return { error: 'پروفایل کاربری یافت نشد' }
-    if (p.role !== 'PLATFORM_ADMIN') {
+    if (!userId || !data.session) {
+      await supabase.auth.signOut()
+      setSession(null)
+      setProfile(null)
+      return { error: 'خطا در ورود' }
+    }
+
+    const nextProfile = await fetchProfile(userId)
+    if (!nextProfile) {
+      await supabase.auth.signOut()
+      setSession(null)
+      setProfile(null)
+      return { error: 'پروفایل کاربری یافت نشد' }
+    }
+
+    if (nextProfile.role !== 'PLATFORM_ADMIN') {
       await supabase.auth.signOut()
       setSession(null)
       setProfile(null)
       return { error: 'دسترسی غیرمجاز. فقط مدیران پلتفرم مجاز به ورود هستند.' }
     }
-    setProfile(p)
+
+    setSession(data.session)
+    setProfile(nextProfile)
     return { error: null }
   }
 
@@ -195,7 +272,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!data.session) {
       setSession(null)
       setProfile(null)
-      return { error: null }
+      return { error: null, requiresEmailConfirmation: true }
     }
 
     const createdProfile = await fetchProfile(userId)
