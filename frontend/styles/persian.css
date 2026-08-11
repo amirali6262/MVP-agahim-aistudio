@@ -1,0 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --font-persian: 'Vazirmatn', Tahoma, Arial, sans-serif;
+}
+
+html, body {
+  direction: rtl;
+  font-family: var(--font-persian);
+}
+
+* {
+  font-family: var(--font-persian);
+}
+
+/* Override shadcn input text alignment for RTL */
+input, textarea, select {
+  text-align: right;
+}
+
+/* Placeholder alignment */
+input::placeholder,
+textarea::placeholder {
+  text-align: right;
+}

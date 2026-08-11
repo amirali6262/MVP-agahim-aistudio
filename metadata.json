@@ -1,0 +1,8 @@
+{
+  "name": "Agahim MVP",
+  "description": "Persian tax and corporate compliance management platform with multi-tenant workspace support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
