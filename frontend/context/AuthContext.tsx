@@ -1,13 +1,26 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase, isSupabaseConfigured, isEmailIdentifier, normalizeIranPhone } from '../lib/supabase'
-import type { AppUser } from '../lib/supabase'
 import {
-  mockSignIn,
-  mockSignUp,
-  restoreMockSession,
-  clearMockSession,
-} from '../lib/mockAuth'
+  supabase,
+  isSupabaseConfigured,
+  isMockAuthEnabled,
+  isEmailIdentifier,
+  normalizeIranPhone,
+} from '../lib/supabase'
+import type { AppUser } from '../lib/supabase'
+
+type MockAuthModule = typeof import('../lib/mockAuth')
+
+let mockAuthModulePromise: Promise<MockAuthModule> | null = null
+
+async function loadMockAuth(): Promise<MockAuthModule | null> {
+  if (!import.meta.env.DEV || !isMockAuthEnabled) return null
+  mockAuthModulePromise ??= import('../lib/mockAuth')
+  return mockAuthModulePromise
+}
+
+const AUTH_CONFIG_ERROR =
+  'سامانه احراز هویت پیکربندی نشده است. لطفاً تنظیمات Supabase را بررسی کنید.'
 
 interface AuthContextValue {
   session: Session | null
@@ -26,7 +39,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<AppUser | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // ── Real Supabase profile fetch ───────────────────────────────────────────
   const fetchProfile = useCallback(async (userId: string): Promise<AppUser | null> => {
     const { data, error } = await supabase
       .from('users')
@@ -37,20 +49,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return data as AppUser
   }, [])
 
-  // ── Bootstrap ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      // Mock mode: restore from localStorage
-      const stored = restoreMockSession()
-      if (stored) {
-        setSession(stored.session)
-        setProfile(stored.profile)
+      if (!isMockAuthEnabled) {
+        setSession(null)
+        setProfile(null)
+        setLoading(false)
+        return
       }
-      setLoading(false)
-      return
+
+      let cancelled = false
+      void loadMockAuth()
+        .then((mockAuth) => {
+          if (cancelled || !mockAuth) return
+          const stored = mockAuth.restoreMockSession()
+          if (stored) {
+            setSession(stored.session)
+            setProfile(stored.profile)
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSession(null)
+            setProfile(null)
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+
+      return () => {
+        cancelled = true
+      }
     }
 
-    // Real Supabase mode
     supabase.auth.getSession().then(async ({ data }) => {
       const sess = data.session
       setSession(sess)
@@ -74,19 +106,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [fetchProfile])
 
-  // ── Credential helper (real mode only) ───────────────────────────────────
   function buildCredentials(identifier: string, password: string) {
     if (isEmailIdentifier(identifier)) return { email: identifier, password }
     return { phone: normalizeIranPhone(identifier), password }
   }
 
-  // ── signIn ────────────────────────────────────────────────────────────────
   const signIn = async (identifier: string, password: string): Promise<{ error: string | null }> => {
     if (!isSupabaseConfigured) {
-      const res = mockSignIn(identifier, password)
+      const mockAuth = await loadMockAuth()
+      if (!mockAuth) return { error: AUTH_CONFIG_ERROR }
+
+      const res = mockAuth.mockSignIn(identifier, password)
       if (res.error || !res.session || !res.profile) return { error: res.error ?? 'خطا در ورود' }
       if (res.profile.role !== 'BUSINESS_USER') {
-        clearMockSession()
+        mockAuth.clearMockSession()
         return { error: 'برای ورود به پنل کاربری از صفحه /login استفاده کنید.' }
       }
       setSession(res.session)
@@ -105,13 +138,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null }
   }
 
-  // ── signInAdmin ───────────────────────────────────────────────────────────
   const signInAdmin = async (identifier: string, password: string): Promise<{ error: string | null }> => {
     if (!isSupabaseConfigured) {
-      const res = mockSignIn(identifier, password)
+      const mockAuth = await loadMockAuth()
+      if (!mockAuth) return { error: AUTH_CONFIG_ERROR }
+
+      const res = mockAuth.mockSignIn(identifier, password)
       if (res.error || !res.session || !res.profile) return { error: res.error ?? 'خطا در ورود' }
       if (res.profile.role !== 'PLATFORM_ADMIN') {
-        clearMockSession()
+        mockAuth.clearMockSession()
         return { error: 'دسترسی غیرمجاز. فقط مدیران پلتفرم مجاز به ورود هستند.' }
       }
       setSession(res.session)
@@ -136,10 +171,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null }
   }
 
-  // ── signUp ────────────────────────────────────────────────────────────────
   const signUp = async (identifier: string, password: string): Promise<{ error: string | null }> => {
     if (!isSupabaseConfigured) {
-      const res = mockSignUp(identifier, password)
+      const mockAuth = await loadMockAuth()
+      if (!mockAuth) return { error: AUTH_CONFIG_ERROR }
+
+      const res = mockAuth.mockSignUp(identifier, password)
       if (res.error || !res.session || !res.profile) return { error: res.error ?? 'خطا در ثبت‌نام' }
       setSession(res.session)
       setProfile(res.profile)
@@ -162,10 +199,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null }
   }
 
-  // ── signOut ───────────────────────────────────────────────────────────────
   const signOut = async () => {
     if (!isSupabaseConfigured) {
-      clearMockSession()
+      const mockAuth = await loadMockAuth()
+      if (mockAuth) mockAuth.clearMockSession()
     } else {
       await supabase.auth.signOut()
     }

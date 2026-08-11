@@ -5,6 +5,16 @@
 import type { Session } from '@supabase/supabase-js'
 import type { AppUser, UserRole } from './supabase'
 
+const isMockAuthRuntimeEnabled =
+  import.meta.env.DEV &&
+  import.meta.env['VITE_ENABLE_MOCK_AUTH'] === 'true'
+
+function assertMockAuthEnabled(): void {
+  if (!isMockAuthRuntimeEnabled) {
+    throw new Error('Mock authentication is disabled outside explicitly enabled development mode.')
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Hardcoded demo credentials
 // ---------------------------------------------------------------------------
@@ -43,6 +53,7 @@ function save(s: StoredMock): void {
 }
 
 export function clearMockSession(): void {
+  assertMockAuthEnabled()
   localStorage.removeItem(SESSION_KEY)
 }
 
@@ -59,6 +70,7 @@ function load(): StoredMock | null {
 // Build a fake Session that satisfies the truthiness + .user.id checks
 // ---------------------------------------------------------------------------
 export function buildFakeSession(userId: string, email: string): Session {
+  assertMockAuthEnabled()
   return {
     access_token: 'mock-token',
     refresh_token: 'mock-refresh',
@@ -78,6 +90,7 @@ export function buildFakeSession(userId: string, email: string): Session {
 }
 
 export function buildFakeProfile(userId: string, email: string, role: UserRole): AppUser {
+  assertMockAuthEnabled()
   return { id: userId, email, phone: null, role, created_at: new Date().toISOString() }
 }
 
@@ -88,6 +101,7 @@ export function mockSignIn(
   identifier: string,
   password: string
 ): { error: string | null; session: Session | null; profile: AppUser | null } {
+  assertMockAuthEnabled()
   const key = identifier.toLowerCase().trim()
   const cred = MOCK_USERS[key]
   if (!cred || cred.password !== password) {
@@ -105,6 +119,7 @@ export function mockSignUp(
   identifier: string,
   _password: string
 ): { error: string | null; session: Session | null; profile: AppUser | null } {
+  assertMockAuthEnabled()
   // In demo mode registration creates a new BUSINESS_USER in memory
   const key = identifier.toLowerCase().trim()
   if (MOCK_USERS[key]) {
@@ -122,6 +137,7 @@ export function mockSignUp(
 
 /** Restore session from localStorage on page refresh */
 export function restoreMockSession(): { session: Session; profile: AppUser } | null {
+  assertMockAuthEnabled()
   const s = load()
   if (!s) return null
   return {
