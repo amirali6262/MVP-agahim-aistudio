@@ -18,6 +18,18 @@ begin
     'coalesce('
   );
 
+  function_definition := pg_catalog.replace(
+    function_definition,
+    'pg_catalog.current_date',
+    'current_date'
+  );
+
+  function_definition := pg_catalog.replace(
+    function_definition,
+    'pg_catalog.nullif(',
+    'nullif('
+  );
+
   execute function_definition;
 end;
 $$;
