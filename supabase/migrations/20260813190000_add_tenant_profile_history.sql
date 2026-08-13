@@ -38,6 +38,9 @@ create unique index tenant_profile_one_current_idx
 create index tenant_profile_history_idx
   on public.tenant_profile_versions (tenant_id, valid_from desc);
 
+create index tenant_profile_created_by_idx
+  on public.tenant_profile_versions (created_by);
+
 alter table public.tenant_profile_versions enable row level security;
 
 revoke all on table public.tenant_profile_versions from public, anon, authenticated;
