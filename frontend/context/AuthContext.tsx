@@ -248,7 +248,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null }
   }
 
-  const signUp = async (identifier: string, password: string): Promise<{ error: string | null }> => {
+  const signUp = async (identifier: string, password: string): Promise<{ error: string | null; requiresEmailConfirmation?: boolean }> => {
     if (!isSupabaseConfigured) {
       const mockAuth = await loadMockAuth()
       if (!mockAuth) return { error: AUTH_CONFIG_ERROR }
