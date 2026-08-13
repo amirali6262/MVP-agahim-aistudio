@@ -60,6 +60,10 @@ returns public.case_events language plpgsql security definer set search_path=pg_
 declare uid uuid:=auth.uid();tenant_id uuid;saved public.case_events;admin_event boolean;
 begin
  if uid is null or coalesce((auth.jwt()->>'is_anonymous')::boolean,false) then raise exception 'authentication required'using errcode='42501';end if;
+ if requested_event_type is null or requested_event_type not in(
+   'ASSESSMENT','OBJECTION_SUBMITTED','HEARING','DECISION','PAYMENT_PLAN',
+   'PAYMENT','SETTLEMENT_REQUEST','SETTLED','CLOSED','NOTE'
+ ) then raise exception 'invalid case event type'using errcode='22023';end if;
  select c.tenant_id into tenant_id from public.compliance_cases c where c.id=requested_case_id;
  if tenant_id is null then raise exception 'case not found'using errcode='P0002';end if;
  admin_event:=requested_event_type in('ASSESSMENT','HEARING','DECISION','PAYMENT_PLAN','SETTLED','CLOSED');
@@ -91,7 +95,13 @@ begin
  if requested_base_amount is null or requested_base_amount<0 or requested_as_of is null or requested_waived_amount<0 or requested_paid_amount<0 then raise exception 'non-negative amounts and calculation date required'using errcode='22023';end if;
  select * into d from public.case_deadlines where case_id=c.id order by due_at desc limit 1;
  select penalty_rule into rule from public.obligation_versions where id=c.obligation_version_id;
- rule_type:=coalesce(rule->>'type','NONE');rate:=coalesce((rule->>'rate_percent')::numeric,0);fixed_amount:=coalesce((rule->>'amount')::numeric,0);cap_amount:=(rule->>'cap_amount')::numeric;
+ rule_type:=coalesce(rule->>'type','NONE');
+ if rule_type not in('NONE','FIXED','PERCENTAGE','DAILY_PERCENTAGE') then raise exception 'unsupported penalty rule type'using errcode='22023';end if;
+ if rule_type='FIXED' and (jsonb_typeof(rule->'amount')<>'number' or (rule->>'amount')::numeric<0) then raise exception 'fixed penalty requires a non-negative numeric amount'using errcode='22023';end if;
+ if rule_type in('PERCENTAGE','DAILY_PERCENTAGE') and (jsonb_typeof(rule->'rate_percent')<>'number' or (rule->>'rate_percent')::numeric<0) then raise exception 'percentage penalty requires a non-negative numeric rate_percent'using errcode='22023';end if;
+ if rule?'cap_amount' and (jsonb_typeof(rule->'cap_amount')<>'number' or (rule->>'cap_amount')::numeric<0) then raise exception 'penalty cap_amount must be a non-negative number'using errcode='22023';end if;
+ if rule_type='DAILY_PERCENTAGE' and d.id is null then raise exception 'a deadline is required for a daily penalty estimate'using errcode='P0002';end if;
+ rate:=coalesce((rule->>'rate_percent')::numeric,0);fixed_amount:=coalesce((rule->>'amount')::numeric,0);cap_amount:=(rule->>'cap_amount')::numeric;
  late_days:=case when d.id is null then 0 else greatest(requested_as_of-d.due_at::date,0) end;
  gross:=case rule_type when'FIXED'then fixed_amount when'PERCENTAGE'then requested_base_amount*rate/100 when'DAILY_PERCENTAGE'then requested_base_amount*rate/100*late_days else 0 end;
  if cap_amount is not null then gross:=least(gross,cap_amount);end if;gross:=round(greatest(gross,0));net:=greatest(gross-requested_waived_amount-requested_paid_amount,0);
