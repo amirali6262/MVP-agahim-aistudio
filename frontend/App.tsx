@@ -11,6 +11,7 @@ import AdminLayout from './pages/admin/AdminLayout'
 import AdminLogin from './pages/admin/AdminLogin'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import AdminComplianceStudio from './pages/admin/AdminComplianceStudio'
+import AdminCircularCenter from './pages/admin/AdminCircularCenter'
 import TaxCorporatePage from './pages/admin/tax/TaxCorporatePage'
 import ObjectionTemplatesPage from './pages/admin/objections/ObjectionTemplatesPage'
 import DeadlineExtensionsPage from './pages/admin/extensions/DeadlineExtensionsPage'
@@ -73,6 +74,10 @@ export default function App() {
           <Route
             path="/admin/studio"
             element={<AdminPage><AdminComplianceStudio /></AdminPage>}
+          />
+          <Route
+            path="/admin/circulars"
+            element={<AdminPage><AdminCircularCenter /></AdminPage>}
           />
           <Route
             path="/admin/tax/corporate"
