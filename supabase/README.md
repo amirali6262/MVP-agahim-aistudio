@@ -111,3 +111,7 @@ Penalty values are estimates based on the published rule snapshot, the latest re
 ### Dynamic workflow forms
 
 `public.complete_case_task` is intentionally exposed as an authenticated `SECURITY DEFINER` RPC because clients cannot write case tasks or cases directly. It locks the active task and case, enforces the step actor (`USER` versus `PLATFORM_ADMIN`/`AUTHORITY`), validates every response against the bounded published form schema, rejects unknown or missing fields, and advances exactly one step atomically. Anonymous users and cross-tenant callers are rejected. The form vocabulary is deliberately limited to text, number, date, checkbox, and select; file upload is not enabled until a separately secured Storage design is added.
+
+### Admin obligation authoring
+
+`public.create_obligation_draft` and `public.publish_obligation_version` are intentional authenticated `SECURITY DEFINER` RPCs restricted internally to `PLATFORM_ADMIN`. Draft creation validates identifiers, HTTPS URLs and rule objects, then creates the obligation and its first version atomically. Publication requires an official source, legal reference, effective date, at least one explainable eligibility rule and at least one validated workflow step; it validates the penalty formula and then locks the published definition. Ordinary and anonymous users are rejected. Legal content is never seeded or published automatically.
