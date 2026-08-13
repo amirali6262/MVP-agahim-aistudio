@@ -10,6 +10,7 @@ import AdminLayout from './pages/admin/AdminLayout'
 
 import AdminLogin from './pages/admin/AdminLogin'
 import AdminDashboard from './pages/admin/AdminDashboard'
+import AdminComplianceStudio from './pages/admin/AdminComplianceStudio'
 import TaxCorporatePage from './pages/admin/tax/TaxCorporatePage'
 import ObjectionTemplatesPage from './pages/admin/objections/ObjectionTemplatesPage'
 import DeadlineExtensionsPage from './pages/admin/extensions/DeadlineExtensionsPage'
@@ -68,6 +69,10 @@ export default function App() {
           <Route
             path="/admin/dashboard"
             element={<AdminPage><AdminDashboard /></AdminPage>}
+          />
+          <Route
+            path="/admin/studio"
+            element={<AdminPage><AdminComplianceStudio /></AdminPage>}
           />
           <Route
             path="/admin/tax/corporate"
