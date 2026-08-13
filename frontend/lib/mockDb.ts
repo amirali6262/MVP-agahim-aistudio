@@ -3,7 +3,7 @@
  * Data lives in a module-level singleton; survives re-renders
  * but resets on full page reload.
  */
-import type { Obligation, Tenant, UserTenantWithTenant, ObjectionTemplate, DeadlineExtension, TenantObligationFulfillment, CommercialBookPeriod, ChecklistTemplate, TenantChecklistProgress, ChecklistSection, ChecklistItem, ChecklistImportance } from './supabase'
+import type { Obligation, Tenant, UserTenantRow, UserTenantWithTenant, ObjectionTemplate, DeadlineExtension, TenantObligationFulfillment, CommercialBookPeriod, ChecklistTemplate, TenantChecklistProgress, ChecklistSection, ChecklistItem, ChecklistImportance } from './supabase'
 
 // ---------------------------------------------------------------------------
 // Objection Templates — seeded data
@@ -813,7 +813,7 @@ let _tenants: Tenant[] = [
   },
 ]
 
-let _userTenants: Array<{ id: string; user_id: string; tenant_id: string; role: string; created_at: string }> = [
+let _userTenants: UserTenantRow[] = [
   { id: 'ut-001', user_id: 'mock-user-00000002', tenant_id: 'tenant-001', role: 'OWNER', created_at: '2024-01-01T10:00:00Z' },
   { id: 'ut-002', user_id: 'mock-user-00000002', tenant_id: 'tenant-002', role: 'OWNER', created_at: '2024-01-02T10:00:00Z' },
 ]
@@ -835,7 +835,13 @@ export const mockTenantsDb = {
     const now = new Date().toISOString()
     const tenant: Tenant = { id: 'tenant-' + Date.now(), ...payload, created_at: now }
     _tenants = [..._tenants, tenant]
-    const ut = { id: 'ut-' + Date.now(), user_id: userId, tenant_id: tenant.id, role: 'OWNER', created_at: now }
+    const ut: UserTenantRow = {
+      id: 'ut-' + Date.now(),
+      user_id: userId,
+      tenant_id: tenant.id,
+      role: 'OWNER',
+      created_at: now,
+    }
     _userTenants = [..._userTenants, ut]
     return { tenant, userTenant: ut }
   },
