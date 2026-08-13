@@ -20,6 +20,7 @@ import {
   Sparkles,
   Calendar,
   Receipt,
+  LayoutDashboard,
 } from 'lucide-react'
 import { Button } from '../../lib/shadcn/button'
 import { useAuth } from '../../context/AuthContext'
@@ -32,8 +33,10 @@ import CompanyChecklistWizard from '../../components/CompanyChecklistWizard'
 import CompanyInsurance from '../../components/CompanyInsurance'
 import CompanyTaxDisputes from '../../components/CompanyTaxDisputes'
 import CompanyBusinessProfile from '../../components/CompanyBusinessProfile'
+import CompanyComplianceOverview from '../../components/CompanyComplianceOverview'
 
 type ActiveTab =
+  | 'OVERVIEW'
   | 'BUSINESS_PROFILE'
   | 'FISCAL_YEAR'
   | 'TAX_CORPORATE'
@@ -45,10 +48,12 @@ type ActiveTab =
   | 'BOOKS'
 
 export default function PanelDashboard() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('BUSINESS_PROFILE')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW')
   const { signOut } = useAuth()
   const { selectedTenant, clearTenant } = useTenant()
   const navigate = useNavigate()
+  const showDemoModules =
+    import.meta.env.DEV && import.meta.env['VITE_ENABLE_MOCK_DATA'] === 'true'
 
   const handleSwitchTenant = () => {
     clearTenant()
@@ -143,8 +148,20 @@ export default function PanelDashboard() {
             {/* Navigation Menu in Workspace Panel */}
             <div className="rounded-2xl border border-zinc-800 p-4 bg-[#141615] flex flex-col gap-5 shadow-lg">
               <span className="text-xs font-bold text-zinc-300 border-b border-zinc-800/80 pb-2">
-                ماژول‌های فعال شرکت:
+                مسیر ساده شرکت:
               </span>
+
+              <button
+                onClick={() => setActiveTab('OVERVIEW')}
+                className={`flex items-center gap-2.5 p-3 rounded-xl text-xs font-bold transition-all text-right border ${
+                  activeTab === 'OVERVIEW'
+                    ? 'bg-[#E5A93C] text-[#181614] border-[#E5A93C] shadow-md'
+                    : 'text-zinc-200 bg-zinc-900/60 border-zinc-800 hover:bg-zinc-800'
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4 shrink-0" />
+                <span>وضعیت امروز و کار بعدی</span>
+              </button>
 
               <button
                 onClick={() => setActiveTab('BUSINESS_PROFILE')}
@@ -158,6 +175,8 @@ export default function PanelDashboard() {
                 <span>پروفایل و تشخیص مشمولیت</span>
               </button>
 
+              {showDemoModules && (
+                <>
               {/* 0. Fiscal Year Section */}
               <div className="flex flex-col gap-1">
                 <button
@@ -283,6 +302,8 @@ export default function PanelDashboard() {
                   </button>
                 </div>
               </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -290,7 +311,9 @@ export default function PanelDashboard() {
         {/* Main Workspace Area */}
         <div className={selectedTenant ? 'lg:col-span-3' : 'lg:col-span-4'}>
           {selectedTenant ? (
-            activeTab === 'BUSINESS_PROFILE' ? (
+            activeTab === 'OVERVIEW' ? (
+              <CompanyComplianceOverview tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
+            ) : activeTab === 'BUSINESS_PROFILE' ? (
               <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
             ) : activeTab === 'FISCAL_YEAR' ? (
               <CompanyFiscalYear tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
