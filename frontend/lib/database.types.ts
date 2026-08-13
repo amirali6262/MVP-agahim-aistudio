@@ -14,6 +14,64 @@ export type Database = {
   }
   public: {
     Tables: {
+      case_deadlines: {
+        Row: {
+          case_id: string
+          created_at: string
+          created_by: string
+          deadline_type: string
+          due_at: string
+          id: string
+          reason: string | null
+          source_circular_id: string | null
+          workflow_step_id: string | null
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          created_by: string
+          deadline_type: string
+          due_at: string
+          id?: string
+          reason?: string | null
+          source_circular_id?: string | null
+          workflow_step_id?: string | null
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          created_by?: string
+          deadline_type?: string
+          due_at?: string
+          id?: string
+          reason?: string | null
+          source_circular_id?: string | null
+          workflow_step_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_deadlines_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "compliance_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "case_deadlines_source_circular_id_fkey"
+            columns: ["source_circular_id"]
+            isOneToOne: false
+            referencedRelation: "legal_circulars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "case_deadlines_workflow_step_id_fkey"
+            columns: ["workflow_step_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       case_tasks: {
         Row: {
           case_id: string
@@ -292,6 +350,142 @@ export type Database = {
             columns: ["obligation_version_id"]
             isOneToOne: false
             referencedRelation: "obligation_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_circulars: {
+        Row: {
+          circular_number: string | null
+          created_at: string
+          created_by: string
+          effective_on: string | null
+          id: string
+          issued_on: string
+          obligation_version_id: string
+          published_at: string | null
+          published_by: string | null
+          source_url: string
+          status: string
+          summary: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          circular_number?: string | null
+          created_at?: string
+          created_by?: string
+          effective_on?: string | null
+          id?: string
+          issued_on: string
+          obligation_version_id: string
+          published_at?: string | null
+          published_by?: string | null
+          source_url: string
+          status?: string
+          summary: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          circular_number?: string | null
+          created_at?: string
+          created_by?: string
+          effective_on?: string | null
+          id?: string
+          issued_on?: string
+          obligation_version_id?: string
+          published_at?: string | null
+          published_by?: string | null
+          source_url?: string
+          status?: string
+          summary?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_circulars_obligation_version_id_fkey"
+            columns: ["obligation_version_id"]
+            isOneToOne: false
+            referencedRelation: "obligation_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          action_url: string | null
+          body: string
+          case_id: string | null
+          circular_id: string | null
+          created_at: string
+          deadline_id: string | null
+          deduplication_key: string
+          id: string
+          kind: string
+          read_at: string | null
+          tenant_id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          action_url?: string | null
+          body: string
+          case_id?: string | null
+          circular_id?: string | null
+          created_at?: string
+          deadline_id?: string | null
+          deduplication_key: string
+          id?: string
+          kind: string
+          read_at?: string | null
+          tenant_id: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          action_url?: string | null
+          body?: string
+          case_id?: string | null
+          circular_id?: string | null
+          created_at?: string
+          deadline_id?: string | null
+          deduplication_key?: string
+          id?: string
+          kind?: string
+          read_at?: string | null
+          tenant_id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "compliance_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_circular_id_fkey"
+            columns: ["circular_id"]
+            isOneToOne: false
+            referencedRelation: "legal_circulars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_deadline_id_fkey"
+            columns: ["deadline_id"]
+            isOneToOne: false
+            referencedRelation: "case_deadlines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -798,6 +992,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      publish_circular_and_notify: {
+        Args: { requested_action_url?: string; requested_circular_id: string }
+        Returns: number
+      }
       save_tenant_profile: {
         Args: {
           p_activity_codes?: string[]
@@ -838,6 +1036,37 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "tenant_profile_versions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      schedule_deadline_notifications: {
+        Args: { requested_now?: string }
+        Returns: number
+      }
+      set_case_deadline: {
+        Args: {
+          requested_case_id: string
+          requested_deadline_type: string
+          requested_due_at: string
+          requested_reason?: string
+          requested_source_circular_id?: string
+          requested_workflow_step_id: string
+        }
+        Returns: {
+          case_id: string
+          created_at: string
+          created_by: string
+          deadline_type: string
+          due_at: string
+          id: string
+          reason: string | null
+          source_circular_id: string | null
+          workflow_step_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "case_deadlines"
           isOneToOne: true
           isSetofReturn: false
         }
