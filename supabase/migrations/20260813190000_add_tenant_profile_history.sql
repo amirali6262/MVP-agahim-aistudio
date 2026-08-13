@@ -75,7 +75,7 @@ declare
   saved_profile public.tenant_profile_versions;
 begin
   if current_user_id is null
-     or pg_catalog.coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then
+     or coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then
     raise exception 'authenticated non-anonymous user required' using errcode = '42501';
   end if;
 
@@ -123,14 +123,14 @@ begin
     update public.tenant_profile_versions
     set legal_form = pg_catalog.nullif(pg_catalog.btrim(p_legal_form), ''),
         primary_activity = pg_catalog.nullif(pg_catalog.btrim(p_primary_activity), ''),
-        activity_codes = pg_catalog.coalesce(p_activity_codes, '{}'),
+        activity_codes = coalesce(p_activity_codes, '{}'),
         tax_registration_status = p_tax_registration_status,
         vat_registration_status = p_vat_registration_status,
         employee_count = p_employee_count,
         annual_revenue = p_annual_revenue,
         branch_count = p_branch_count,
         has_active_contracts = p_has_active_contracts,
-        contract_types = pg_catalog.coalesce(p_contract_types, '{}'),
+        contract_types = coalesce(p_contract_types, '{}'),
         pays_salaries = p_pays_salaries,
         custom_attributes = p_custom_attributes
     where id = current_profile.id
@@ -151,10 +151,10 @@ begin
       p_tenant_id, p_valid_from,
       pg_catalog.nullif(pg_catalog.btrim(p_legal_form), ''),
       pg_catalog.nullif(pg_catalog.btrim(p_primary_activity), ''),
-      pg_catalog.coalesce(p_activity_codes, '{}'),
+      coalesce(p_activity_codes, '{}'),
       p_tax_registration_status, p_vat_registration_status, p_employee_count,
       p_annual_revenue, p_branch_count, p_has_active_contracts,
-      pg_catalog.coalesce(p_contract_types, '{}'), p_pays_salaries,
+      coalesce(p_contract_types, '{}'), p_pays_salaries,
       p_custom_attributes, current_user_id
     ) returning * into saved_profile;
   end if;
