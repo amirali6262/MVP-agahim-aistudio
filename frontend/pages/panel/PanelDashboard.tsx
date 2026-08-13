@@ -31,8 +31,10 @@ import CompanyCommercialBooks from '../../components/CompanyCommercialBooks'
 import CompanyChecklistWizard from '../../components/CompanyChecklistWizard'
 import CompanyInsurance from '../../components/CompanyInsurance'
 import CompanyTaxDisputes from '../../components/CompanyTaxDisputes'
+import CompanyBusinessProfile from '../../components/CompanyBusinessProfile'
 
 type ActiveTab =
+  | 'BUSINESS_PROFILE'
   | 'FISCAL_YEAR'
   | 'TAX_CORPORATE'
   | 'VAT'
@@ -43,7 +45,7 @@ type ActiveTab =
   | 'BOOKS'
 
 export default function PanelDashboard() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('FISCAL_YEAR')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('BUSINESS_PROFILE')
   const { signOut } = useAuth()
   const { selectedTenant, clearTenant } = useTenant()
   const navigate = useNavigate()
@@ -143,6 +145,18 @@ export default function PanelDashboard() {
               <span className="text-xs font-bold text-zinc-300 border-b border-zinc-800/80 pb-2">
                 ماژول‌های فعال شرکت:
               </span>
+
+              <button
+                onClick={() => setActiveTab('BUSINESS_PROFILE')}
+                className={`flex items-center gap-2.5 p-3 rounded-xl text-xs font-bold transition-all text-right border ${
+                  activeTab === 'BUSINESS_PROFILE'
+                    ? 'bg-[#E5A93C] text-[#181614] border-[#E5A93C] shadow-md'
+                    : 'text-zinc-200 bg-zinc-900/60 border-zinc-800 hover:bg-zinc-800'
+                }`}
+              >
+                <Building2 className="w-4 h-4 shrink-0" />
+                <span>پروفایل و تشخیص مشمولیت</span>
+              </button>
 
               {/* 0. Fiscal Year Section */}
               <div className="flex flex-col gap-1">
@@ -276,7 +290,9 @@ export default function PanelDashboard() {
         {/* Main Workspace Area */}
         <div className={selectedTenant ? 'lg:col-span-3' : 'lg:col-span-4'}>
           {selectedTenant ? (
-            activeTab === 'FISCAL_YEAR' ? (
+            activeTab === 'BUSINESS_PROFILE' ? (
+              <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
+            ) : activeTab === 'FISCAL_YEAR' ? (
               <CompanyFiscalYear tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
             ) : activeTab === 'TAX_CORPORATE' ? (
               <CompanyTaxCompliance tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
