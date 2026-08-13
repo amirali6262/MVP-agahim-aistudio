@@ -1,4 +1,5 @@
-import { LayoutDashboard } from 'lucide-react'
+import { ArrowLeft, LayoutDashboard } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 export default function AdminDashboard() {
   return (
@@ -15,8 +16,11 @@ export default function AdminDashboard() {
         <LayoutDashboard className="w-14 h-14 text-zinc-700" />
         <h3 className="text-zinc-300 text-lg font-semibold">داشبورد مدیریت</h3>
         <p className="text-zinc-500 text-sm max-w-sm leading-relaxed">
-          فاز ۱ و ۲ — MVP. ویجت‌های آماری و گزارش‌های مدیریتی در فازهای بعدی اضافه می‌شوند.
+          برای تعریف تعهد، قواعد تشخیص، مراحل انجام کار و انتشار کنترل‌شده وارد استودیوی طراحی شوید.
         </p>
+        <Link to="/admin/studio" className="mt-2 flex items-center gap-2 rounded-lg bg-[#E5A93C] px-5 py-2.5 text-sm font-bold text-[#181614]">
+          ورود به استودیوی طراحی <ArrowLeft className="h-4 w-4" />
+        </Link>
       </div>
     </div>
   )
