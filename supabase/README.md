@@ -115,3 +115,9 @@ Penalty values are estimates based on the published rule snapshot, the latest re
 ### Admin obligation authoring
 
 `public.create_obligation_draft` and `public.publish_obligation_version` are intentional authenticated `SECURITY DEFINER` RPCs restricted internally to `PLATFORM_ADMIN`. Draft creation validates identifiers, HTTPS URLs and rule objects, then creates the obligation and its first version atomically. Publication requires an official source, legal reference, effective date, at least one explainable eligibility rule and at least one validated workflow step; it validates the penalty formula and then locks the published definition. Ordinary and anonymous users are rejected. Legal content is never seeded or published automatically.
+
+### Deadline scheduler and delivery outbox
+
+The `pg_cron` job `agahim-deadline-reminders` runs daily at 03:15 UTC and calls the private reminder generator. It creates idempotent reminders 30, 14, 7, 3 and 1 days before a deadline, on the due date, and one day overdue. The authenticated `public.schedule_deadline_notifications` RPC is only a manual platform-admin wrapper around the same private function.
+
+New notifications enqueue EMAIL only when the user has an email and SMS only when the user has a phone. The private outbox does not send anything by itself. A reviewed provider worker, retry policy, consent rules, sender identity and an approved paid-service decision are still required before external email or SMS delivery is enabled.
