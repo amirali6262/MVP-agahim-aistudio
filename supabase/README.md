@@ -107,3 +107,7 @@ The Security Advisor also intentionally reports `public.save_tenant_profile` as 
 The Security Advisor may also list `public.record_case_event`, `public.estimate_case_penalty`, and `public.get_tenant_compliance_summary` because they are authenticated `SECURITY DEFINER` RPCs. Direct table writes are revoked, so these functions are the deliberately narrow write/read boundary. They reject missing or anonymous sessions, bind access to tenant membership or platform-admin status, validate event types and numeric penalty-rule inputs, and use a fixed `pg_catalog` search path. Cross-tenant access and role separation are covered by rollback-only integration tests.
 
 Penalty values are estimates based on the published rule snapshot, the latest recorded deadline, and operator-entered base/waiver/payment amounts. They are not a final authority assessment and should be labelled as estimates in the UI and reports.
+
+### Dynamic workflow forms
+
+`public.complete_case_task` is intentionally exposed as an authenticated `SECURITY DEFINER` RPC because clients cannot write case tasks or cases directly. It locks the active task and case, enforces the step actor (`USER` versus `PLATFORM_ADMIN`/`AUTHORITY`), validates every response against the bounded published form schema, rejects unknown or missing fields, and advances exactly one step atomically. Anonymous users and cross-tenant callers are rejected. The form vocabulary is deliberately limited to text, number, date, checkbox, and select; file upload is not enabled until a separately secured Storage design is added.
