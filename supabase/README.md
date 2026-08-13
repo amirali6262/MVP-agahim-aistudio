@@ -101,3 +101,9 @@ Performance Advisor may report the new indexes as unused while the development d
 The Security Advisor also intentionally reports `public.save_tenant_profile` as an authenticated `SECURITY DEFINER` function. Direct writes to `public.tenant_profile_versions` are revoked; this RPC is the only write path and rejects anonymous users, users without a profile, non-members, and members below `OWNER` or `ADMIN`. It validates bounded inputs, serializes changes per tenant, and records effective-dated history atomically.
 
 `Leaked Password Protection Disabled` is a project-plan limitation rather than a database-code defect. Keep the strong password policy enabled and turn leaked-password protection on when the Supabase plan supports it.
+
+### Case events, penalty estimates, and summary RPCs
+
+The Security Advisor may also list `public.record_case_event`, `public.estimate_case_penalty`, and `public.get_tenant_compliance_summary` because they are authenticated `SECURITY DEFINER` RPCs. Direct table writes are revoked, so these functions are the deliberately narrow write/read boundary. They reject missing or anonymous sessions, bind access to tenant membership or platform-admin status, validate event types and numeric penalty-rule inputs, and use a fixed `pg_catalog` search path. Cross-tenant access and role separation are covered by rollback-only integration tests.
+
+Penalty values are estimates based on the published rule snapshot, the latest recorded deadline, and operator-entered base/waiver/payment amounts. They are not a final authority assessment and should be labelled as estimates in the UI and reports.
