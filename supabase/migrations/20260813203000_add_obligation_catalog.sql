@@ -15,6 +15,7 @@ as $$
   );
 $$;
 revoke all on function private.is_platform_admin() from public, anon, authenticated, service_role;
+grant execute on function private.is_platform_admin() to authenticated;
 
 create table public.obligation_families (
   id uuid primary key default extensions.gen_random_uuid(),
