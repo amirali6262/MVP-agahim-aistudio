@@ -87,7 +87,7 @@ begin
     raise exception 'tenant owner or admin role required' using errcode = '42501';
   end if;
 
-  if p_valid_from is null or p_valid_from > pg_catalog.current_date then
+  if p_valid_from is null or p_valid_from > current_date then
     raise exception 'valid_from must be today or earlier' using errcode = '22023';
   end if;
 
@@ -121,8 +121,8 @@ begin
 
   if found and p_valid_from = current_profile.valid_from then
     update public.tenant_profile_versions
-    set legal_form = pg_catalog.nullif(pg_catalog.btrim(p_legal_form), ''),
-        primary_activity = pg_catalog.nullif(pg_catalog.btrim(p_primary_activity), ''),
+    set legal_form = nullif(pg_catalog.btrim(p_legal_form), ''),
+        primary_activity = nullif(pg_catalog.btrim(p_primary_activity), ''),
         activity_codes = coalesce(p_activity_codes, '{}'),
         tax_registration_status = p_tax_registration_status,
         vat_registration_status = p_vat_registration_status,
@@ -149,8 +149,8 @@ begin
       pays_salaries, custom_attributes, created_by
     ) values (
       p_tenant_id, p_valid_from,
-      pg_catalog.nullif(pg_catalog.btrim(p_legal_form), ''),
-      pg_catalog.nullif(pg_catalog.btrim(p_primary_activity), ''),
+      nullif(pg_catalog.btrim(p_legal_form), ''),
+      nullif(pg_catalog.btrim(p_primary_activity), ''),
       coalesce(p_activity_codes, '{}'),
       p_tax_registration_status, p_vat_registration_status, p_employee_count,
       p_annual_revenue, p_branch_count, p_has_active_contracts,
