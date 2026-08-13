@@ -41,8 +41,12 @@ export default function UserAuth({ mode }: Props) {
     }
 
     if (isRegister) {
-      if (password.length < 6) {
-        toast.error('رمز عبور باید حداقل ۶ کاراکتر باشد.')
+      if (password.length < 10) {
+        toast.error('رمز عبور باید حداقل ۱۰ کاراکتر باشد.')
+        return
+      }
+      if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+        toast.error('رمز عبور باید شامل حداقل یک حرف انگلیسی و یک عدد باشد.')
         return
       }
       if (password !== confirmPassword) {
@@ -54,14 +58,21 @@ export default function UserAuth({ mode }: Props) {
     setSubmitting(true)
 
     if (isRegister) {
-      const { error } = await signUp(identifier.trim(), password)
+      const { error, requiresEmailConfirmation } = await signUp(identifier.trim(), password)
       setSubmitting(false)
       if (error) {
         toast.error(error)
         return
       }
-      toast.success('ثبت‌نام موفق. در حال ورود خودکار...')
+
       resetForm()
+      if (requiresEmailConfirmation) {
+        toast.success('ثبت‌نام انجام شد. لطفاً ایمیل تأیید را باز کنید و سپس وارد شوید.')
+        navigate('/login', { replace: true })
+        return
+      }
+
+      toast.success('ثبت‌نام و ورود با موفقیت انجام شد.')
       navigate('/workspace', { replace: true })
     } else {
       const { error } = await signIn(identifier.trim(), password)
@@ -148,7 +159,7 @@ export default function UserAuth({ mode }: Props) {
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder={isRegister ? 'حداقل ۶ کاراکتر' : '••••••••'}
+                placeholder={isRegister ? 'حداقل ۱۰ کاراکتر، شامل حرف و عدد' : '••••••••'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete={isRegister ? 'new-password' : 'current-password'}

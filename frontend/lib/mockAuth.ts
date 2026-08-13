@@ -1,5 +1,5 @@
 /**
- * Mock authentication — used when VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
+ * Mock authentication — used when VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY
  * are not configured. Credentials are stored only in localStorage.
  */
 import type { Session } from '@supabase/supabase-js'

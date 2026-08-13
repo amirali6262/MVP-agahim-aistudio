@@ -13,7 +13,7 @@ export default function ConfigBanner() {
           {' '}را با{' '}
           <code className="bg-amber-800 px-1 rounded font-mono text-xs">VITE_SUPABASE_URL</code>
           {' '}و{' '}
-          <code className="bg-amber-800 px-1 rounded font-mono text-xs">VITE_SUPABASE_ANON_KEY</code>
+          <code className="bg-amber-800 px-1 rounded font-mono text-xs">VITE_SUPABASE_PUBLISHABLE_KEY</code>
           {' '}ایجاد کنید.
         </span>
         <AlertTriangle className="w-4 h-4 flex-shrink-0" />
