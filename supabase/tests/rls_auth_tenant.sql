@@ -291,7 +291,7 @@ $$;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":true}', true);
-do $
+do $$
 begin
   if (select count(*) from public.tenants) <> 0 then
     raise exception 'anonymous Auth user could read tenant data';
@@ -304,14 +304,14 @@ begin
     null;
   end;
 end
-$;
+$$;
 reset role;
 
 -- A valid Auth session without a corresponding public profile must fail closed.
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000007', true);
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000007","role":"authenticated","is_anonymous":false}', true);
-do $
+do $$
 begin
   begin
     perform public.create_tenant_with_owner('Profileless Tenant', 'حقوقی', null, null, null);
@@ -320,11 +320,11 @@ begin
     null;
   end;
 end
-$;
+$$;
 reset role;
 
 set local role anon;
-do $
+do $$
 begin
   begin
     perform 1 from public.users limit 1;
@@ -374,9 +374,9 @@ create sequence public.rls_default_acl_probe_seq;
 create function public.rls_default_acl_probe_fn()
 returns integer
 language sql
-as $ select 1 $;
+as $$ select 1 $$;
 
-do $
+do $$
 begin
   if has_table_privilege('anon', 'public.rls_default_acl_probe', 'select')
      or has_table_privilege('authenticated', 'public.rls_default_acl_probe', 'select') then
@@ -393,7 +393,7 @@ begin
     raise exception 'default function privileges expose new public functions';
   end if;
 end
-$;
+$$;
 
 rollback;
 
