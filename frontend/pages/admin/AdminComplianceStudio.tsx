@@ -53,6 +53,7 @@ const OPERATORS = [
   ['GTE', 'بیشتر یا مساوی'],
   ['LT', 'کمتر از'],
   ['LTE', 'کمتر یا مساوی'],
+  ['IN', 'یکی از گزینه‌ها'],
   ['CONTAINS', 'شامل است'],
   ['IS_TRUE', 'بله است'],
   ['IS_FALSE', 'خیر است'],
@@ -62,6 +63,14 @@ const OPERATORS = [
 
 const noValueOperators = new Set(['IS_TRUE', 'IS_FALSE', 'IS_NULL', 'NOT_NULL'])
 const numericFacts = new Set(['EMPLOYEE_COUNT', 'ANNUAL_REVENUE', 'BRANCH_COUNT'])
+const booleanFacts = new Set(['HAS_ACTIVE_CONTRACTS', 'PAYS_SALARIES'])
+const arrayFacts = new Set(['ACTIVITY_CODES', 'CONTRACT_TYPES'])
+
+interface DraftCondition {
+  fact: string
+  operator: string
+  expected: string
+}
 
 export default function AdminComplianceStudio() {
   const [loading, setLoading] = useState(true)
@@ -253,7 +262,15 @@ function DraftForm({ families, onSaved }: { families: Family[]; onSaved: (versio
   const [penaltyTypeValue, setPenaltyTypeValue] = useState('NONE')
   const [penaltyValue, setPenaltyValue] = useState('')
   const save = async () => {
+    if (!familyId || !code.trim() || !title.trim() || !legalReference.trim() || !sourceUrl.trim() || !effectiveFrom) {
+      toast.error('گروه، کد، عنوان، مرجع قانونی، منبع رسمی و تاریخ شروع اعتبار الزامی است.')
+      return
+    }
     const numberValue = penaltyValue ? Number(penaltyValue) : 0
+    if (penaltyTypeValue !== 'NONE' && (!penaltyValue || !Number.isFinite(numberValue) || numberValue < 0)) {
+      toast.error('مقدار جریمه باید عددی و غیرمنفی باشد.')
+      return
+    }
     const penaltyRule: Json = penaltyTypeValue === 'FIXED'
       ? { type: 'FIXED', amount: numberValue }
       : penaltyTypeValue === 'PERCENTAGE' || penaltyTypeValue === 'DAILY_PERCENTAGE'
@@ -284,20 +301,80 @@ function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: 
   const [title, setTitle] = useState('')
   const [explanation, setExplanation] = useState('')
   const [outcome, setOutcome] = useState('ELIGIBLE')
-  const [fact, setFact] = useState('ENTITY_TYPE')
-  const [operator, setOperator] = useState('EQ')
-  const [expected, setExpected] = useState('')
+  const [conditions, setConditions] = useState<DraftCondition[]>([
+    { fact: 'ENTITY_TYPE', operator: 'EQ', expected: '' },
+  ])
+
+  const updateCondition = (index: number, patch: Partial<DraftCondition>) => {
+    setConditions((current) => current.map((condition, position) =>
+      position === index ? { ...condition, ...patch } : condition
+    ))
+  }
+
   const save = async () => {
+    if (!title.trim() || !explanation.trim()) {
+      toast.error('عنوان و توضیح سادهٔ قاعده الزامی است.')
+      return
+    }
+    for (const condition of conditions) {
+      if (!noValueOperators.has(condition.operator) && !condition.expected.trim()) {
+        toast.error('مقدار همهٔ شرط‌ها را وارد کنید.')
+        return
+      }
+      if (numericFacts.has(condition.fact) && !Number.isFinite(Number(condition.expected))) {
+        toast.error('مقدار شرط عددی معتبر نیست.')
+        return
+      }
+    }
     const { data: rule, error } = await supabase.from('eligibility_rule_sets').insert({ obligation_version_id: versionId, priority: nextPriority, title: title.trim(), outcome, explanation: explanation.trim() }).select().single()
     if (error) { toast.error(error.message); return }
-    let expectedValue: Json | undefined
-    if (!noValueOperators.has(operator)) expectedValue = numericFacts.has(fact) ? Number(expected) : expected
-    const { error: conditionError } = await supabase.from('eligibility_conditions').insert({ rule_set_id: rule.id, sequence: 1, fact_key: fact, operator, expected_value: expectedValue })
+    const rows = conditions.map((condition, index) => {
+      let expectedValue: Json | undefined
+      if (!noValueOperators.has(condition.operator)) {
+        expectedValue = numericFacts.has(condition.fact)
+          ? Number(condition.expected)
+          : condition.operator === 'IN'
+            ? condition.expected.split(',').map((value) => value.trim()).filter(Boolean)
+            : condition.expected.trim()
+      }
+      return {
+        rule_set_id: rule.id,
+        sequence: index + 1,
+        fact_key: condition.fact,
+        operator: condition.operator,
+        expected_value: expectedValue,
+      }
+    })
+    const { error: conditionError } = await supabase.from('eligibility_conditions').insert(rows)
     if (conditionError) { await supabase.from('eligibility_rule_sets').delete().eq('id', rule.id); toast.error(conditionError.message); return }
     toast.success('قاعده تشخیص ثبت شد.'); setOpen(false); await onSaved()
   }
   if (!open) return <Button variant="outline" className="mt-4 w-full border-zinc-700 gap-2" onClick={() => setOpen(true)}><Plus className="h-4 w-4" />افزودن قاعده</Button>
-  return <div className="mt-4 space-y-3 rounded-xl border border-zinc-800 p-4"><Field label="عنوان قاعده"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field><Field label="نتیجه"><Select value={outcome} onValueChange={setOutcome}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ELIGIBLE">مشمول</SelectItem><SelectItem value="NOT_ELIGIBLE">غیرمشمول</SelectItem><SelectItem value="REVIEW">نیازمند بررسی</SelectItem></SelectContent></Select></Field><Field label="بر اساس"><Select value={fact} onValueChange={setFact}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{FACTS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field><Field label="شرط"><Select value={operator} onValueChange={setOperator}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{OPERATORS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>{!noValueOperators.has(operator) && <Field label="مقدار"><Input value={expected} onChange={(e) => setExpected(e.target.value)} /></Field>}<Field label="توضیح ساده برای کاربر"><Input value={explanation} onChange={(e) => setExplanation(e.target.value)} /></Field><SaveButton onClick={save} /></div>
+  return (
+    <div className="mt-4 space-y-3 rounded-xl border border-zinc-800 p-4">
+      <Field label="عنوان قاعده"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
+      <Field label="نتیجه"><Select value={outcome} onValueChange={setOutcome}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ELIGIBLE">مشمول</SelectItem><SelectItem value="NOT_ELIGIBLE">غیرمشمول</SelectItem><SelectItem value="REVIEW">نیازمند بررسی</SelectItem></SelectContent></Select></Field>
+      <div className="space-y-3">
+        {conditions.map((condition, index) => {
+          const operatorOptions = allowedOperators(condition.fact)
+          return (
+            <div key={index} className="rounded-lg border border-zinc-800 p-3">
+              <p className="mb-3 text-xs text-zinc-500">شرط {index + 1} (همهٔ شرط‌ها باید برقرار باشند)</p>
+              <div className="space-y-3">
+                <Field label="بر اساس"><Select value={condition.fact} onValueChange={(fact) => updateCondition(index, { fact, operator: allowedOperators(fact)[0]?.[0] ?? 'EQ', expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{FACTS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label="شرط"><Select value={condition.operator} onValueChange={(operator) => updateCondition(index, { operator, expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{operatorOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
+                {!noValueOperators.has(condition.operator) && <Field label={condition.operator === 'IN' ? 'مقادیر (با ویرگول جدا کنید)' : 'مقدار'}><Input value={condition.expected} onChange={(event) => updateCondition(index, { expected: event.target.value })} /></Field>}
+                {conditions.length > 1 && <Button variant="ghost" className="text-red-400" onClick={() => setConditions((current) => current.filter((_, position) => position !== index))}>حذف این شرط</Button>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <Button variant="outline" className="w-full border-zinc-700" onClick={() => setConditions((current) => [...current, { fact: 'ENTITY_TYPE', operator: 'EQ', expected: '' }])}>افزودن شرط دیگر</Button>
+      <Field label="توضیح ساده برای کاربر"><Input value={explanation} onChange={(event) => setExplanation(event.target.value)} /></Field>
+      <SaveButton onClick={save} />
+    </div>
+  )
 }
 
 function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version; nextSequence: number; onSaved: () => Promise<void> }) {
@@ -334,3 +411,13 @@ function Metric({ label, value }: { label: string; value: string | number }) { r
 function DefinitionRow({ title, meta }: { title: string; meta: string }) { return <div className="rounded-lg border border-zinc-800 p-3"><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs text-zinc-500">{meta}</p></div> }
 function penaltyType(value: Json) { if (!value || Array.isArray(value) || typeof value !== 'object') return 'نامشخص'; return String(value['type'] ?? 'NONE') }
 function actorLabel(actor: string) { return ({ USER: 'کاربر شرکت', PLATFORM_ADMIN: 'مدیر پلتفرم', AUTHORITY: 'مرجع قانونی / مدیر' } as Record<string, string>)[actor] ?? actor }
+function allowedOperators(fact: string) {
+  const allowed = booleanFacts.has(fact)
+    ? new Set(['IS_TRUE', 'IS_FALSE', 'IS_NULL', 'NOT_NULL'])
+    : numericFacts.has(fact)
+      ? new Set(['EQ', 'NEQ', 'GT', 'GTE', 'LT', 'LTE', 'IS_NULL', 'NOT_NULL'])
+      : arrayFacts.has(fact)
+        ? new Set(['CONTAINS', 'IS_NULL', 'NOT_NULL'])
+        : new Set(['EQ', 'NEQ', 'IN', 'IS_NULL', 'NOT_NULL'])
+  return OPERATORS.filter(([value]) => allowed.has(value))
+}
