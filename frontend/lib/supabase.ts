@@ -1,4 +1,5 @@
-import { createClient } from '@supabase/supabase-js'\nimport type { Database, Tables } from './database.types'
+import { createClient } from '@supabase/supabase-js'
+import type { Database, Tables } from './database.types'
 
 // ---------------------------------------------------------------------------
 // Configuration
