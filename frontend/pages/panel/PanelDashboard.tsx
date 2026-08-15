@@ -308,60 +308,85 @@ export default function PanelDashboard() {
           </div>
         )}
 
-        {/* Main Workspace Area */}
+               {/* Main Workspace Area */}
         <div className={selectedTenant ? 'lg:col-span-3' : 'lg:col-span-4'}>
           {selectedTenant ? (
-  activeTab === 'OVERVIEW' ? (
-    <CompanyComplianceOverview tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-  ) : activeTab === 'BUSINESS_PROFILE' ? (
-    <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-  ) : activeTab === 'FISCAL_YEAR' ? (
-    <CompanyFiscalYear tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-  ) : activeTab === 'TAX_CORPORATE' ? (
-    <CompanyTaxCompliance tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-  ) : activeTab === 'VAT' ? (
-    <CompanyVatCompliance tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-  ) : activeTab === 'TAX_DISPUTES' ? (
-    <CompanyTaxDisputes tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-  ) : activeTab === 'CHECKLISTS' ? (
-    <CompanyChecklistWizard tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-  ) : activeTab === 'BOOKS' ? (
-    <CompanyCommercialBooks tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-  ) : (
-    <CompanyInsurance
-      tenantId={selectedTenant.id}
-      tenantName={selectedTenant.name}
-      initialSubTab={activeTab === 'INSURANCE_CLEARANCE' ? 'ARTICLE_38' : 'MONTHLY_LIST'}
-    />
-  )
-) : (
-  <div className="text-zinc-400 text-center py-12">
-    لطفاً ابتدا یک شرکت انتخاب کنید.
-  </div>
-        )}
-      </div>
-    </div>
-  )
-}
+            <>
+              {activeTab === 'OVERVIEW' && (
+                <CompanyComplianceOverview
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
 
-// ---------------------------------------------------------------------------
-// InfoRow helper
-// ---------------------------------------------------------------------------
-function InfoRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-zinc-500">{icon}</span>
-      <div>
-        <p className="text-zinc-500 text-xs">{label}</p>
-        <p className="text-zinc-200 text-sm font-medium">{value}</p>
+              {activeTab === 'BUSINESS_PROFILE' && (
+                <CompanyBusinessProfile
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'FISCAL_YEAR' && (
+                <CompanyFiscalYear
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'TAX_CORPORATE' && (
+                <CompanyTaxCompliance
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'VAT' && (
+                <CompanyVatCompliance
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'TAX_DISPUTES' && (
+                <CompanyTaxDisputes
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'CHECKLISTS' && (
+                <CompanyChecklistWizard
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'BOOKS' && (
+                <CompanyCommercialBooks
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {(activeTab === 'INSURANCE_LIST' ||
+                activeTab === 'INSURANCE_CLEARANCE') && (
+                <CompanyInsurance
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                  initialSubTab={
+                    activeTab === 'INSURANCE_CLEARANCE'
+                      ? 'ARTICLE_38'
+                      : 'MONTHLY_LIST'
+                  }
+                />
+              )}
+            </>
+          ) : (
+            <div className="text-zinc-400 text-center py-12">
+              لطفاً ابتدا یک شرکت انتخاب کنید.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
