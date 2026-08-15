@@ -340,7 +340,7 @@ export default function PanelDashboard() {
   <div className="text-zinc-400 text-center py-12">
     لطفاً ابتدا یک شرکت انتخاب کنید.
   </div>
-)}  }
+)}  
 
 // ---------------------------------------------------------------------------
 // InfoRow helper
