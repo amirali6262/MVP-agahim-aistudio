@@ -72,6 +72,56 @@ export type Database = {
           },
         ]
       }
+      case_events: {
+        Row: {
+          amount: number | null
+          case_id: string
+          created_at: string
+          description: string | null
+          event_type: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          recorded_by: string
+          reference_number: string | null
+          title: string
+        }
+        Insert: {
+          amount?: number | null
+          case_id: string
+          created_at?: string
+          description?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json
+          occurred_at: string
+          recorded_by: string
+          reference_number?: string | null
+          title: string
+        }
+        Update: {
+          amount?: number | null
+          case_id?: string
+          created_at?: string
+          description?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          recorded_by?: string
+          reference_number?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_events_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "compliance_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       case_tasks: {
         Row: {
           case_id: string
@@ -644,6 +694,79 @@ export type Database = {
           },
         ]
       }
+      penalty_estimates: {
+        Row: {
+          base_amount: number
+          calculated_as_of: string
+          calculated_by: string
+          calculation_rule: Json
+          case_id: string
+          created_at: string
+          days_late: number
+          deadline_id: string | null
+          estimated_amount: number
+          gross_amount: number
+          id: string
+          obligation_version_id: string
+          paid_amount: number
+          waived_amount: number
+        }
+        Insert: {
+          base_amount: number
+          calculated_as_of: string
+          calculated_by: string
+          calculation_rule: Json
+          case_id: string
+          created_at?: string
+          days_late: number
+          deadline_id?: string | null
+          estimated_amount: number
+          gross_amount: number
+          id?: string
+          obligation_version_id: string
+          paid_amount?: number
+          waived_amount?: number
+        }
+        Update: {
+          base_amount?: number
+          calculated_as_of?: string
+          calculated_by?: string
+          calculation_rule?: Json
+          case_id?: string
+          created_at?: string
+          days_late?: number
+          deadline_id?: string | null
+          estimated_amount?: number
+          gross_amount?: number
+          id?: string
+          obligation_version_id?: string
+          paid_amount?: number
+          waived_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "penalty_estimates_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "compliance_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "penalty_estimates_deadline_id_fkey"
+            columns: ["deadline_id"]
+            isOneToOne: false
+            referencedRelation: "case_deadlines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "penalty_estimates_obligation_version_id_fkey"
+            columns: ["obligation_version_id"]
+            isOneToOne: false
+            referencedRelation: "obligation_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_profile_versions: {
         Row: {
           activity_codes: string[]
@@ -949,6 +1072,37 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      estimate_case_penalty: {
+        Args: {
+          requested_as_of?: string
+          requested_base_amount: number
+          requested_case_id: string
+          requested_paid_amount?: number
+          requested_waived_amount?: number
+        }
+        Returns: {
+          base_amount: number
+          calculated_as_of: string
+          calculated_by: string
+          calculation_rule: Json
+          case_id: string
+          created_at: string
+          days_late: number
+          deadline_id: string | null
+          estimated_amount: number
+          gross_amount: number
+          id: string
+          obligation_version_id: string
+          paid_amount: number
+          waived_amount: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "penalty_estimates"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       evaluate_tenant_eligibility: {
         Args: { requested_tenant_id: string }
         Returns: {
@@ -968,6 +1122,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      get_tenant_compliance_summary: {
+        Args: { requested_tenant_id: string }
+        Returns: {
+          completed_cases: number
+          open_cases: number
+          overdue_cases: number
+          total_cases: number
+          total_estimated_penalties: number
+          unread_notifications: number
+        }[]
       }
       open_eligible_cases: {
         Args: { requested_period_key: string; requested_tenant_id: string }
@@ -995,6 +1160,37 @@ export type Database = {
       publish_circular_and_notify: {
         Args: { requested_action_url?: string; requested_circular_id: string }
         Returns: number
+      }
+      record_case_event: {
+        Args: {
+          requested_amount?: number
+          requested_case_id: string
+          requested_description?: string
+          requested_event_type: string
+          requested_metadata?: Json
+          requested_occurred_at: string
+          requested_reference_number?: string
+          requested_title: string
+        }
+        Returns: {
+          amount: number | null
+          case_id: string
+          created_at: string
+          description: string | null
+          event_type: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          recorded_by: string
+          reference_number: string | null
+          title: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "case_events"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       save_tenant_profile: {
         Args: {
