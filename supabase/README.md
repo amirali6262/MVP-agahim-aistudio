@@ -94,3 +94,10 @@ The Security Advisor intentionally reports `public.create_tenant_with_owner` as 
 Internal membership helpers live in the unexposed `private` schema. The hardening migrations revoke automatic client access to future public tables, sequences, and functions; every future API object must be granted explicitly and protected with suitable RLS or function authorization.
 
 Performance Advisor may report the new indexes as unused while the development database is empty. This is expected until representative data and traffic exist; reevaluate those notices before production.
+
+
+### Tenant profile RPC and Auth warning
+
+The Security Advisor also intentionally reports `public.save_tenant_profile` as an authenticated `SECURITY DEFINER` function. Direct writes to `public.tenant_profile_versions` are revoked; this RPC is the only write path and rejects anonymous users, users without a profile, non-members, and members below `OWNER` or `ADMIN`. It validates bounded inputs, serializes changes per tenant, and records effective-dated history atomically.
+
+`Leaked Password Protection Disabled` is a project-plan limitation rather than a database-code defect. Keep the strong password policy enabled and turn leaked-password protection on when the Supabase plan supports it.

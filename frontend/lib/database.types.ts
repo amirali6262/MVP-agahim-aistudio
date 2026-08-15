@@ -14,6 +14,77 @@ export type Database = {
   }
   public: {
     Tables: {
+      tenant_profile_versions: {
+        Row: {
+          activity_codes: string[]
+          annual_revenue: number | null
+          branch_count: number
+          contract_types: string[]
+          created_at: string
+          created_by: string
+          custom_attributes: Json
+          employee_count: number
+          has_active_contracts: boolean
+          id: string
+          legal_form: string | null
+          pays_salaries: boolean
+          primary_activity: string | null
+          tax_registration_status: string
+          tenant_id: string
+          valid_from: string
+          valid_to: string | null
+          vat_registration_status: string
+        }
+        Insert: {
+          activity_codes?: string[]
+          annual_revenue?: number | null
+          branch_count?: number
+          contract_types?: string[]
+          created_at?: string
+          created_by: string
+          custom_attributes?: Json
+          employee_count?: number
+          has_active_contracts?: boolean
+          id?: string
+          legal_form?: string | null
+          pays_salaries?: boolean
+          primary_activity?: string | null
+          tax_registration_status?: string
+          tenant_id: string
+          valid_from: string
+          valid_to?: string | null
+          vat_registration_status?: string
+        }
+        Update: {
+          activity_codes?: string[]
+          annual_revenue?: number | null
+          branch_count?: number
+          contract_types?: string[]
+          created_at?: string
+          created_by?: string
+          custom_attributes?: Json
+          employee_count?: number
+          has_active_contracts?: boolean
+          id?: string
+          legal_form?: string | null
+          pays_salaries?: boolean
+          primary_activity?: string | null
+          tax_registration_status?: string
+          tenant_id?: string
+          valid_from?: string
+          valid_to?: string | null
+          vat_registration_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_profile_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           created_at: string
@@ -136,6 +207,50 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "tenants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      save_tenant_profile: {
+        Args: {
+          p_activity_codes?: string[]
+          p_annual_revenue?: number
+          p_branch_count?: number
+          p_contract_types?: string[]
+          p_custom_attributes?: Json
+          p_employee_count?: number
+          p_has_active_contracts?: boolean
+          p_legal_form?: string
+          p_pays_salaries?: boolean
+          p_primary_activity?: string
+          p_tax_registration_status?: string
+          p_tenant_id: string
+          p_valid_from: string
+          p_vat_registration_status?: string
+        }
+        Returns: {
+          activity_codes: string[]
+          annual_revenue: number | null
+          branch_count: number
+          contract_types: string[]
+          created_at: string
+          created_by: string
+          custom_attributes: Json
+          employee_count: number
+          has_active_contracts: boolean
+          id: string
+          legal_form: string | null
+          pays_salaries: boolean
+          primary_activity: string | null
+          tax_registration_status: string
+          tenant_id: string
+          valid_from: string
+          valid_to: string | null
+          vat_registration_status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenant_profile_versions"
           isOneToOne: true
           isSetofReturn: false
         }
