@@ -14,6 +14,160 @@ export type Database = {
   }
   public: {
     Tables: {
+      obligation_families: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string
+          description: string | null
+          domain: string
+          id: string
+          is_active: boolean
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          domain: string
+          id?: string
+          is_active?: boolean
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          domain?: string
+          id?: string
+          is_active?: boolean
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      obligation_versions: {
+        Row: {
+          audience_summary: string | null
+          created_at: string
+          created_by: string
+          deadline_rule: Json
+          effective_from: string | null
+          effective_to: string | null
+          id: string
+          legal_reference: string | null
+          obligation_id: string
+          penalty_rule: Json
+          published_at: string | null
+          published_by: string | null
+          recurrence_rule: Json
+          source_url: string | null
+          status: string
+          updated_at: string
+          version_number: number
+        }
+        Insert: {
+          audience_summary?: string | null
+          created_at?: string
+          created_by?: string
+          deadline_rule?: Json
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          legal_reference?: string | null
+          obligation_id: string
+          penalty_rule?: Json
+          published_at?: string | null
+          published_by?: string | null
+          recurrence_rule?: Json
+          source_url?: string | null
+          status?: string
+          updated_at?: string
+          version_number: number
+        }
+        Update: {
+          audience_summary?: string | null
+          created_at?: string
+          created_by?: string
+          deadline_rule?: Json
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          legal_reference?: string | null
+          obligation_id?: string
+          penalty_rule?: Json
+          published_at?: string | null
+          published_by?: string | null
+          recurrence_rule?: Json
+          source_url?: string | null
+          status?: string
+          updated_at?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "obligation_versions_obligation_id_fkey"
+            columns: ["obligation_id"]
+            isOneToOne: false
+            referencedRelation: "obligations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      obligations: {
+        Row: {
+          authority_name: string | null
+          code: string
+          created_at: string
+          created_by: string
+          family_id: string
+          id: string
+          is_active: boolean
+          official_action_url: string | null
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          authority_name?: string | null
+          code: string
+          created_at?: string
+          created_by?: string
+          family_id: string
+          id?: string
+          is_active?: boolean
+          official_action_url?: string | null
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          authority_name?: string | null
+          code?: string
+          created_at?: string
+          created_by?: string
+          family_id?: string
+          id?: string
+          is_active?: boolean
+          official_action_url?: string | null
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "obligations_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "obligation_families"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_profile_versions: {
         Row: {
           activity_codes: string[]
