@@ -14,6 +14,141 @@ export type Database = {
   }
   public: {
     Tables: {
+      case_tasks: {
+        Row: {
+          case_id: string
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          due_at: string | null
+          id: string
+          response_data: Json
+          status: string
+          updated_at: string
+          workflow_step_id: string
+        }
+        Insert: {
+          case_id: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          response_data?: Json
+          status?: string
+          updated_at?: string
+          workflow_step_id: string
+        }
+        Update: {
+          case_id?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          response_data?: Json
+          status?: string
+          updated_at?: string
+          workflow_step_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_tasks_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "compliance_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "case_tasks_workflow_step_id_fkey"
+            columns: ["workflow_step_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      compliance_cases: {
+        Row: {
+          assessment_id: string
+          closed_at: string | null
+          created_at: string
+          current_step_id: string | null
+          id: string
+          obligation_version_id: string
+          opened_at: string
+          period_key: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          workflow_template_id: string
+        }
+        Insert: {
+          assessment_id: string
+          closed_at?: string | null
+          created_at?: string
+          current_step_id?: string | null
+          id?: string
+          obligation_version_id: string
+          opened_at?: string
+          period_key: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          workflow_template_id: string
+        }
+        Update: {
+          assessment_id?: string
+          closed_at?: string | null
+          created_at?: string
+          current_step_id?: string | null
+          id?: string
+          obligation_version_id?: string
+          opened_at?: string
+          period_key?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          workflow_template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "compliance_cases_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "eligibility_assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compliance_cases_current_step_id_fkey"
+            columns: ["current_step_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compliance_cases_obligation_version_id_fkey"
+            columns: ["obligation_version_id"]
+            isOneToOne: false
+            referencedRelation: "obligation_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compliance_cases_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compliance_cases_workflow_template_id_fkey"
+            columns: ["workflow_template_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       eligibility_assessments: {
         Row: {
           evaluated_at: string
@@ -481,11 +616,119 @@ export type Database = {
         }
         Relationships: []
       }
+      workflow_steps: {
+        Row: {
+          actor: string
+          code: string
+          created_at: string
+          due_rule: Json
+          form_schema: Json
+          id: string
+          instructions: string | null
+          is_optional: boolean
+          sequence: number
+          title: string
+          workflow_template_id: string
+        }
+        Insert: {
+          actor: string
+          code: string
+          created_at?: string
+          due_rule?: Json
+          form_schema?: Json
+          id?: string
+          instructions?: string | null
+          is_optional?: boolean
+          sequence: number
+          title: string
+          workflow_template_id: string
+        }
+        Update: {
+          actor?: string
+          code?: string
+          created_at?: string
+          due_rule?: Json
+          form_schema?: Json
+          id?: string
+          instructions?: string | null
+          is_optional?: boolean
+          sequence?: number
+          title?: string
+          workflow_template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_steps_workflow_template_id_fkey"
+            columns: ["workflow_template_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_templates: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          obligation_version_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          obligation_version_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          obligation_version_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_templates_obligation_version_id_fkey"
+            columns: ["obligation_version_id"]
+            isOneToOne: true
+            referencedRelation: "obligation_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      complete_case_task: {
+        Args: { requested_response?: Json; requested_task_id: string }
+        Returns: {
+          assessment_id: string
+          closed_at: string | null
+          created_at: string
+          current_step_id: string | null
+          id: string
+          obligation_version_id: string
+          opened_at: string
+          period_key: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          workflow_template_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "compliance_cases"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_tenant_with_owner: {
         Args: {
           p_economic_code?: string
@@ -528,6 +771,29 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "eligibility_assessments"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      open_eligible_cases: {
+        Args: { requested_period_key: string; requested_tenant_id: string }
+        Returns: {
+          assessment_id: string
+          closed_at: string | null
+          created_at: string
+          current_step_id: string | null
+          id: string
+          obligation_version_id: string
+          opened_at: string
+          period_key: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          workflow_template_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "compliance_cases"
           isOneToOne: false
           isSetofReturn: true
         }
