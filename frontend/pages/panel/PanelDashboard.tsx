@@ -48,7 +48,6 @@ type ActiveTab =
   | 'BOOKS'
 
 export default function PanelDashboard() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW')
   const [activeTab, setActiveTab] = useState<ActiveTab>('BUSINESS_PROFILE')
   const { signOut } = useAuth()
   const { selectedTenant, clearTenant } = useTenant()
@@ -335,6 +334,9 @@ export default function PanelDashboard() {
                 initialSubTab={activeTab === 'INSURANCE_CLEARANCE' ? 'ARTICLE_38' : 'MONTHLY_LIST'}
               />
             )
+                   {/* Main Workspace Area */}
+        <div className={selectedTenant ? 'lg:col-span-3' : 'lg:col-span-4'}>
+          {selectedTenant ? (
             <>
               {activeTab === 'OVERVIEW' && (
                 <CompanyComplianceOverview
@@ -411,25 +413,6 @@ export default function PanelDashboard() {
             </div>
           )}
         </div>
-      </div>
-    </div>
-  )
-}
-function InfoRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-zinc-500">{icon}</span>
-      <div>
-        <p className="text-zinc-500 text-xs">{label}</p>
-        <p className="text-zinc-200 text-sm font-medium">{value}</p>
       </div>
     </div>
   )
