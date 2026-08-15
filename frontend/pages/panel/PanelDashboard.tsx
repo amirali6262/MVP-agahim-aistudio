@@ -392,3 +392,25 @@ export default function PanelDashboard() {
     </div>
   )
 }
+// ---------------------------------------------------------------------------
+// InfoRow helper
+// ---------------------------------------------------------------------------
+function InfoRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-zinc-500">{icon}</span>
+      <div>
+        <p className="text-zinc-500 text-xs">{label}</p>
+        <p className="text-zinc-200 text-sm font-medium">{value}</p>
+      </div>
+    </div>
+  )
+}
