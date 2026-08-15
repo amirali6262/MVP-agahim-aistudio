@@ -78,9 +78,9 @@ export default function AddTenantForm({ onBack, onSuccess }: Props) {
     const { error: tenantError } = await supabase.rpc('create_tenant_with_owner', {
       p_name: name.trim(),
       p_entity_type: entityType,
-      p_national_id: nationalId.trim() || null,
-      p_economic_code: economicCode.trim() || null,
-      p_province: province || null,
+      p_national_id: nationalId.trim() || undefined,
+      p_economic_code: economicCode.trim() || undefined,
+      p_province: province || undefined,
     })
 
     if (tenantError) {

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import type { Database, Tables } from './database.types'
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -13,7 +14,7 @@ export const isMockAuthEnabled =
   import.meta.env.DEV &&
   import.meta.env['VITE_ENABLE_MOCK_AUTH'] === 'true'
 
-export const supabase = createClient(
+export const supabase = createClient<Database>(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabasePublishableKey || 'placeholder-publishable-key'
 )
@@ -24,30 +25,22 @@ export const supabase = createClient(
 
 export type UserRole = 'PLATFORM_ADMIN' | 'BUSINESS_USER'
 
-export interface AppUser {
-  id: string
-  email: string | null
-  phone: string | null
+export type AppUser = Pick<Tables<'users'>, 'id' | 'email' | 'phone' | 'created_at'> & {
   role: UserRole
-  created_at: string
 }
 
-export interface Tenant {
-  id: string
-  name: string
+export type Tenant = Pick<
+  Tables<'tenants'>,
+  'id' | 'name' | 'national_id' | 'economic_code' | 'province' | 'created_at'
+> & {
   entity_type: 'حقوقی' | 'حقیقی'
-  national_id: string | null
-  economic_code: string | null
-  province: string | null
-  created_at: string
 }
 
-export interface UserTenantRow {
-  id: string
-  user_id: string
-  tenant_id: string
-  role: string
-  created_at: string
+export type UserTenantRow = Pick<
+  Tables<'user_tenants'>,
+  'id' | 'user_id' | 'tenant_id' | 'created_at'
+> & {
+  role: 'OWNER' | 'ADMIN' | 'MEMBER'
 }
 
 export interface UserTenantWithTenant extends UserTenantRow {

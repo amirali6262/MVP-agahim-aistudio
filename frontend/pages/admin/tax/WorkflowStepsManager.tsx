@@ -4,7 +4,7 @@ import { ArrowRight, Plus, Trash2, Save, GripVertical, SlidersHorizontal, Settin
 import { Button } from '../../../lib/shadcn/button'
 import { Input } from '../../../lib/shadcn/input'
 import { Label } from '../../../lib/shadcn/label'
-import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
+import { isSupabaseConfigured } from '../../../lib/supabase'
 import { mockObligationsDb } from '../../../lib/mockDb'
 import type { Obligation, WorkflowStep, WorkflowStepField } from '../../../lib/supabase'
 import { cn } from '../../../lib/shadcn/utils'
@@ -178,21 +178,10 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
       return
     }
 
-    // Real Supabase path
-    const { error } = await supabase
-      .from('obligations')
-      .update({ workflow_steps: clean, updated_at: new Date().toISOString() })
-      .eq('id', obligation.id)
-
-    if (error) {
-      toast.error('خطا در ذخیره مراحل: ' + error.message)
-      setSubmitting(false)
-      return
-    }
-
-    toast.success('مراحل گردش کار و فرم‌های اختصاصی گام‌ها با موفقیت ذخیره شد.')
+    // The obligations schema is not part of the current database foundation yet.
+    // Fail closed instead of writing to a table that does not exist.
+    toast.error('ذخیره گردش کار پس از نصب ماژول تعهدات فعال می‌شود.')
     setSubmitting(false)
-    onSaved()
   }
 
   const sortedSteps = [...steps].sort((a, b) => a.order - b.order)
