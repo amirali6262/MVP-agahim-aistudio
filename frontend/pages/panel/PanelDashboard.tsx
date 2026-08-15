@@ -50,7 +50,6 @@ type ActiveTab =
   | 'BOOKS'
 
 export default function PanelDashboard() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW')
   const [activeTab, setActiveTab] = useState<ActiveTab>('BUSINESS_PROFILE')
   const { signOut } = useAuth()
   const { selectedTenant, clearTenant } = useTenant()
