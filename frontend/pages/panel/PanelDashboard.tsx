@@ -20,6 +20,7 @@ import {
   Sparkles,
   Calendar,
   Receipt,
+  LayoutDashboard,
 } from 'lucide-react'
 import { Button } from '../../lib/shadcn/button'
 import { useAuth } from '../../context/AuthContext'
@@ -32,8 +33,10 @@ import CompanyChecklistWizard from '../../components/CompanyChecklistWizard'
 import CompanyInsurance from '../../components/CompanyInsurance'
 import CompanyTaxDisputes from '../../components/CompanyTaxDisputes'
 import CompanyBusinessProfile from '../../components/CompanyBusinessProfile'
+import CompanyComplianceOverview from '../../components/CompanyComplianceOverview'
 
 type ActiveTab =
+  | 'OVERVIEW'
   | 'BUSINESS_PROFILE'
   | 'FISCAL_YEAR'
   | 'TAX_CORPORATE'
@@ -49,6 +52,8 @@ export default function PanelDashboard() {
   const { signOut } = useAuth()
   const { selectedTenant, clearTenant } = useTenant()
   const navigate = useNavigate()
+  const showDemoModules =
+    import.meta.env.DEV && import.meta.env['VITE_ENABLE_MOCK_DATA'] === 'true'
 
   const handleSwitchTenant = () => {
     clearTenant()
@@ -143,8 +148,20 @@ export default function PanelDashboard() {
             {/* Navigation Menu in Workspace Panel */}
             <div className="rounded-2xl border border-zinc-800 p-4 bg-[#141615] flex flex-col gap-5 shadow-lg">
               <span className="text-xs font-bold text-zinc-300 border-b border-zinc-800/80 pb-2">
-                ماژول‌های فعال شرکت:
+                مسیر ساده شرکت:
               </span>
+
+              <button
+                onClick={() => setActiveTab('OVERVIEW')}
+                className={`flex items-center gap-2.5 p-3 rounded-xl text-xs font-bold transition-all text-right border ${
+                  activeTab === 'OVERVIEW'
+                    ? 'bg-[#E5A93C] text-[#181614] border-[#E5A93C] shadow-md'
+                    : 'text-zinc-200 bg-zinc-900/60 border-zinc-800 hover:bg-zinc-800'
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4 shrink-0" />
+                <span>وضعیت امروز و کار بعدی</span>
+              </button>
 
               <button
                 onClick={() => setActiveTab('BUSINESS_PROFILE')}
@@ -158,6 +175,8 @@ export default function PanelDashboard() {
                 <span>پروفایل و تشخیص مشمولیت</span>
               </button>
 
+              {showDemoModules && (
+                <>
               {/* 0. Fiscal Year Section */}
               <div className="flex flex-col gap-1">
                 <button
@@ -283,46 +302,95 @@ export default function PanelDashboard() {
                   </button>
                 </div>
               </div>
+                </>
+              )}
             </div>
           </div>
         )}
 
-        {/* Main Workspace Area */}
+               {/* Main Workspace Area */}
         <div className={selectedTenant ? 'lg:col-span-3' : 'lg:col-span-4'}>
           {selectedTenant ? (
-            activeTab === 'BUSINESS_PROFILE' ? (
-              <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-            ) : activeTab === 'FISCAL_YEAR' ? (
-              <CompanyFiscalYear tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-            ) : activeTab === 'TAX_CORPORATE' ? (
-              <CompanyTaxCompliance tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-            ) : activeTab === 'VAT' ? (
-              <CompanyVatCompliance tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-            ) : activeTab === 'TAX_DISPUTES' ? (
-              <CompanyTaxDisputes tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-            ) : activeTab === 'CHECKLISTS' ? (
-              <CompanyChecklistWizard tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-            ) : activeTab === 'BOOKS' ? (
-              <CompanyCommercialBooks tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-            ) : (
-              <CompanyInsurance
-                tenantId={selectedTenant.id}
-                tenantName={selectedTenant.name}
-                initialSubTab={activeTab === 'INSURANCE_CLEARANCE' ? 'ARTICLE_38' : 'MONTHLY_LIST'}
-              />
-            )
+            <>
+              {activeTab === 'OVERVIEW' && (
+                <CompanyComplianceOverview
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'BUSINESS_PROFILE' && (
+                <CompanyBusinessProfile
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'FISCAL_YEAR' && (
+                <CompanyFiscalYear
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'TAX_CORPORATE' && (
+                <CompanyTaxCompliance
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'VAT' && (
+                <CompanyVatCompliance
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'TAX_DISPUTES' && (
+                <CompanyTaxDisputes
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'CHECKLISTS' && (
+                <CompanyChecklistWizard
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {activeTab === 'BOOKS' && (
+                <CompanyCommercialBooks
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                />
+              )}
+
+              {(activeTab === 'INSURANCE_LIST' ||
+                activeTab === 'INSURANCE_CLEARANCE') && (
+                <CompanyInsurance
+                  tenantId={selectedTenant.id}
+                  tenantName={selectedTenant.name}
+                  initialSubTab={
+                    activeTab === 'INSURANCE_CLEARANCE'
+                      ? 'ARTICLE_38'
+                      : 'MONTHLY_LIST'
+                  }
+                />
+              )}
+            </>
           ) : (
-            <div className="text-zinc-400 text-center py-12">لطفاً ابتدا یک شرکت انتخاب کنید.</div>
+            <div className="text-zinc-400 text-center py-12">
+              لطفاً ابتدا یک شرکت انتخاب کنید.
+            </div>
           )}
         </div>
       </div>
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// InfoRow helper
-// ---------------------------------------------------------------------------
 function InfoRow({
   icon,
   label,
