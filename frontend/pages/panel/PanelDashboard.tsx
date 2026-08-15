@@ -37,6 +37,8 @@ import CompanyComplianceOverview from '../../components/CompanyComplianceOvervie
 
 type ActiveTab =
   | 'OVERVIEW'
+
+type ActiveTab =
   | 'BUSINESS_PROFILE'
   | 'FISCAL_YEAR'
   | 'TAX_CORPORATE'
@@ -49,6 +51,7 @@ type ActiveTab =
 
 export default function PanelDashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('BUSINESS_PROFILE')
   const { signOut } = useAuth()
   const { selectedTenant, clearTenant } = useTenant()
   const navigate = useNavigate()
@@ -314,6 +317,7 @@ export default function PanelDashboard() {
             activeTab === 'OVERVIEW' ? (
               <CompanyComplianceOverview tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
             ) : activeTab === 'BUSINESS_PROFILE' ? (
+            activeTab === 'BUSINESS_PROFILE' ? (
               <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
             ) : activeTab === 'FISCAL_YEAR' ? (
               <CompanyFiscalYear tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
