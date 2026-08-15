@@ -333,7 +333,7 @@ export default function PanelDashboard() {
                 tenantName={selectedTenant.name}
                 initialSubTab={activeTab === 'INSURANCE_CLEARANCE' ? 'ARTICLE_38' : 'MONTHLY_LIST'}
               />
-            )
+            
                    {/* Main Workspace Area */}
         <div className={selectedTenant ? 'lg:col-span-3' : 'lg:col-span-4'}>
           {selectedTenant ? (
