@@ -836,6 +836,7 @@ let _tenants: Tenant[] = isMockDataEnabled ? [
 ] : []
 
 let _userTenants: UserTenantRow[] = isMockDataEnabled ? [
+let _userTenants: UserTenantRow[] = [
   { id: 'ut-001', user_id: 'mock-user-00000002', tenant_id: 'tenant-001', role: 'OWNER', created_at: '2024-01-01T10:00:00Z' },
   { id: 'ut-002', user_id: 'mock-user-00000002', tenant_id: 'tenant-002', role: 'OWNER', created_at: '2024-01-02T10:00:00Z' },
 ] : []
