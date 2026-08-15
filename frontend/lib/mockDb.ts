@@ -5,10 +5,23 @@
  */
 import type { Obligation, Tenant, UserTenantRow, UserTenantWithTenant, ObjectionTemplate, DeadlineExtension, TenantObligationFulfillment, CommercialBookPeriod, ChecklistTemplate, TenantChecklistProgress, ChecklistSection, ChecklistItem, ChecklistImportance } from './supabase'
 
+/**
+ * Demo data is deliberately opt-in and development-only. Keeping this as a
+ * compile-time Vite condition lets production builds remove the seeded branch.
+ */
+export const isMockDataEnabled =
+  import.meta.env.DEV && import.meta.env['VITE_ENABLE_MOCK_DATA'] === 'true'
+
+function requireMockData(): void {
+  if (!isMockDataEnabled) {
+    throw new Error('داده‌های آزمایشی در این محیط غیرفعال است.')
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Objection Templates — seeded data
 // ---------------------------------------------------------------------------
-let _objectionTemplates: ObjectionTemplate[] = [
+let _objectionTemplates: ObjectionTemplate[] = isMockDataEnabled ? [
   {
     id: 'obj-001',
     template_name: 'الگوی جامع دادرسی مالیات‌های مستقیم (ماده ۲۳۸ تا دیوان و ماده ۲۵۱ مکرر)',
@@ -495,7 +508,7 @@ let _objectionTemplates: ObjectionTemplate[] = [
     ],
     created_at: '2024-01-05T10:00:00Z',
   },
-]
+] : []
 
 export const mockObjectionTemplatesDb = {
   getAll(): ObjectionTemplate[] {
@@ -505,6 +518,7 @@ export const mockObjectionTemplatesDb = {
     return _objectionTemplates.find((t) => t.id === id)
   },
   insert(payload: Omit<ObjectionTemplate, 'id' | 'created_at'>): ObjectionTemplate {
+    requireMockData()
     const tmpl: ObjectionTemplate = {
       id: 'obj-' + Date.now(),
       ...payload,
@@ -514,6 +528,7 @@ export const mockObjectionTemplatesDb = {
     return tmpl
   },
   update(id: string, payload: Partial<ObjectionTemplate>): ObjectionTemplate | null {
+    requireMockData()
     const idx = _objectionTemplates.findIndex((t) => t.id === id)
     if (idx === -1) return null
     const updated = { ..._objectionTemplates[idx], ...payload } as ObjectionTemplate
@@ -521,6 +536,7 @@ export const mockObjectionTemplatesDb = {
     return updated
   },
   delete(id: string) {
+    requireMockData()
     _objectionTemplates = _objectionTemplates.filter((t) => t.id !== id)
     _obligations = _obligations.map((ob) =>
       ob.objection_template_id === id ? { ...ob, objection_template_id: null } : ob
@@ -531,7 +547,7 @@ export const mockObjectionTemplatesDb = {
 // ---------------------------------------------------------------------------
 // Deadline Extensions — seeded data
 // ---------------------------------------------------------------------------
-let _deadlineExtensions: DeadlineExtension[] = [
+let _deadlineExtensions: DeadlineExtension[] = isMockDataEnabled ? [
   {
     id: 'ext-001',
     obligation_id: 'ob-001',
@@ -552,13 +568,14 @@ let _deadlineExtensions: DeadlineExtension[] = [
     circular_description: 'دستورالعمل سازمان امور مالیاتی جهت تمدید فصلی بهار',
     created_at: '2024-03-01T10:00:00Z',
   },
-]
+] : []
 
 export const mockDeadlineExtensionsDb = {
   getAll(): DeadlineExtension[] {
     return _deadlineExtensions
   },
   insert(payload: Omit<DeadlineExtension, 'id' | 'created_at'>): DeadlineExtension {
+    requireMockData()
     const ext: DeadlineExtension = {
       id: 'ext-' + Date.now(),
       ...payload,
@@ -568,6 +585,7 @@ export const mockDeadlineExtensionsDb = {
     return ext
   },
   delete(id: string) {
+    requireMockData()
     _deadlineExtensions = _deadlineExtensions.filter((e) => e.id !== id)
   },
 }
@@ -575,7 +593,7 @@ export const mockDeadlineExtensionsDb = {
 // ---------------------------------------------------------------------------
 // Obligations — seeded with realistic Persian tax data
 // ---------------------------------------------------------------------------
-let _obligations: Obligation[] = [
+let _obligations: Obligation[] = isMockDataEnabled ? [
   {
     id: 'ob-001',
     title: 'تسلیم اظهارنامه مالیات بر عملکرد اشخاص حقوقی',
@@ -728,7 +746,7 @@ let _obligations: Obligation[] = [
     created_at: '2024-01-04T10:00:00Z',
     updated_at: '2024-01-04T10:00:00Z',
   },
-]
+] : []
 
 function genId(): string {
   return 'ob-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
@@ -747,6 +765,7 @@ export const mockObligationsDb = {
   },
 
   updateTemplateAssignments(templateId: string, selectedObligationIds: string[]) {
+    requireMockData()
     _obligations = _obligations.map((ob) => {
       if (selectedObligationIds.includes(ob.id)) {
         return { ...ob, objection_template_id: templateId }
@@ -762,6 +781,7 @@ export const mockObligationsDb = {
   },
 
   insert(payload: Omit<Obligation, 'id' | 'created_at' | 'updated_at'>): Obligation {
+    requireMockData()
     const now = new Date().toISOString()
     const ob: Obligation = { id: genId(), ...payload, created_at: now, updated_at: now }
     _obligations = [ob, ..._obligations]
@@ -769,6 +789,7 @@ export const mockObligationsDb = {
   },
 
   update(id: string, payload: Partial<Omit<Obligation, 'id' | 'created_at'>>): Obligation | null {
+    requireMockData()
     const idx = _obligations.findIndex((o) => o.id === id)
     if (idx === -1) return null
     const existing = _obligations[idx]
@@ -783,6 +804,7 @@ export const mockObligationsDb = {
   },
 
   delete(id: string): boolean {
+    requireMockData()
     const initialLen = _obligations.length
     _obligations = _obligations.filter((o) => o.id !== id)
     return _obligations.length < initialLen
@@ -792,7 +814,7 @@ export const mockObligationsDb = {
 // ---------------------------------------------------------------------------
 // Tenants — seeded per mock user ID
 // ---------------------------------------------------------------------------
-let _tenants: Tenant[] = [
+let _tenants: Tenant[] = isMockDataEnabled ? [
   {
     id: 'tenant-001',
     name: 'شرکت فناوری اطلاعات پارسیان',
@@ -811,12 +833,13 @@ let _tenants: Tenant[] = [
     province: 'اصفهان',
     created_at: '2024-01-02T10:00:00Z',
   },
-]
+] : []
 
+let _userTenants: UserTenantRow[] = isMockDataEnabled ? [
 let _userTenants: UserTenantRow[] = [
   { id: 'ut-001', user_id: 'mock-user-00000002', tenant_id: 'tenant-001', role: 'OWNER', created_at: '2024-01-01T10:00:00Z' },
   { id: 'ut-002', user_id: 'mock-user-00000002', tenant_id: 'tenant-002', role: 'OWNER', created_at: '2024-01-02T10:00:00Z' },
-]
+] : []
 
 export const mockTenantsDb = {
   getForUser(userId: string): UserTenantWithTenant[] {
@@ -832,6 +855,7 @@ export const mockTenantsDb = {
     payload: Omit<Tenant, 'id' | 'created_at'>,
     userId: string
   ): { tenant: Tenant; userTenant: typeof _userTenants[number] } {
+    requireMockData()
     const now = new Date().toISOString()
     const tenant: Tenant = { id: 'tenant-' + Date.now(), ...payload, created_at: now }
     _tenants = [..._tenants, tenant]
@@ -850,7 +874,7 @@ export const mockTenantsDb = {
 // ---------------------------------------------------------------------------
 // Tenant Obligation Fulfillments (Evidence / Completion Data)
 // ---------------------------------------------------------------------------
-let _fulfillments: TenantObligationFulfillment[] = [
+let _fulfillments: TenantObligationFulfillment[] = isMockDataEnabled ? [
   // Seeded example: tenant-001 fulfilled book sealing for 1402
   {
     id: 'ful-101',
@@ -863,7 +887,7 @@ let _fulfillments: TenantObligationFulfillment[] = [
     fulfilled_at: '2024-03-15T10:00:00Z',
     notes: 'پلمپ دفاتر سال ۱۴۰۲ در اداره ثبت شرکت‌ها انجام و گواهی مربوطه اخذ شد.',
   },
-]
+] : []
 
 export const mockFulfillmentsDb = {
   getForTenant(tenantId: string): TenantObligationFulfillment[] {
@@ -887,6 +911,7 @@ export const mockFulfillmentsDb = {
   saveFulfillment(
     payload: Omit<TenantObligationFulfillment, 'id' | 'fulfilled_at'>
   ): TenantObligationFulfillment {
+    requireMockData()
     const existingIdx = _fulfillments.findIndex(
       (f) =>
         f.tenant_id === payload.tenant_id &&
@@ -914,7 +939,7 @@ export const mockFulfillmentsDb = {
 // ---------------------------------------------------------------------------
 // Commercial Books & Quarterly Upload Periods (دفاتر تجاری و سامانه)
 // ---------------------------------------------------------------------------
-let _commercialBookPeriods: CommercialBookPeriod[] = [
+let _commercialBookPeriods: CommercialBookPeriod[] = isMockDataEnabled ? [
   {
     id: 'cbp-101',
     fiscal_year: '1404',
@@ -967,7 +992,7 @@ let _commercialBookPeriods: CommercialBookPeriod[] = [
     is_active: true,
     created_at: '2024-04-01T00:00:00Z',
   },
-]
+] : []
 
 export const mockCommercialBooksDb = {
   getAll(fiscalYear?: string): CommercialBookPeriod[] {
@@ -983,6 +1008,7 @@ export const mockCommercialBooksDb = {
   },
 
   create(payload: Omit<CommercialBookPeriod, 'id' | 'created_at'>): CommercialBookPeriod {
+    requireMockData()
     const item: CommercialBookPeriod = {
       id: 'cbp-' + Date.now(),
       ...payload,
@@ -993,6 +1019,7 @@ export const mockCommercialBooksDb = {
   },
 
   update(id: string, payload: Partial<CommercialBookPeriod>): CommercialBookPeriod | null {
+    requireMockData()
     const idx = _commercialBookPeriods.findIndex((p) => p.id === id)
     if (idx === -1) return null
     _commercialBookPeriods[idx] = {
@@ -1003,6 +1030,7 @@ export const mockCommercialBooksDb = {
   },
 
   delete(id: string): boolean {
+    requireMockData()
     const initialLen = _commercialBookPeriods.length
     _commercialBookPeriods = _commercialBookPeriods.filter((p) => p.id !== id)
     return _commercialBookPeriods.length < initialLen
@@ -1012,7 +1040,7 @@ export const mockCommercialBooksDb = {
 // ---------------------------------------------------------------------------
 // Checklists & Wizard Controls (چک‌لیست‌های کنترلی مالیاتی)
 // ---------------------------------------------------------------------------
-let _checklistTemplates: ChecklistTemplate[] = [
+let _checklistTemplates: ChecklistTemplate[] = isMockDataEnabled ? [
   {
     id: 'chk-tax-return-final',
     title: 'چک‌لیست نهایی کنترل و تسلیم اظهارنامه مالیاتی',
@@ -1120,7 +1148,7 @@ let _checklistTemplates: ChecklistTemplate[] = [
       },
     ],
   },
-]
+] : []
 
 let _tenantChecklistProgress: TenantChecklistProgress[] = []
 
@@ -1134,6 +1162,7 @@ export const mockChecklistsDb = {
   },
 
   createTemplate(payload: Omit<ChecklistTemplate, 'id' | 'created_at'>): ChecklistTemplate {
+    requireMockData()
     const item: ChecklistTemplate = {
       id: 'chk-' + Date.now(),
       ...payload,
@@ -1144,6 +1173,7 @@ export const mockChecklistsDb = {
   },
 
   updateTemplate(id: string, payload: Partial<ChecklistTemplate>): ChecklistTemplate | null {
+    requireMockData()
     const idx = _checklistTemplates.findIndex((t) => t.id === id)
     if (idx === -1) return null
     _checklistTemplates[idx] = {
@@ -1154,6 +1184,7 @@ export const mockChecklistsDb = {
   },
 
   deleteTemplate(id: string): boolean {
+    requireMockData()
     const initialLen = _checklistTemplates.length
     _checklistTemplates = _checklistTemplates.filter((t) => t.id !== id)
     return _checklistTemplates.length < initialLen
@@ -1161,6 +1192,7 @@ export const mockChecklistsDb = {
 
   // Company progress tracking methods
   getTenantProgress(tenantId: string, templateId: string, fiscalYear: string): TenantChecklistProgress {
+    requireMockData()
     let existing = _tenantChecklistProgress.find(
       (p) => p.tenant_id === tenantId && p.template_id === templateId && p.fiscal_year === fiscalYear
     )
@@ -1185,6 +1217,7 @@ export const mockChecklistsDb = {
     itemId: string,
     notes?: string
   ): TenantChecklistProgress {
+    requireMockData()
     const prog = this.getTenantProgress(tenantId, templateId, fiscalYear)
     const current = prog.completed_items[itemId]?.completed || false
     const nextCompleted = !current
@@ -1205,6 +1238,7 @@ export const mockChecklistsDb = {
     itemId: string,
     notes: string
   ): TenantChecklistProgress {
+    requireMockData()
     const prog = this.getTenantProgress(tenantId, templateId, fiscalYear)
     const currentCompleted = prog.completed_items[itemId]?.completed || false
 
@@ -1231,7 +1265,7 @@ export interface TenantFiscalYear {
   created_at: string
 }
 
-let _tenantFiscalYears: TenantFiscalYear[] = [
+let _tenantFiscalYears: TenantFiscalYear[] = isMockDataEnabled ? [
   {
     id: 'fy-101',
     tenant_id: 'tenant-001',
@@ -1259,7 +1293,7 @@ let _tenantFiscalYears: TenantFiscalYear[] = [
     status: 'ACTIVE',
     created_at: '2025-01-01T00:00:00Z',
   },
-]
+] : []
 
 export const mockFiscalYearsDb = {
   getForTenant(tenantId: string): TenantFiscalYear[] {
@@ -1269,6 +1303,7 @@ export const mockFiscalYearsDb = {
   },
 
   create(payload: Omit<TenantFiscalYear, 'id' | 'created_at'>): TenantFiscalYear {
+    requireMockData()
     const item: TenantFiscalYear = {
       id: 'fy-' + Date.now(),
       ...payload,
@@ -1279,6 +1314,7 @@ export const mockFiscalYearsDb = {
   },
 
   update(id: string, payload: Partial<TenantFiscalYear>): TenantFiscalYear | null {
+    requireMockData()
     const idx = _tenantFiscalYears.findIndex((fy) => fy.id === id)
     if (idx === -1) return null
     _tenantFiscalYears[idx] = { ..._tenantFiscalYears[idx], ...payload }
@@ -1286,6 +1322,7 @@ export const mockFiscalYearsDb = {
   },
 
   delete(id: string): boolean {
+    requireMockData()
     const initialLen = _tenantFiscalYears.length
     _tenantFiscalYears = _tenantFiscalYears.filter((fy) => fy.id !== id)
     return _tenantFiscalYears.length < initialLen
@@ -1309,7 +1346,7 @@ export interface CorporateTaxFiling {
   created_at: string
 }
 
-let _corporateTaxFilings: CorporateTaxFiling[] = [
+let _corporateTaxFilings: CorporateTaxFiling[] = isMockDataEnabled ? [
   {
     id: 'corp-101',
     tenant_id: 'tenant-001',
@@ -1419,7 +1456,7 @@ let _corporateTaxFilings: CorporateTaxFiling[] = [
     },
     created_at: '2023-04-01T00:00:00Z',
   },
-]
+] : []
 
 export const mockCorporateTaxDb = {
   getForTenant(tenantId: string): CorporateTaxFiling[] {
@@ -1429,6 +1466,7 @@ export const mockCorporateTaxDb = {
   },
 
   create(payload: Omit<CorporateTaxFiling, 'id' | 'created_at'>): CorporateTaxFiling {
+    requireMockData()
     const item: CorporateTaxFiling = {
       id: 'corp-' + Date.now(),
       ...payload,
@@ -1439,6 +1477,7 @@ export const mockCorporateTaxDb = {
   },
 
   update(id: string, payload: Partial<CorporateTaxFiling>): CorporateTaxFiling | null {
+    requireMockData()
     const idx = _corporateTaxFilings.findIndex((c) => c.id === id)
     if (idx === -1) return null
     _corporateTaxFilings[idx] = { ..._corporateTaxFilings[idx], ...payload }
@@ -1446,6 +1485,7 @@ export const mockCorporateTaxDb = {
   },
 
   delete(id: string): boolean {
+    requireMockData()
     const initialLen = _corporateTaxFilings.length
     _corporateTaxFilings = _corporateTaxFilings.filter((c) => c.id !== id)
     return _corporateTaxFilings.length < initialLen
@@ -1467,7 +1507,7 @@ export interface VatTaxFiling {
   created_at: string
 }
 
-let _vatTaxFilings: VatTaxFiling[] = [
+let _vatTaxFilings: VatTaxFiling[] = isMockDataEnabled ? [
   {
     id: 'vat-101',
     tenant_id: 'tenant-001',
@@ -1490,7 +1530,7 @@ let _vatTaxFilings: VatTaxFiling[] = [
     notes: 'قبض عوارض شهرداری و ارزش افزوده پرداخت گردید.',
     created_at: '2025-01-01T00:00:00Z',
   },
-]
+] : []
 
 export const mockVatTaxDb = {
   getForTenant(tenantId: string): VatTaxFiling[] {
@@ -1500,6 +1540,7 @@ export const mockVatTaxDb = {
   },
 
   create(payload: Omit<VatTaxFiling, 'id' | 'created_at'>): VatTaxFiling {
+    requireMockData()
     const item: VatTaxFiling = {
       id: 'vat-' + Date.now(),
       ...payload,
@@ -1510,6 +1551,7 @@ export const mockVatTaxDb = {
   },
 
   update(id: string, payload: Partial<VatTaxFiling>): VatTaxFiling | null {
+    requireMockData()
     const idx = _vatTaxFilings.findIndex((v) => v.id === id)
     if (idx === -1) return null
     _vatTaxFilings[idx] = { ..._vatTaxFilings[idx], ...payload }
@@ -1517,11 +1559,9 @@ export const mockVatTaxDb = {
   },
 
   delete(id: string): boolean {
+    requireMockData()
     const initialLen = _vatTaxFilings.length
     _vatTaxFilings = _vatTaxFilings.filter((v) => v.id !== id)
     return _vatTaxFilings.length < initialLen
   },
 }
-
-
-
