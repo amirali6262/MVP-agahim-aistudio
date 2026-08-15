@@ -37,8 +37,6 @@ import CompanyComplianceOverview from '../../components/CompanyComplianceOvervie
 
 type ActiveTab =
   | 'OVERVIEW'
-
-type ActiveTab =
   | 'BUSINESS_PROFILE'
   | 'FISCAL_YEAR'
   | 'TAX_CORPORATE'
@@ -344,6 +342,8 @@ export default function PanelDashboard() {
       </div>
     </div>
   )
+}
+
 // ---------------------------------------------------------------------------
 // InfoRow helper
 // ---------------------------------------------------------------------------
