@@ -1046,6 +1046,47 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_obligation_draft: {
+        Args: {
+          requested_authority_name?: string
+          requested_code: string
+          requested_deadline_rule?: Json
+          requested_effective_from?: string
+          requested_family_id: string
+          requested_legal_reference?: string
+          requested_official_action_url?: string
+          requested_penalty_rule?: Json
+          requested_recurrence_rule?: Json
+          requested_source_url?: string
+          requested_summary?: string
+          requested_title: string
+        }
+        Returns: {
+          audience_summary: string | null
+          created_at: string
+          created_by: string
+          deadline_rule: Json
+          effective_from: string | null
+          effective_to: string | null
+          id: string
+          legal_reference: string | null
+          obligation_id: string
+          penalty_rule: Json
+          published_at: string | null
+          published_by: string | null
+          recurrence_rule: Json
+          source_url: string | null
+          status: string
+          updated_at: string
+          version_number: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "obligation_versions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_tenant_with_owner: {
         Args: {
           p_economic_code?: string
@@ -1160,6 +1201,34 @@ export type Database = {
       publish_circular_and_notify: {
         Args: { requested_action_url?: string; requested_circular_id: string }
         Returns: number
+      }
+      publish_obligation_version: {
+        Args: { requested_version_id: string }
+        Returns: {
+          audience_summary: string | null
+          created_at: string
+          created_by: string
+          deadline_rule: Json
+          effective_from: string | null
+          effective_to: string | null
+          id: string
+          legal_reference: string | null
+          obligation_id: string
+          penalty_rule: Json
+          published_at: string | null
+          published_by: string | null
+          recurrence_rule: Json
+          source_url: string | null
+          status: string
+          updated_at: string
+          version_number: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "obligation_versions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       record_case_event: {
         Args: {

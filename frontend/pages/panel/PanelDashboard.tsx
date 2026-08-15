@@ -308,7 +308,8 @@ export default function PanelDashboard() {
           </div>
         )}
 
-               {/* Main Workspace Area */}
+               
+                   {/* Main Workspace Area */}
         <div className={selectedTenant ? 'lg:col-span-3' : 'lg:col-span-4'}>
           {selectedTenant ? (
             <>
@@ -391,6 +392,9 @@ export default function PanelDashboard() {
     </div>
   )
 }
+// ---------------------------------------------------------------------------
+// InfoRow helper
+// ---------------------------------------------------------------------------
 function InfoRow({
   icon,
   label,

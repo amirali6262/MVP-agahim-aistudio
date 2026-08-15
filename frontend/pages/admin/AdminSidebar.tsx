@@ -12,6 +12,7 @@ import {
   CalendarClock,
   BookOpen,
   CheckSquare,
+  Workflow,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -37,7 +38,21 @@ interface MenuSection {
   children: SubItem[]
 }
 
-const MENU: MenuSection[] = [
+const DEMO_MODULES_ENABLED =
+  import.meta.env.DEV && import.meta.env['VITE_ENABLE_MOCK_DATA'] === 'true'
+
+const CORE_MENU: MenuSection[] = [
+  {
+    id: 'studio',
+    label: 'طراحی فرایندها',
+    icon: Workflow,
+    children: [
+      { id: 'compliance-studio', label: 'استودیوی تعهدات و مراحل', path: '/admin/studio', active: true },
+    ],
+  },
+]
+
+const DEMO_MENU: MenuSection[] = [
   {
     id: 'tax',
     label: 'مالیات',
@@ -93,6 +108,10 @@ const MENU: MenuSection[] = [
     ],
   },
 ]
+
+const MENU: MenuSection[] = DEMO_MODULES_ENABLED
+  ? [...CORE_MENU, ...DEMO_MENU]
+  : CORE_MENU
 
 // ---------------------------------------------------------------------------
 // Props
