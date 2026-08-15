@@ -48,7 +48,7 @@ type ActiveTab =
   | 'BOOKS'
 
 export default function PanelDashboard() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW')
+  
   const [activeTab, setActiveTab] = useState<ActiveTab>('BUSINESS_PROFILE')
   const { signOut } = useAuth()
   const { selectedTenant, clearTenant } = useTenant()
@@ -330,11 +330,7 @@ export default function PanelDashboard() {
             ) : activeTab === 'BOOKS' ? (
               <CompanyCommercialBooks tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
             ) : (
-              <CompanyInsurance
-                tenantId={selectedTenant.id}
-                tenantName={selectedTenant.name}
-                initialSubTab={activeTab === 'INSURANCE_CLEARANCE' ? 'ARTICLE_38' : 'MONTHLY_LIST'}
-              />
+              
             )
             <>
               {activeTab === 'OVERVIEW' && (
