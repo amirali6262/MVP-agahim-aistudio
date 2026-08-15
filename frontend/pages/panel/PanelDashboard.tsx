@@ -316,8 +316,7 @@ export default function PanelDashboard() {
             activeTab === 'OVERVIEW' ? (
               <CompanyComplianceOverview tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
             ) : activeTab === 'BUSINESS_PROFILE' ? (
-            activeTab === 'BUSINESS_PROFILE' ? (
-              <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
+             <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
             ) : activeTab === 'FISCAL_YEAR' ? (
               <CompanyFiscalYear tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
             ) : activeTab === 'TAX_CORPORATE' ? (
