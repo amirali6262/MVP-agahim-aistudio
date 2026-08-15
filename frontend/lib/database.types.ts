@@ -14,6 +14,153 @@ export type Database = {
   }
   public: {
     Tables: {
+      eligibility_assessments: {
+        Row: {
+          evaluated_at: string
+          evaluated_by: string
+          explanation: string
+          id: string
+          matched_rule_set_id: string | null
+          obligation_version_id: string
+          outcome: string
+          profile_version_id: string
+          tenant_id: string
+        }
+        Insert: {
+          evaluated_at?: string
+          evaluated_by: string
+          explanation: string
+          id?: string
+          matched_rule_set_id?: string | null
+          obligation_version_id: string
+          outcome: string
+          profile_version_id: string
+          tenant_id: string
+        }
+        Update: {
+          evaluated_at?: string
+          evaluated_by?: string
+          explanation?: string
+          id?: string
+          matched_rule_set_id?: string | null
+          obligation_version_id?: string
+          outcome?: string
+          profile_version_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eligibility_assessments_matched_rule_set_id_fkey"
+            columns: ["matched_rule_set_id"]
+            isOneToOne: false
+            referencedRelation: "eligibility_rule_sets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eligibility_assessments_obligation_version_id_fkey"
+            columns: ["obligation_version_id"]
+            isOneToOne: false
+            referencedRelation: "obligation_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eligibility_assessments_profile_version_id_fkey"
+            columns: ["profile_version_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_profile_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eligibility_assessments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eligibility_conditions: {
+        Row: {
+          created_at: string
+          expected_value: Json | null
+          fact_key: string
+          id: string
+          operator: string
+          rule_set_id: string
+          sequence: number
+        }
+        Insert: {
+          created_at?: string
+          expected_value?: Json | null
+          fact_key: string
+          id?: string
+          operator: string
+          rule_set_id: string
+          sequence: number
+        }
+        Update: {
+          created_at?: string
+          expected_value?: Json | null
+          fact_key?: string
+          id?: string
+          operator?: string
+          rule_set_id?: string
+          sequence?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eligibility_conditions_rule_set_id_fkey"
+            columns: ["rule_set_id"]
+            isOneToOne: false
+            referencedRelation: "eligibility_rule_sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eligibility_rule_sets: {
+        Row: {
+          created_at: string
+          created_by: string
+          explanation: string
+          id: string
+          obligation_version_id: string
+          outcome: string
+          priority: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          explanation: string
+          id?: string
+          obligation_version_id: string
+          outcome: string
+          priority: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          explanation?: string
+          id?: string
+          obligation_version_id?: string
+          outcome?: string
+          priority?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eligibility_rule_sets_obligation_version_id_fkey"
+            columns: ["obligation_version_id"]
+            isOneToOne: false
+            referencedRelation: "obligation_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       obligation_families: {
         Row: {
           code: string
@@ -363,6 +510,26 @@ export type Database = {
           to: "tenants"
           isOneToOne: true
           isSetofReturn: false
+        }
+      }
+      evaluate_tenant_eligibility: {
+        Args: { requested_tenant_id: string }
+        Returns: {
+          evaluated_at: string
+          evaluated_by: string
+          explanation: string
+          id: string
+          matched_rule_set_id: string | null
+          obligation_version_id: string
+          outcome: string
+          profile_version_id: string
+          tenant_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "eligibility_assessments"
+          isOneToOne: false
+          isSetofReturn: true
         }
       }
       save_tenant_profile: {
