@@ -329,10 +329,7 @@ export default function PanelDashboard() {
               <CompanyChecklistWizard tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
             ) : activeTab === 'BOOKS' ? (
               <CompanyCommercialBooks tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-            ) : (
-              
-            )
-            <>
+            
               {activeTab === 'OVERVIEW' && (
                 <CompanyComplianceOverview
                   tenantId={selectedTenant.id}
