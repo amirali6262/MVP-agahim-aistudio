@@ -343,8 +343,7 @@ export default function PanelDashboard() {
         </div>
       </div>
     </div>
-  )
-}
+  }
 
 // ---------------------------------------------------------------------------
 // InfoRow helper
