@@ -2,15 +2,7 @@ import { AlertTriangle } from 'lucide-react'
 import { isMockAuthEnabled, isSupabaseConfigured } from '../lib/supabase'
 
 export default function ConfigBanner() {
-  if (isSupabaseConfigured) return null
-
-  if (isMockAuthEnabled) {
-    return (
-      <div className="fixed top-0 left-0 right-0 z-50 bg-emerald-950/95 border-b border-emerald-700 px-4 py-2 text-center text-emerald-200 text-sm">
-        حالت آزمایشی محلی فعال است؛ اطلاعات این محیط واقعی نیستند.
-      </div>
-    )
-  }
+  if (isSupabaseConfigured || isMockAuthEnabled) return null
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 bg-amber-900/90 border-b border-amber-600 px-4 py-2 text-right">
