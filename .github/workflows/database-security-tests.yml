@@ -36,10 +36,14 @@ jobs:
         run: supabase db reset --local
 
       - name: Test Auth and tenant isolation
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -v ON_ERROR_STOP=1 -f supabase/tests/rls_auth_tenant.sql
+        env:
+          PGPASSWORD: postgres
+        run: psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -X -v ON_ERROR_STOP=1 -f supabase/tests/rls_auth_tenant.sql
 
       - name: Test publication and penalty boundaries
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -v ON_ERROR_STOP=1 -f supabase/tests/publication_security.sql
+        env:
+          PGPASSWORD: postgres
+        run: psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -X -v ON_ERROR_STOP=1 -f supabase/tests/publication_security.sql
 
       - name: Stop disposable local Supabase
         if: always()
