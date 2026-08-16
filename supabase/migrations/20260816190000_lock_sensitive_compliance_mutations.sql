@@ -384,10 +384,13 @@ as $assert_draft$
 declare
   current_status text;
 begin
+  -- Serialize child mutations with lifecycle transitions. FOR SHARE conflicts
+  -- with the transition RPC's FOR UPDATE lock, closing the DRAFT-to-REVIEW race.
   select status
   into current_status
   from public.obligation_versions
-  where id = target_version_id;
+  where id = target_version_id
+  for share;
 
   if not found then
     if allow_missing then
