@@ -144,7 +144,7 @@ export default function AdminComplianceStudio() {
     setBusy(true)
     const { error } = await supabase.rpc('transition_obligation_version_status', {
       requested_version_id: selectedVersionId,
-      requested_target_status: targetStatus,
+      requested_status: targetStatus,
     })
     setBusy(false)
     if (error) {
