@@ -66,7 +66,9 @@ begin
   if requested_base_amount is null
      or requested_base_amount < 0
      or requested_as_of is null
+     or requested_waived_amount is null
      or requested_waived_amount < 0
+     or requested_paid_amount is null
      or requested_paid_amount < 0 then
     raise exception 'non-negative amounts and calculation date required'
       using errcode = '22023';
