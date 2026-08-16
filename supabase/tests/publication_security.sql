@@ -181,8 +181,49 @@ begin
 end
 $$;
 
--- The guarded RPC rejects an incomplete definition and publishes a valid one.
-do $$
+-- A complete version still cannot bypass REVIEW and TESTING.
+do $
+begin
+  begin
+    perform public.publish_obligation_version(
+      '95000000-0000-0000-0000-000000000001'
+    );
+    raise exception 'publication RPC accepted a DRAFT version';
+  exception when invalid_parameter_value then
+    null;
+  end;
+end
+$;
+
+select public.transition_obligation_version_status(
+  '95000000-0000-0000-0000-000000000001', 'REVIEW'
+);
+
+do $
+begin
+  begin
+    perform public.publish_obligation_version(
+      '95000000-0000-0000-0000-000000000001'
+    );
+    raise exception 'publication RPC accepted a REVIEW version';
+  exception when invalid_parameter_value then
+    null;
+  end;
+end
+$;
+
+select public.transition_obligation_version_status(
+  '95000000-0000-0000-0000-000000000001', 'TESTING'
+);
+
+-- Even after lifecycle review, an incomplete definition must not publish.
+select public.transition_obligation_version_status(
+  '95000000-0000-0000-0000-000000000002', 'REVIEW'
+);
+select public.transition_obligation_version_status(
+  '95000000-0000-0000-0000-000000000002', 'TESTING'
+);
+do $
 begin
   begin
     perform public.publish_obligation_version(
@@ -193,7 +234,8 @@ begin
     null;
   end;
 end
-$$;
+$;
+
 select public.publish_obligation_version(
   '95000000-0000-0000-0000-000000000001'
 );
