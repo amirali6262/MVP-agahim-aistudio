@@ -45,6 +45,16 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -X -v ON_ERROR_STOP=1 -f supabase/tests/publication_security.sql
 
+      - name: Test deadline and circular integrity
+        env:
+          PGPASSWORD: postgres
+        run: psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -X -v ON_ERROR_STOP=1 -f supabase/tests/deadline_circular_integrity.sql
+
+      - name: Test case action authorization
+        env:
+          PGPASSWORD: postgres
+        run: psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -X -v ON_ERROR_STOP=1 -f supabase/tests/case_action_authorization.sql
+
       - name: Stop disposable local Supabase
         if: always()
         run: supabase stop --no-backup
