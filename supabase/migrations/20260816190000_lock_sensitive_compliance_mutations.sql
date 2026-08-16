@@ -11,6 +11,74 @@ revoke update (status, published_by, published_at)
   on table public.legal_circulars
   from authenticated;
 
+-- Keep the non-publication review lifecycle usable without restoring direct
+-- write access to the status column. Publication remains a separate validated RPC.
+create function public.transition_obligation_version_status(
+  requested_version_id uuid,
+  requested_status text
+)
+returns public.obligation_versions
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $
+declare
+  uid uuid := auth.uid();
+  selected_version public.obligation_versions;
+begin
+  if uid is null
+     or coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false)
+     or not private.is_platform_admin() then
+    raise exception 'platform admin required' using errcode = '42501';
+  end if;
+
+  if requested_status not in ('DRAFT', 'REVIEW', 'TESTING') then
+    raise exception 'publication requires publish_obligation_version'
+      using errcode = '22023';
+  end if;
+
+  select *
+  into selected_version
+  from public.obligation_versions
+  where id = requested_version_id
+  for update;
+
+  if selected_version.id is null then
+    raise exception 'obligation version not found' using errcode = 'P0002';
+  end if;
+
+  if selected_version.status = 'PUBLISHED' then
+    raise exception 'published obligation versions are immutable'
+      using errcode = '23514';
+  end if;
+
+  if selected_version.status = requested_status then
+    return selected_version;
+  end if;
+
+  if not (
+    (selected_version.status = 'DRAFT' and requested_status = 'REVIEW')
+    or (selected_version.status = 'REVIEW' and requested_status in ('DRAFT', 'TESTING'))
+    or (selected_version.status = 'TESTING' and requested_status = 'REVIEW')
+  ) then
+    raise exception 'invalid obligation review status transition'
+      using errcode = '22023';
+  end if;
+
+  update public.obligation_versions
+  set status = requested_status
+  where id = selected_version.id
+  returning * into selected_version;
+
+  return selected_version;
+end;
+$;
+
+revoke all on function public.transition_obligation_version_status(uuid, text)
+  from public, anon, authenticated, service_role;
+grant execute on function public.transition_obligation_version_status(uuid, text)
+  to authenticated;
+
 -- A penalty estimate changes shared compliance reporting. Restrict this write
 -- boundary to tenant owners/admins and platform admins instead of every member.
 create or replace function public.estimate_case_penalty(
