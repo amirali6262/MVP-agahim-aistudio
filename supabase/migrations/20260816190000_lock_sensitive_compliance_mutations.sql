@@ -21,7 +21,7 @@ returns public.obligation_versions
 language plpgsql
 security definer
 set search_path = pg_catalog
-as $
+as $transition$
 declare
   uid uuid := auth.uid();
   selected_version public.obligation_versions;
@@ -72,7 +72,7 @@ begin
 
   return selected_version;
 end;
-$;
+$transition$;
 
 revoke all on function public.transition_obligation_version_status(uuid, text)
   from public, anon, authenticated, service_role;
