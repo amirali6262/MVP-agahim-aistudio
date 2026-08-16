@@ -370,6 +370,243 @@ revoke all on function public.estimate_case_penalty(uuid, numeric, date, numeric
 grant execute on function public.estimate_case_penalty(uuid, numeric, date, numeric, numeric)
   to authenticated;
 
+-- Freeze every reviewed or tested definition at the database boundary. To edit,
+-- a platform admin must use the lifecycle RPC to return the version to DRAFT.
+create function private.assert_obligation_version_draft(
+  target_version_id uuid,
+  allow_missing boolean default false
+)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $assert_draft$
+declare
+  current_status text;
+begin
+  select status
+  into current_status
+  from public.obligation_versions
+  where id = target_version_id;
+
+  if not found then
+    if allow_missing then
+      return;
+    end if;
+    raise exception 'obligation version not found' using errcode = 'P0002';
+  end if;
+
+  if current_status <> 'DRAFT' then
+    raise exception 'reviewed or tested obligation definitions are read-only; return the version to DRAFT before editing'
+      using errcode = '23514';
+  end if;
+end;
+$assert_draft$;
+
+revoke all on function private.assert_obligation_version_draft(uuid, boolean)
+  from public, anon, authenticated, service_role;
+
+create function private.enforce_obligation_version_draft_edits()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $version_draft$
+begin
+  if tg_op = 'DELETE' then
+    perform private.assert_obligation_version_draft(old.id, false);
+    return old;
+  end if;
+
+  -- Lifecycle RPCs may change only governance columns while the definition is
+  -- frozen. Any current or future content column remains immutable.
+  if old.status <> 'DRAFT'
+     and (
+       to_jsonb(new) - array['status', 'published_by', 'published_at', 'updated_at']
+     ) is distinct from (
+       to_jsonb(old) - array['status', 'published_by', 'published_at', 'updated_at']
+     ) then
+    raise exception 'reviewed or tested obligation definitions are read-only; return the version to DRAFT before editing'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end;
+$version_draft$;
+
+revoke all on function private.enforce_obligation_version_draft_edits()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists enforce_obligation_version_draft_edits
+  on public.obligation_versions;
+create trigger enforce_obligation_version_draft_edits
+before update or delete on public.obligation_versions
+for each row execute function private.enforce_obligation_version_draft_edits();
+
+create function private.enforce_eligibility_rule_draft_edits()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $rule_draft$
+begin
+  if tg_op in ('UPDATE', 'DELETE') then
+    perform private.assert_obligation_version_draft(
+      old.obligation_version_id,
+      tg_op = 'DELETE'
+    );
+  end if;
+
+  if tg_op in ('INSERT', 'UPDATE') then
+    perform private.assert_obligation_version_draft(
+      new.obligation_version_id,
+      false
+    );
+  end if;
+
+  return case when tg_op = 'DELETE' then old else new end;
+end;
+$rule_draft$;
+
+revoke all on function private.enforce_eligibility_rule_draft_edits()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists enforce_eligibility_rule_draft_edits
+  on public.eligibility_rule_sets;
+create trigger enforce_eligibility_rule_draft_edits
+before insert or update or delete on public.eligibility_rule_sets
+for each row execute function private.enforce_eligibility_rule_draft_edits();
+
+create function private.enforce_eligibility_condition_draft_edits()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $condition_draft$
+declare
+  target_rule_id uuid;
+  target_version_id uuid;
+begin
+  if tg_op in ('UPDATE', 'DELETE') then
+    target_rule_id := old.rule_set_id;
+    select obligation_version_id into target_version_id
+    from public.eligibility_rule_sets
+    where id = target_rule_id;
+
+    if found then
+      perform private.assert_obligation_version_draft(target_version_id, false);
+    elsif tg_op <> 'DELETE' then
+      raise exception 'eligibility rule set not found' using errcode = 'P0002';
+    end if;
+  end if;
+
+  if tg_op in ('INSERT', 'UPDATE') then
+    target_rule_id := new.rule_set_id;
+    select obligation_version_id into target_version_id
+    from public.eligibility_rule_sets
+    where id = target_rule_id;
+
+    if not found then
+      raise exception 'eligibility rule set not found' using errcode = 'P0002';
+    end if;
+    perform private.assert_obligation_version_draft(target_version_id, false);
+  end if;
+
+  return case when tg_op = 'DELETE' then old else new end;
+end;
+$condition_draft$;
+
+revoke all on function private.enforce_eligibility_condition_draft_edits()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists enforce_eligibility_condition_draft_edits
+  on public.eligibility_conditions;
+create trigger enforce_eligibility_condition_draft_edits
+before insert or update or delete on public.eligibility_conditions
+for each row execute function private.enforce_eligibility_condition_draft_edits();
+
+create function private.enforce_workflow_template_draft_edits()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $template_draft$
+begin
+  if tg_op in ('UPDATE', 'DELETE') then
+    perform private.assert_obligation_version_draft(
+      old.obligation_version_id,
+      tg_op = 'DELETE'
+    );
+  end if;
+
+  if tg_op in ('INSERT', 'UPDATE') then
+    perform private.assert_obligation_version_draft(
+      new.obligation_version_id,
+      false
+    );
+  end if;
+
+  return case when tg_op = 'DELETE' then old else new end;
+end;
+$template_draft$;
+
+revoke all on function private.enforce_workflow_template_draft_edits()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists enforce_workflow_template_draft_edits
+  on public.workflow_templates;
+create trigger enforce_workflow_template_draft_edits
+before insert or update or delete on public.workflow_templates
+for each row execute function private.enforce_workflow_template_draft_edits();
+
+create function private.enforce_workflow_step_draft_edits()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $step_draft$
+declare
+  target_template_id uuid;
+  target_version_id uuid;
+begin
+  if tg_op in ('UPDATE', 'DELETE') then
+    target_template_id := old.workflow_template_id;
+    select obligation_version_id into target_version_id
+    from public.workflow_templates
+    where id = target_template_id;
+
+    if found then
+      perform private.assert_obligation_version_draft(target_version_id, false);
+    elsif tg_op <> 'DELETE' then
+      raise exception 'workflow template not found' using errcode = 'P0002';
+    end if;
+  end if;
+
+  if tg_op in ('INSERT', 'UPDATE') then
+    target_template_id := new.workflow_template_id;
+    select obligation_version_id into target_version_id
+    from public.workflow_templates
+    where id = target_template_id;
+
+    if not found then
+      raise exception 'workflow template not found' using errcode = 'P0002';
+    end if;
+    perform private.assert_obligation_version_draft(target_version_id, false);
+  end if;
+
+  return case when tg_op = 'DELETE' then old else new end;
+end;
+$step_draft$;
+
+revoke all on function private.enforce_workflow_step_draft_edits()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists enforce_workflow_step_draft_edits
+  on public.workflow_steps;
+create trigger enforce_workflow_step_draft_edits
+before insert or update or delete on public.workflow_steps
+for each row execute function private.enforce_workflow_step_draft_edits();
+
 -- Fail the migration if a future grant accidentally leaves either publication
 -- path directly writable by the authenticated Data API role.
 do $$
