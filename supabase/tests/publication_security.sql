@@ -182,7 +182,7 @@ end
 $$;
 
 -- A complete version still cannot bypass REVIEW and TESTING.
-do $
+do $regression$
 begin
   begin
     perform public.publish_obligation_version(
@@ -193,13 +193,13 @@ begin
     null;
   end;
 end
-$;
+$regression$;
 
 select public.transition_obligation_version_status(
   '95000000-0000-0000-0000-000000000001', 'REVIEW'
 );
 
-do $
+do $regression$
 begin
   begin
     perform public.publish_obligation_version(
@@ -210,7 +210,7 @@ begin
     null;
   end;
 end
-$;
+$regression$;
 
 select public.transition_obligation_version_status(
   '95000000-0000-0000-0000-000000000001', 'TESTING'
@@ -223,7 +223,7 @@ select public.transition_obligation_version_status(
 select public.transition_obligation_version_status(
   '95000000-0000-0000-0000-000000000002', 'TESTING'
 );
-do $
+do $regression$
 begin
   begin
     perform public.publish_obligation_version(
@@ -234,7 +234,7 @@ begin
     null;
   end;
 end
-$;
+$regression$;
 
 select public.publish_obligation_version(
   '95000000-0000-0000-0000-000000000001'
