@@ -1198,6 +1198,34 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      transition_obligation_version_status: {
+        Args: { requested_status: string; requested_version_id: string }
+        Returns: {
+          audience_summary: string | null
+          created_at: string
+          created_by: string
+          deadline_rule: Json
+          effective_from: string | null
+          effective_to: string | null
+          id: string
+          legal_reference: string | null
+          obligation_id: string
+          penalty_rule: Json
+          published_at: string | null
+          published_by: string | null
+          recurrence_rule: Json
+          source_url: string | null
+          status: string
+          updated_at: string
+          version_number: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "obligation_versions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       publish_circular_and_notify: {
         Args: { requested_action_url?: string; requested_circular_id: string }
         Returns: number

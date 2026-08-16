@@ -139,9 +139,25 @@ export default function AdminComplianceStudio() {
   useEffect(() => { void loadCatalog() }, [loadCatalog])
   useEffect(() => { void loadDefinition() }, [loadDefinition])
 
+  const transitionStatus = async (targetStatus: 'DRAFT' | 'REVIEW' | 'TESTING', successMessage: string) => {
+    if (!selectedVersionId) return
+    setBusy(true)
+    const { error } = await supabase.rpc('transition_obligation_version_status', {
+      requested_version_id: selectedVersionId,
+      requested_status: targetStatus,
+    })
+    setBusy(false)
+    if (error) {
+      toast.error(error.message)
+      return
+    }
+    toast.success(successMessage)
+    await loadCatalog()
+  }
+
   const publish = async () => {
     if (!selectedVersionId) return
-    if (!window.confirm('پس از انتشار، این نسخه و قواعد آن قفل می‌شود. آیا منبع رسمی و محتوای حقوقی را بررسی کرده‌اید؟')) return
+    if (!window.confirm('پس از انتشار، این نسخه و قواعد آن قفل می‌شود. آیا آزمایش، منبع رسمی و محتوای حقوقی را بررسی کرده‌اید؟')) return
     setBusy(true)
     const { error } = await supabase.rpc('publish_obligation_version', { requested_version_id: selectedVersionId })
     setBusy(false)
@@ -189,7 +205,7 @@ export default function AdminComplianceStudio() {
                   {item.versions.map((version) => (
                     <button key={version.id} onClick={() => setSelectedVersionId(version.id)} className={`rounded-lg border px-3 py-2 text-xs ${
                       selectedVersionId === version.id ? 'border-amber-500 bg-amber-500 text-zinc-950' : 'border-zinc-700 text-zinc-300'
-                    }`}>نسخه {version.version_number} · {version.status === 'PUBLISHED' ? 'منتشرشده' : 'پیش‌نویس'}</button>
+                    }`}>نسخه {version.version_number} · {versionStatusLabel(version.status)}</button>
                   ))}
                 </div>
               </div>
@@ -208,9 +224,33 @@ export default function AdminComplianceStudio() {
                     <h3 className="font-bold">آمادگی انتشار نسخه {selectedVersion.version_number}</h3>
                     <p className="mt-1 text-xs text-zinc-500">{selectedVersion.legal_reference || 'مرجع قانونی ثبت نشده'}</p>
                   </div>
-                  {selectedVersion.status === 'PUBLISHED'
-                    ? <span className="flex items-center gap-1 rounded-full bg-emerald-950 px-3 py-1 text-xs text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" />منتشرشده و قفل</span>
-                    : <Button onClick={publish} disabled={busy} className="bg-emerald-700 hover:bg-emerald-600">{busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}انتشار نهایی</Button>}
+                  {selectedVersion.status === 'PUBLISHED' ? (
+                    <span className="flex items-center gap-1 rounded-full bg-emerald-950 px-3 py-1 text-xs text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" />منتشرشده و قفل</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedVersion.status === 'DRAFT' && (
+                        <Button onClick={() => void transitionStatus('REVIEW', 'نسخه برای بازبینی تخصصی ارسال شد.')} disabled={busy} className="bg-amber-500 text-zinc-950 hover:bg-amber-400">
+                          {busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}ارسال به بازبینی
+                        </Button>
+                      )}
+                      {selectedVersion.status === 'REVIEW' && (
+                        <>
+                          <Button variant="outline" className="border-zinc-700" onClick={() => void transitionStatus('DRAFT', 'نسخه برای اصلاح به پیش‌نویس بازگشت.')} disabled={busy}>بازگشت برای اصلاح</Button>
+                          <Button onClick={() => void transitionStatus('TESTING', 'نسخه وارد مرحله آزمایش شد.')} disabled={busy} className="bg-sky-700 hover:bg-sky-600">
+                            {busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}ارسال به آزمایش
+                          </Button>
+                        </>
+                      )}
+                      {selectedVersion.status === 'TESTING' && (
+                        <>
+                          <Button variant="outline" className="border-zinc-700" onClick={() => void transitionStatus('REVIEW', 'نسخه برای بازبینی دوباره بازگشت.')} disabled={busy}>بازگشت به بازبینی</Button>
+                          <Button onClick={publish} disabled={busy} className="bg-emerald-700 hover:bg-emerald-600">
+                            {busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}انتشار نهایی
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   <Metric label="قواعد تشخیص" value={rules.length} />
@@ -223,12 +263,12 @@ export default function AdminComplianceStudio() {
                 <div className="rounded-2xl border border-zinc-800 bg-[#141615] p-5">
                   <h3 className="flex items-center gap-2 font-bold"><Scale className="h-4 w-4 text-amber-400" />تشخیص مشمولیت</h3>
                   <div className="mt-4 space-y-2">{rules.map((rule) => <DefinitionRow key={rule.id} title={rule.title} meta={`${rule.outcome} · اولویت ${rule.priority}`} />)}</div>
-                  {selectedVersion.status !== 'PUBLISHED' && <EligibilityRuleForm versionId={selectedVersion.id} nextPriority={rules.length + 1} onSaved={loadDefinition} />}
+                  {selectedVersion.status === 'DRAFT' && <EligibilityRuleForm versionId={selectedVersion.id} nextPriority={rules.length + 1} onSaved={loadDefinition} />}
                 </div>
                 <div className="rounded-2xl border border-zinc-800 bg-[#141615] p-5">
                   <h3 className="flex items-center gap-2 font-bold"><GitBranch className="h-4 w-4 text-amber-400" />مراحل فرایند</h3>
                   <div className="mt-4 space-y-2">{steps.map((step) => <DefinitionRow key={step.id} title={`${step.sequence}. ${step.title}`} meta={actorLabel(step.actor)} />)}</div>
-                  {selectedVersion.status !== 'PUBLISHED' && <WorkflowStepForm version={selectedVersion} nextSequence={steps.length + 1} onSaved={loadDefinition} />}
+                  {selectedVersion.status === 'DRAFT' && <WorkflowStepForm version={selectedVersion} nextSequence={steps.length + 1} onSaved={loadDefinition} />}
                 </div>
               </div>
             </>
@@ -409,6 +449,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function SaveButton({ onClick, disabled = false }: { onClick: () => Promise<void>; disabled?: boolean }) { return <div className="flex items-end"><Button disabled={disabled} onClick={() => void onClick()} className="w-full bg-emerald-700 hover:bg-emerald-600">ذخیره</Button></div> }
 function Metric({ label, value }: { label: string; value: string | number }) { return <div className="rounded-lg bg-zinc-900/60 p-3"><p className="text-xs text-zinc-500">{label}</p><p className="mt-1 font-bold">{value}</p></div> }
 function DefinitionRow({ title, meta }: { title: string; meta: string }) { return <div className="rounded-lg border border-zinc-800 p-3"><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs text-zinc-500">{meta}</p></div> }
+function versionStatusLabel(status: string) { return ({ DRAFT: 'پیش‌نویس', REVIEW: 'در بازبینی', TESTING: 'در آزمایش', PUBLISHED: 'منتشرشده', RETIRED: 'منسوخ' } as Record<string, string>)[status] ?? status }
 function penaltyType(value: Json) { if (!value || Array.isArray(value) || typeof value !== 'object') return 'نامشخص'; return String(value['type'] ?? 'NONE') }
 function actorLabel(actor: string) { return ({ USER: 'کاربر شرکت', PLATFORM_ADMIN: 'مدیر پلتفرم', AUTHORITY: 'مرجع قانونی / مدیر' } as Record<string, string>)[actor] ?? actor }
 function allowedOperators(fact: string) {
