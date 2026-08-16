@@ -1,0 +1,100 @@
+name: One-time Supabase migration history repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/repair-supabase-migration-history.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-migration-history-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair production migration history
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+        with:
+          version: latest
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "Missing SUPABASE_ACCESS_TOKEN"; exit 1; }
+          test -n "$SUPABASE_DB_PASSWORD" || { echo "Missing SUPABASE_DB_PASSWORD"; exit 1; }
+          test -n "$SUPABASE_PROJECT_ID" || { echo "Missing SUPABASE_PROJECT_ID"; exit 1; }
+
+      - name: Link production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Show history before repair
+        run: supabase migration list --linked
+
+      - name: Repair equivalent migration versions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          old_versions=(
+            20260813182912 20260813183254 20260813183457
+            20260813183705 20260813185115 20260813185255
+            20260813190215 20260813190617 20260813191048
+            20260813191820 20260813192813 20260813193146
+            20260813193301 20260813193353 20260813193725
+            20260813194524 20260813194721 20260813195141
+          )
+
+          new_versions=(
+            20260813190000 20260813193000 20260813194500
+            20260813195500 20260813203000 20260813204500
+            20260813211500 20260813220000 20260813230000
+            20260814000000 20260814013000 20260814014500
+            20260814023000 20260814024500 20260814025000
+            20260814025500 20260814030000 20260814033000
+          )
+
+          if [[ ${#old_versions[@]} -ne 18 || ${#new_versions[@]} -ne 18 ]]; then
+            echo "Expected exactly 18 old and 18 new migration versions."
+            exit 1
+          fi
+
+          rollback_history() {
+            trap - ERR
+            echo "Repair failed; restoring the original migration history."
+            supabase migration repair --status applied "${old_versions[@]}" || true
+            supabase migration repair --status reverted "${new_versions[@]}" || true
+          }
+
+          trap rollback_history ERR
+
+          # Add the verified GitHub versions first so a mid-run failure never
+          # leaves the database without a record of the applied schema changes.
+          supabase migration repair --status applied "${new_versions[@]}"
+          supabase migration repair --status reverted "${old_versions[@]}"
+
+          supabase migration list --linked
+          supabase db push --dry-run --linked
+
+          trap - ERR
+
+      - name: Verify repaired history
+        run: |
+          supabase migration list --linked
+          supabase db push --dry-run --linked
