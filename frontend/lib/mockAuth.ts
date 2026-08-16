@@ -7,7 +7,7 @@ import type { AppUser, UserRole } from './supabase'
 
 const isMockAuthRuntimeEnabled =
   import.meta.env.DEV &&
-  import.meta.env['VITE_ENABLE_MOCK_AUTH'] === 'true'
+  import.meta.env['VITE_ENABLE_MOCK_AUTH'] !== 'false'
 
 function assertMockAuthEnabled(): void {
   if (!isMockAuthRuntimeEnabled) {
