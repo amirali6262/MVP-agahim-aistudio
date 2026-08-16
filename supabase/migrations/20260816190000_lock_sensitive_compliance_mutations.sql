@@ -79,6 +79,118 @@ revoke all on function public.transition_obligation_version_status(uuid, text)
 grant execute on function public.transition_obligation_version_status(uuid, text)
   to authenticated;
 
+-- Enforce the approved governance lifecycle. A complete definition cannot
+-- jump directly from DRAFT or REVIEW to PUBLISHED.
+create or replace function public.publish_obligation_version(
+  requested_version_id uuid
+)
+returns public.obligation_versions
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $publish$
+declare
+  uid uuid := auth.uid();
+  selected_version public.obligation_versions;
+  rule_type text;
+begin
+  if uid is null
+     or coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false)
+     or not private.is_platform_admin() then
+    raise exception 'platform admin required' using errcode = '42501';
+  end if;
+
+  select *
+  into selected_version
+  from public.obligation_versions
+  where id = requested_version_id
+  for update;
+
+  if selected_version.id is null then
+    raise exception 'obligation version not found' using errcode = 'P0002';
+  end if;
+
+  if selected_version.status <> 'TESTING' then
+    raise exception 'obligation version must complete review and testing before publication'
+      using errcode = '22023';
+  end if;
+
+  if selected_version.effective_from is null
+     or selected_version.source_url is null
+     or btrim(coalesce(selected_version.legal_reference, '')) = '' then
+    raise exception 'effective date, official source URL and legal reference are required'
+      using errcode = '22023';
+  end if;
+
+  if not exists (
+    select 1
+    from public.workflow_templates workflow
+    join public.workflow_steps step
+      on step.workflow_template_id = workflow.id
+    where workflow.obligation_version_id = selected_version.id
+  ) then
+    raise exception 'at least one workflow step is required before publication'
+      using errcode = '22023';
+  end if;
+
+  if not exists (
+    select 1
+    from public.eligibility_rule_sets
+    where obligation_version_id = selected_version.id
+  ) then
+    raise exception 'at least one explainable eligibility rule is required before publication'
+      using errcode = '22023';
+  end if;
+
+  rule_type := coalesce(selected_version.penalty_rule ->> 'type', 'NONE');
+
+  if rule_type not in ('NONE', 'FIXED', 'PERCENTAGE', 'DAILY_PERCENTAGE') then
+    raise exception 'unsupported penalty rule type' using errcode = '22023';
+  end if;
+
+  if rule_type = 'FIXED'
+     and (
+       jsonb_typeof(selected_version.penalty_rule -> 'amount') <> 'number'
+       or (selected_version.penalty_rule ->> 'amount')::numeric < 0
+     ) then
+    raise exception 'fixed penalty requires a non-negative numeric amount'
+      using errcode = '22023';
+  end if;
+
+  if rule_type in ('PERCENTAGE', 'DAILY_PERCENTAGE')
+     and (
+       jsonb_typeof(selected_version.penalty_rule -> 'rate_percent') <> 'number'
+       or (selected_version.penalty_rule ->> 'rate_percent')::numeric < 0
+     ) then
+    raise exception 'percentage penalty requires a non-negative numeric rate'
+      using errcode = '22023';
+  end if;
+
+  if selected_version.penalty_rule ? 'cap_amount'
+     and (
+       jsonb_typeof(selected_version.penalty_rule -> 'cap_amount') <> 'number'
+       or (selected_version.penalty_rule ->> 'cap_amount')::numeric < 0
+     ) then
+    raise exception 'penalty cap must be a non-negative number'
+      using errcode = '22023';
+  end if;
+
+  update public.obligation_versions
+  set status = 'PUBLISHED',
+      published_by = uid,
+      published_at = now()
+  where id = selected_version.id
+  returning * into selected_version;
+
+  return selected_version;
+end;
+$publish$;
+
+revoke all on function public.publish_obligation_version(uuid)
+  from public, anon, authenticated, service_role;
+grant execute on function public.publish_obligation_version(uuid)
+  to authenticated;
+
 -- A penalty estimate changes shared compliance reporting. Restrict this write
 -- boundary to tenant owners/admins and platform admins instead of every member.
 create or replace function public.estimate_case_penalty(
