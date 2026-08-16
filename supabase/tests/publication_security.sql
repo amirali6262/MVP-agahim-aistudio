@@ -109,6 +109,26 @@ insert into public.workflow_steps (
   '{"fields":[]}'::jsonb
 );
 
+-- Extra draft children prove DELETE is also frozen after review begins.
+insert into public.eligibility_rule_sets (
+  id, obligation_version_id, priority, title, outcome, explanation, created_by
+) values (
+  '96000000-0000-0000-0000-000000000002',
+  '95000000-0000-0000-0000-000000000001',
+  2, 'قاعده موقت برای آزمون حذف', 'REVIEW',
+  'فقط برای آزمون rollback.',
+  '91000000-0000-0000-0000-000000000005'
+);
+
+insert into public.workflow_steps (
+  id, workflow_template_id, sequence, code, title, actor, form_schema
+) values (
+  '98000000-0000-0000-0000-000000000002',
+  '97000000-0000-0000-0000-000000000001',
+  2, 'TEMP_DELETE_TEST', 'مرحله موقت برای آزمون حذف', 'USER',
+  '{"fields":[]}'::jsonb
+);
+
 insert into public.eligibility_assessments (
   id, tenant_id, obligation_version_id, profile_version_id,
   matched_rule_set_id, outcome, explanation, evaluated_by
@@ -199,6 +219,96 @@ select public.transition_obligation_version_status(
   '95000000-0000-0000-0000-000000000001', 'REVIEW'
 );
 
+-- REVIEW freezes the version and every linked rule/workflow mutation in the DB.
+do $review_freeze$
+begin
+  begin
+    update public.obligation_versions
+    set legal_reference = 'نباید در بازبینی تغییر کند'
+    where id = '95000000-0000-0000-0000-000000000001';
+    raise exception 'REVIEW allowed obligation content update';
+  exception when check_violation then null;
+  end;
+
+  begin
+    update public.eligibility_rule_sets
+    set title = 'نباید در بازبینی تغییر کند'
+    where id = '96000000-0000-0000-0000-000000000001';
+    raise exception 'REVIEW allowed eligibility rule update';
+  exception when check_violation then null;
+  end;
+
+  begin
+    delete from public.eligibility_rule_sets
+    where id = '96000000-0000-0000-0000-000000000002';
+    raise exception 'REVIEW allowed eligibility rule delete';
+  exception when check_violation then null;
+  end;
+
+  begin
+    insert into public.eligibility_rule_sets (
+      id, obligation_version_id, priority, title, outcome, explanation
+    ) values (
+      '96000000-0000-0000-0000-000000000003',
+      '95000000-0000-0000-0000-000000000001',
+      3, 'نباید ثبت شود', 'REVIEW', 'نسخه در بازبینی است.'
+    );
+    raise exception 'REVIEW allowed eligibility rule insert';
+  exception when check_violation then null;
+  end;
+
+  begin
+    update public.workflow_steps
+    set title = 'نباید در بازبینی تغییر کند'
+    where id = '98000000-0000-0000-0000-000000000001';
+    raise exception 'REVIEW allowed workflow step update';
+  exception when check_violation then null;
+  end;
+
+  begin
+    delete from public.workflow_steps
+    where id = '98000000-0000-0000-0000-000000000002';
+    raise exception 'REVIEW allowed workflow step delete';
+  exception when check_violation then null;
+  end;
+
+  begin
+    insert into public.workflow_steps (
+      id, workflow_template_id, sequence, code, title, actor, form_schema
+    ) values (
+      '98000000-0000-0000-0000-000000000003',
+      '97000000-0000-0000-0000-000000000001',
+      3, 'REVIEW_INSERT_DENIED', 'نباید ثبت شود', 'USER',
+      '{"fields":[]}'::jsonb
+    );
+    raise exception 'REVIEW allowed workflow step insert';
+  exception when check_violation then null;
+  end;
+end
+$review_freeze$;
+
+-- Returning through the governed lifecycle to DRAFT restores editing.
+select public.transition_obligation_version_status(
+  '95000000-0000-0000-0000-000000000001', 'DRAFT'
+);
+update public.obligation_versions
+set legal_reference = 'مرجع قانونی آزمایشی بازبینی‌شده'
+where id = '95000000-0000-0000-0000-000000000001';
+update public.eligibility_rule_sets
+set title = 'قاعده آزمایشی بازبینی‌شده'
+where id = '96000000-0000-0000-0000-000000000001';
+update public.workflow_steps
+set title = 'مرحله آزمایشی بازبینی‌شده'
+where id = '98000000-0000-0000-0000-000000000001';
+delete from public.eligibility_rule_sets
+where id = '96000000-0000-0000-0000-000000000002';
+delete from public.workflow_steps
+where id = '98000000-0000-0000-0000-000000000002';
+
+select public.transition_obligation_version_status(
+  '95000000-0000-0000-0000-000000000001', 'REVIEW'
+);
+
 do $regression$
 begin
   begin
@@ -215,6 +325,35 @@ $regression$;
 select public.transition_obligation_version_status(
   '95000000-0000-0000-0000-000000000001', 'TESTING'
 );
+
+-- TESTING is frozen at the database boundary as well.
+do $testing_freeze$
+begin
+  begin
+    update public.obligation_versions
+    set source_url = 'https://example.invalid/mutated-after-testing'
+    where id = '95000000-0000-0000-0000-000000000001';
+    raise exception 'TESTING allowed obligation content update';
+  exception when check_violation then null;
+  end;
+
+  begin
+    update public.eligibility_rule_sets
+    set explanation = 'نباید پس از آزمایش تغییر کند'
+    where id = '96000000-0000-0000-0000-000000000001';
+    raise exception 'TESTING allowed eligibility rule update';
+  exception when check_violation then null;
+  end;
+
+  begin
+    update public.workflow_steps
+    set title = 'نباید پس از آزمایش تغییر کند'
+    where id = '98000000-0000-0000-0000-000000000001';
+    raise exception 'TESTING allowed workflow step update';
+  exception when check_violation then null;
+  end;
+end
+$testing_freeze$;
 
 -- Even after lifecycle review, an incomplete definition must not publish.
 select public.transition_obligation_version_status(
