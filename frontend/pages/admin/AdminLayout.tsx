@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronLeft, LogOut, User } from 'lucide-react'
+import { LogOut, User } from 'lucide-react'
 import { Button } from '../../lib/shadcn/button'
 import { TooltipProvider } from '../../lib/shadcn/tooltip'
 import AdminSidebar from './AdminSidebar'
@@ -16,19 +16,6 @@ export default function AdminLayout({ children }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
-
-  const routeLabels: Record<string, string> = {
-    '/admin/dashboard': 'داشبورد مدیریت', '/admin/studio': 'استودیوی تعهدات',
-    '/admin/circulars': 'مرکز مهلت و بخشنامه', '/admin/tax/corporate': 'مالیات بر عملکرد اشخاص حقوقی',
-    '/admin/tax/individual': 'مالیات بر عملکرد اشخاص حقیقی', '/admin/tax/vat': 'مالیات بر ارزش افزوده',
-    '/admin/tax/payroll': 'مالیات بر حقوق', '/admin/tax/duties': 'مالیات‌های تکلیفی',
-    '/admin/tax/claim169': 'مطالبه ماده ۱۶۹', '/admin/books': 'دفاتر تجاری',
-    '/admin/checklists': 'چک‌لیست‌ها', '/admin/objections/templates': 'مرکز رسیدگی و اعتراض',
-    '/admin/extensions': 'تمدید مهلت‌ها', '/admin/insurance/contract': 'حق بیمه قراردادها',
-    '/admin/insurance/audit': 'حسابرسی بیمه',
-  }
-  const currentLabel = routeLabels[location.pathname] ?? 'بخش مدیریت'
 
   const handleSignOut = async () => {
     await signOut()
@@ -82,11 +69,6 @@ export default function AdminLayout({ children }: Props) {
 
           {/* Page content */}
           <main className="flex-1 overflow-auto bg-[#F7F5F0] dark:bg-[#181614]">
-            <nav aria-label="مسیر صفحه" className="flex items-center gap-1.5 border-b border-[#E5E0D8] bg-white px-6 py-2.5 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-[#1d1a18]">
-              <Link to="/admin/dashboard" className="hover:text-[#B8842E] dark:hover:text-[#E5A93C]">مدیریت</Link>
-              <ChevronLeft className="h-3.5 w-3.5 rtl:rotate-180" />
-              <span className="font-semibold text-zinc-800 dark:text-zinc-200">{currentLabel}</span>
-            </nav>
             {children}
           </main>
         </div>
@@ -94,3 +76,4 @@ export default function AdminLayout({ children }: Props) {
     </TooltipProvider>
   )
 }
+
