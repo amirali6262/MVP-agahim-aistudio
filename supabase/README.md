@@ -39,6 +39,12 @@ VITE_ENABLE_MOCK_AUTH=false
 VITE_ENABLE_MOCK_DATA=false
 ```
 
+This repository also includes `frontend/.env.development` with the shared
+development project's public URL and publishable browser key, so `npm run dev`
+works immediately after checkout. Override it with `frontend/.env.local` when
+using another project. Publishable keys are client identifiers protected by
+RLS; secret, `service_role`, and database credentials must never be added.
+
 Only the Project URL and Publishable Key belong in the frontend. Never put a Supabase Secret Key, database password, access token, or `service_role` key in frontend code, Vite variables, commits, or pull requests.
 
 Mock authentication is opt-in: set `VITE_ENABLE_MOCK_AUTH=true` only for an
