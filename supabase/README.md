@@ -43,6 +43,11 @@ Deploy database migrations before deploying frontend features that use them.
 The browser publishable key can access objects allowed by RLS, but cannot create
 missing tables or apply migration files.
 
+Migrations merged into `main` are applied automatically by the protected
+`Supabase migration deployment` workflow. A manual run remains available for a
+plan or recovery apply. The final schema-cache migration notifies PostgREST to
+reload, so Studio controls become available without restarting the frontend.
+
 ## Frontend environment
 
 Create a local `.env` file and keep it out of Git:
