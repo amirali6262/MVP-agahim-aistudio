@@ -295,6 +295,7 @@ export default function AdminComplianceStudio() {
       let fetchedTransitions: WorkflowTransition[] = []
       if (templateResult.data) {
         const [{ data }, transitionResult] = await Promise.all([
+        const [{ data }, { data: transitionRows }] = await Promise.all([
           supabase.from('workflow_steps').select('*').eq('workflow_template_id', templateResult.data.id).order('sequence'),
           supabase.from('workflow_transitions').select('*').eq('workflow_template_id', templateResult.data.id).order('priority'),
         ])
@@ -306,6 +307,7 @@ export default function AdminComplianceStudio() {
           setTransitionSchemaReady(true)
           fetchedTransitions = transitionResult.data ?? []
         }
+        fetchedTransitions = transitionRows ?? []
       }
       const fetchedRules = rulesResult.data ?? []
 
@@ -673,6 +675,8 @@ export default function AdminComplianceStudio() {
 
       {showFamilyForm && <StudioFullScreen title="تعریف گروه جدید" onBack={() => { if (!familyDirty || window.confirm('تغییرات ذخیره نشده است. بدون ذخیره خارج می‌شوید؟')) { setShowFamilyForm(false); setFamilyDirty(false) } }}><FamilyForm onDirtyChange={setFamilyDirty} onSaved={async () => { setShowFamilyForm(false); setFamilyDirty(false); await loadCatalog() }} /></StudioFullScreen>}
       {showDraftForm && <StudioFullScreen title="تعریف تعهد جدید" onBack={() => { if (!draftDirty || window.confirm('تغییرات ذخیره نشده است. بدون ذخیره خارج می‌شوید؟')) { setShowDraftForm(false); setDraftDirty(false) } }}><DraftForm families={families} onDirtyChange={setDraftDirty} onSaved={async (versionId) => { setShowDraftForm(false); setDraftDirty(false); await loadCatalog(); setSelectedVersionId(versionId); setMode('EDIT') }} /></StudioFullScreen>}
+      {showFamilyForm && <FamilyForm onSaved={async () => { setShowFamilyForm(false); await loadCatalog() }} />}
+      {showDraftForm && <DraftForm families={families} onSaved={async (versionId) => { setShowDraftForm(false); await loadCatalog(); setSelectedVersionId(versionId); setMode('EDIT') }} />}
 
       {mode === 'LIST' ? (
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#101211] shadow-xl shadow-black/10">
@@ -713,6 +717,8 @@ export default function AdminComplianceStudio() {
         <section className="fixed inset-0 z-[80] overflow-y-auto bg-[#0b0d0c] p-4 text-zinc-100 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl space-y-5">
           <div className="sticky top-0 z-20 -mx-2 flex items-center justify-between rounded-xl border border-zinc-800 bg-[#101211]/95 p-3 backdrop-blur"><Button variant="ghost" className="gap-2 text-zinc-300 hover:text-white" onClick={closeDetails}><ArrowRight className="h-4 w-4" />بازگشت به فهرست تعهدات</Button><span className="text-sm font-bold">{mode === 'EDIT' ? 'ویرایش تعهد' : 'مشاهده تعهد'}</span></div>
+        <section className="space-y-5">
+          <Button variant="ghost" className="gap-2 text-zinc-400 hover:text-zinc-100" onClick={() => { setMode('LIST'); setSelectedVersionId(null) }}><ArrowRight className="h-4 w-4" />بازگشت به فهرست تعهدات</Button>
           {!selectedVersion ? (
             <div className="rounded-2xl border border-dashed border-zinc-700 bg-[#141615] p-16 text-center text-zinc-500">برای ادامه یک نسخه را انتخاب کنید.</div>
           ) : (
@@ -868,6 +874,7 @@ export default function AdminComplianceStudio() {
                 <div className="mt-5 grid gap-3 md:grid-cols-2">{transitions.map((transition) => <div key={transition.id} className="rounded-xl border border-zinc-700/80 bg-[#1b1e1c] p-4"><div className="flex items-center justify-between gap-3"><p className="font-bold">{transition.title}</p><span className={`rounded-full border px-2.5 py-1 text-[11px] ${transition.trigger_type === 'TIMEOUT' ? 'border-orange-800 bg-orange-950/50 text-orange-300' : transition.trigger_type === 'SYSTEM_EVENT' ? 'border-violet-800 bg-violet-950/50 text-violet-300' : 'border-sky-800 bg-sky-950/50 text-sky-300'}`}>{transitionTriggerLabel(transition.trigger_type)}</span></div><p className="mt-2 text-xs text-zinc-500">خروجی: {transition.outcome_code} · {transition.to_step_id ? 'انتقال به یک مرحله' : `پایان: ${transition.terminal_status}`}</p></div>)}</div>
                 {!transitionSchemaReady && <div className="mt-5 rounded-xl border border-red-800 bg-red-950/30 p-4 text-sm leading-7 text-red-200">جدول مسیرها هنوز در Supabase ایجاد نشده است. ابتدا migration <code dir="ltr">20260818170000_add_branching_workflow_engine.sql</code> را روی پروژه اعمال و Schema Cache را refresh کنید.</div>}
                 {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && transitionSchemaReady && <WorkflowTransitionForm version={selectedVersion} steps={steps} nextPriority={transitions.length + 1} onSaved={loadDefinition} />}
+                {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && <WorkflowTransitionForm version={selectedVersion} steps={steps} nextPriority={transitions.length + 1} onSaved={loadDefinition} />}
               </div>
             </>
           )}
@@ -915,6 +922,7 @@ function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { ver
 
   if (!open) return <Button variant="outline" className="mt-5 w-full border-violet-800 text-violet-300" onClick={() => setOpen(true)}><Plus className="ml-2 h-4 w-4" />افزودن مسیر / خروجی</Button>
   return <div data-studio-dirty="true" className="mt-5 rounded-xl border border-violet-900/60 bg-violet-950/10 p-4"><div className="grid gap-4 md:grid-cols-3"><Field label="مرحله مبدأ"><Select value={fromStepId} onValueChange={setFromStepId}><SelectTrigger><SelectValue placeholder="انتخاب مرحله" /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>{step.sequence}. {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}</SelectContent></Select></Field><Field label="نوع فعال‌سازی"><Select value={triggerType} onValueChange={setTriggerType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="USER_ACTION">اقدام کاربر</SelectItem><SelectItem value="SYSTEM_EVENT">رویداد سیستمی</SelectItem><SelectItem value="TIMEOUT">انقضای خودکار مهلت</SelectItem></SelectContent></Select></Field><Field label="مقصد"><Select value={destination} onValueChange={setDestination}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>مرحله {step.sequence}: {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}<SelectItem value="COMPLETED">پایان موفق پرونده</SelectItem><SelectItem value="CANCELLED">لغو پرونده</SelectItem></SelectContent></Select></Field><Field label="عنوان مسیر"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field><Field label="کد انگلیسی مسیر"><Input dir="ltr" value={code} onChange={(event) => setCode(event.target.value)} placeholder="ASSESSMENT_ISSUED" /></Field><Field label="کد خروجی"><Input dir="ltr" value={outcomeCode} onChange={(event) => setOutcomeCode(event.target.value)} placeholder="DISPUTE_OPENED" /></Field>{triggerType === 'SYSTEM_EVENT' && <Field label="کد رویداد"><Input dir="ltr" value={eventCode} onChange={(event) => setEventCode(event.target.value)} /></Field>}{triggerType === 'TIMEOUT' && <Field label="مهلت (روز)"><Input type="number" min="1" value={timeoutDays} onChange={(event) => setTimeoutDays(event.target.value)} /></Field>}<div className="flex items-end gap-2"><Button className="flex-1 bg-violet-700 hover:bg-violet-600" onClick={() => void save()}>ذخیره مسیر</Button><Button variant="ghost" onClick={() => { if (window.confirm('تغییرات مسیر ذخیره نشده است. خارج می‌شوید؟')) setOpen(false) }}>انصراف</Button></div></div></div>
+  return <div className="mt-5 rounded-xl border border-violet-900/60 bg-violet-950/10 p-4"><div className="grid gap-4 md:grid-cols-3"><Field label="مرحله مبدأ"><Select value={fromStepId} onValueChange={setFromStepId}><SelectTrigger><SelectValue placeholder="انتخاب مرحله" /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>{step.sequence}. {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}</SelectContent></Select></Field><Field label="نوع فعال‌سازی"><Select value={triggerType} onValueChange={setTriggerType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="USER_ACTION">اقدام کاربر</SelectItem><SelectItem value="SYSTEM_EVENT">رویداد سیستمی</SelectItem><SelectItem value="TIMEOUT">انقضای خودکار مهلت</SelectItem></SelectContent></Select></Field><Field label="مقصد"><Select value={destination} onValueChange={setDestination}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>مرحله {step.sequence}: {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}<SelectItem value="COMPLETED">پایان موفق پرونده</SelectItem><SelectItem value="CANCELLED">لغو پرونده</SelectItem></SelectContent></Select></Field><Field label="عنوان مسیر"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field><Field label="کد انگلیسی مسیر"><Input dir="ltr" value={code} onChange={(event) => setCode(event.target.value)} placeholder="ASSESSMENT_ISSUED" /></Field><Field label="کد خروجی"><Input dir="ltr" value={outcomeCode} onChange={(event) => setOutcomeCode(event.target.value)} placeholder="DISPUTE_OPENED" /></Field>{triggerType === 'SYSTEM_EVENT' && <Field label="کد رویداد"><Input dir="ltr" value={eventCode} onChange={(event) => setEventCode(event.target.value)} /></Field>}{triggerType === 'TIMEOUT' && <Field label="مهلت (روز)"><Input type="number" min="1" value={timeoutDays} onChange={(event) => setTimeoutDays(event.target.value)} /></Field>}<div className="flex items-end gap-2"><Button className="flex-1 bg-violet-700 hover:bg-violet-600" onClick={() => void save()}>ذخیره مسیر</Button><Button variant="ghost" onClick={() => setOpen(false)}>انصراف</Button></div></div></div>
 }
 
 function PenaltyForm({ version, onSaved }: { version: Version; onSaved: () => Promise<void> }) {
@@ -940,12 +948,28 @@ function PenaltyForm({ version, onSaved }: { version: Version; onSaved: () => Pr
         const { error: insertError } = await supabase.from('obligation_version_penalties').insert(items.map((item, index) => ({ obligation_version_id: version.id, title: item.title.trim(), penalty_type: item.type, amount: item.type === 'FIXED' ? Number(item.value) : null, rate_percent: item.type === 'FIXED' ? null : Number(item.value), sequence: index + 1 })))
         if (insertError) { toast.error(insertError.message); return }
       }
+  const [type, setType] = useState(penaltyType(version.penalty_rule))
+  const [value, setValue] = useState('')
+
+  const save = async () => {
+    const numberValue = Number(value)
+    if (type !== 'NONE' && (!value || !Number.isFinite(numberValue) || numberValue < 0)) {
+      toast.error('مقدار جریمه باید عددی و غیرمنفی باشد.')
+      return
+    }
+    const rule: Json = type === 'FIXED'
+      ? { type, amount: numberValue }
+      : type === 'PERCENTAGE' || type === 'DAILY_PERCENTAGE'
+        ? { type, rate_percent: numberValue }
+        : { type: 'NONE' }
+    if (isSupabaseConfigured) {
       const { error } = await supabase.from('obligation_versions').update({ penalty_rule: rule }).eq('id', version.id)
       if (error) { toast.error(error.message); return }
     } else {
       mockStudioDb.updateVersionPenalty(version.id, rule)
     }
     toast.success(`${items.length.toLocaleString('fa-IR')} جریمه برای تعهد ذخیره شد.`)
+    toast.success('جریمه تعهد تعیین شد.')
     setOpen(false)
     await onSaved()
   }
@@ -956,11 +980,19 @@ function PenaltyForm({ version, onSaved }: { version: Version; onSaved: () => Pr
       <div className="space-y-3">{items.map((item, index) => <div key={item.id} className="grid gap-3 rounded-lg border border-red-900/40 p-3 sm:grid-cols-[1.4fr,1fr,1fr,auto] sm:items-end"><Field label={`عنوان جریمه ${index + 1}`}><Input value={item.title} onChange={(event) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, title: event.target.value } : row))} /></Field><Field label="نوع"><Select value={item.type} onValueChange={(type) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, type } : row))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="FIXED">مبلغ ثابت</SelectItem><SelectItem value="PERCENTAGE">درصدی</SelectItem><SelectItem value="DAILY_PERCENTAGE">درصد روزانه</SelectItem></SelectContent></Select></Field><Field label={item.type === 'FIXED' ? 'مبلغ (ریال)' : 'نرخ درصد'}><Input type="number" min="0" value={item.value} onChange={(event) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, value: event.target.value } : row))} /></Field><Button variant="ghost" className="text-red-400" onClick={() => setItems((current) => current.filter((row) => row.id !== item.id))}>حذف</Button></div>)}</div>
       <Button variant="outline" className="mt-3 w-full border-red-900 text-red-300" onClick={() => setItems((current) => [...current, { id: crypto.randomUUID(), title: '', type: 'PERCENTAGE', value: '' }])}><Plus className="ml-2 h-4 w-4" />افزودن جریمه دیگر</Button>
       <div className="mt-4 flex gap-2"><Button className="bg-red-800 hover:bg-red-700" onClick={() => void save()}>ذخیره همه جریمه‌ها</Button><Button variant="ghost" onClick={() => { if (!dirty || window.confirm('تغییرات جریمه ذخیره نشده است. خارج می‌شوید؟')) setOpen(false) }}>انصراف</Button></div>
+    <div className="sm:col-span-3 rounded-xl border border-red-950 bg-red-950/10 p-4">
+      <div className="grid gap-3 sm:grid-cols-[1fr,1fr,auto,auto] sm:items-end">
+        <Field label="نوع جریمه"><Select value={type} onValueChange={setType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="NONE">بدون جریمه</SelectItem><SelectItem value="FIXED">مبلغ ثابت</SelectItem><SelectItem value="PERCENTAGE">درصدی</SelectItem><SelectItem value="DAILY_PERCENTAGE">درصد روزانه</SelectItem></SelectContent></Select></Field>
+        {type !== 'NONE' ? <Field label={type === 'FIXED' ? 'مبلغ (ریال)' : 'نرخ درصد'}><Input type="number" min="0" value={value} onChange={(event) => setValue(event.target.value)} /></Field> : <div />}
+        <Button className="bg-red-800 hover:bg-red-700" onClick={() => void save()}>ذخیره جریمه</Button>
+        <Button variant="ghost" onClick={() => setOpen(false)}>انصراف</Button>
+      </div>
     </div>
   )
 }
 
 function FamilyForm({ onSaved, onDirtyChange }: { onSaved: () => Promise<void>; onDirtyChange: (dirty: boolean) => void }) {
+function FamilyForm({ onSaved }: { onSaved: () => Promise<void> }) {
   const [code, setCode] = useState('')
   const [title, setTitle] = useState('')
   const [domain, setDomain] = useState('TAX')
@@ -1386,6 +1418,7 @@ function actorClass(actor: string) { return ({ USER: 'border-sky-800 bg-sky-950/
 function transitionTriggerLabel(trigger: string) { return ({ USER_ACTION: 'اقدام کاربر', SYSTEM_EVENT: 'رویداد سیستمی', TIMEOUT: 'انقضای خودکار' } as Record<string, string>)[trigger] ?? trigger }
 function penaltyItems(value: Json): Array<{ id: string; title: string; type: string; value: string }> { if (!value || Array.isArray(value) || typeof value !== 'object') return []; if (value['type'] === 'MULTIPLE' && Array.isArray(value['items'])) return value['items'].flatMap((item, index) => { if (!item || Array.isArray(item) || typeof item !== 'object') return []; const type = String(item['type'] ?? 'PERCENTAGE'); const amount = type === 'FIXED' ? item['amount'] : item['rate_percent']; return [{ id: String(item['id'] ?? `penalty-${index}`), title: String(item['title'] ?? ''), type, value: amount == null ? '' : String(amount) }] }); const type = String(value['type'] ?? 'NONE'); if (type === 'NONE') return []; return [{ id: 'legacy-penalty', title: 'جریمه قانونی', type, value: String(type === 'FIXED' ? value['amount'] ?? '' : value['rate_percent'] ?? '') }] }
 function penaltyLabel(value: Json) { const items = penaltyItems(value); if (items.length > 1) return `${items.length.toLocaleString('fa-IR')} جریمه تعریف‌شده`; if (items.length === 1) { const item = items[0]; return item.type === 'FIXED' ? `${Number(item.value).toLocaleString('fa-IR')} ریال` : `${Number(item.value).toLocaleString('fa-IR')} درصد${item.type === 'DAILY_PERCENTAGE' ? ' روزانه' : ''}` } return 'بدون جریمه' }
+function penaltyLabel(value: Json) { if (!value || Array.isArray(value) || typeof value !== 'object') return 'تعریف نشده'; const type = String(value['type'] ?? 'NONE'); if (type === 'FIXED') return `${Number(value['amount'] ?? 0).toLocaleString('fa-IR')} ریال`; if (type === 'PERCENTAGE') return `${Number(value['rate_percent'] ?? 0).toLocaleString('fa-IR')} درصد`; if (type === 'DAILY_PERCENTAGE') return `${Number(value['rate_percent'] ?? 0).toLocaleString('fa-IR')} درصد روزانه`; return 'بدون جریمه' }
 function allowedOperators(fact: string) {
   const allowed = booleanFacts.has(fact)
     ? new Set(['IS_TRUE', 'IS_FALSE', 'IS_NULL', 'NOT_NULL'])
