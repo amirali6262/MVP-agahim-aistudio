@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 type ComplianceCase = Tables<'compliance_cases'>
 type CaseTask = Tables<'case_tasks'>
 type WorkflowStep = Tables<'workflow_steps'>
+type WorkflowTransition = Tables<'workflow_transitions'>
 type Notification = Tables<'notifications'>
 type Deadline = Tables<'case_deadlines'>
 type PenaltyEstimate = Tables<'penalty_estimates'>
@@ -32,6 +33,7 @@ interface CaseView {
   step: WorkflowStep | null
   deadline: Deadline | null
   penalty: PenaltyEstimate | null
+  transitions: WorkflowTransition[]
 }
 
 const emptySummary: Summary = { total_cases: 0, open_cases: 0, overdue_cases: 0, completed_cases: 0, unread_notifications: 0, total_estimated_penalties: 0 }
@@ -73,11 +75,12 @@ export default function CompanyComplianceOverview({ tenantId, tenantName }: Prop
     const tasks = tasksResult.data ?? []
     const stepIds = [...new Set(tasks.map((task) => task.workflow_step_id))]
     const obligationIds = [...new Set((versionsResult.data ?? []).map((version) => version.obligation_id))]
-    const [stepsResult, obligationsResult] = await Promise.all([
+    const [stepsResult, obligationsResult, transitionsResult] = await Promise.all([
       stepIds.length ? supabase.from('workflow_steps').select('*').in('id', stepIds) : Promise.resolve({ data: [] as WorkflowStep[], error: null }),
       obligationIds.length ? supabase.from('obligations').select('id, title, authority_name, official_action_url').in('id', obligationIds) : Promise.resolve({ data: [] as Array<{ id: string; title: string; authority_name: string | null; official_action_url: string | null }>, error: null }),
+      stepIds.length ? supabase.from('workflow_transitions').select('*').in('from_step_id', stepIds).eq('trigger_type', 'USER_ACTION').order('priority') : Promise.resolve({ data: [] as WorkflowTransition[], error: null }),
     ])
-    if (stepsResult.error || obligationsResult.error) { toast.error(stepsResult.error?.message ?? obligationsResult.error?.message ?? 'دریافت جزئیات پرونده ناموفق بود.'); setLoading(false); return }
+    if (stepsResult.error || obligationsResult.error || transitionsResult.error) { toast.error(stepsResult.error?.message ?? obligationsResult.error?.message ?? transitionsResult.error?.message ?? 'دریافت جزئیات پرونده ناموفق بود.'); setLoading(false); return }
 
     const stepById = new Map((stepsResult.data ?? []).map((row) => [row.id, row]))
     const taskByCase = firstByCase(tasks)
@@ -97,6 +100,7 @@ export default function CompanyComplianceOverview({ tenantId, tenantName }: Prop
         reason: assessmentById.get(item.assessment_id)?.explanation || 'این تعهد براساس اطلاعات ثبت‌شده کسب‌وکار شما فعال شده است.',
         task, step: task ? stepById.get(task.workflow_step_id) ?? null : null,
         deadline: deadlineByCase.get(item.id) ?? null, penalty: penaltyByCase.get(item.id) ?? null,
+        transitions: task ? (transitionsResult.data ?? []).filter((transition) => transition.from_step_id === task.workflow_step_id) : [],
       }
     })
     setSummary(summaryResult.data?.[0] ?? emptySummary)
@@ -176,27 +180,29 @@ function TaskCard({ view, onCompleted }: { view: CaseView; onCompleted: () => Pr
     <div className="p-5 sm:p-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="mb-2 flex flex-wrap items-center gap-2"><StatusPill status={view.item.status} /><span className="text-xs text-zinc-500">دوره {view.item.period_key}</span></div><h3 className="text-lg font-black">{view.title}</h3>{view.authorityName && <p className="mt-1 text-xs text-zinc-500">مرجع: {view.authorityName}</p>}</div><DeadlineBadge deadline={view.deadline} task={view.task} /></div>
       <div className="mt-5 grid gap-3 md:grid-cols-2"><InfoBox icon={<ShieldCheck />} label="چرا برای من فعال شده؟" value={view.reason} /><InfoBox icon={<ChevronLeft />} label="اقدام بعدی" value={view.step?.title ?? 'در انتظار تعیین مرحله بعد'} highlight /><InfoBox icon={<FileText />} label="مبنای قانونی" value={view.legalReference ?? 'در منبع رسمی این تعهد درج شده است.'} /><InfoBox icon={<ClipboardCheck />} label="وضعیت پرونده" value={statusLabel(view.item.status)} /></div>
       {(officialUrl || view.penalty) && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800 pt-4 text-xs">{view.penalty ? <span className="text-zinc-400">برآورد جریمه: <strong className="text-red-300">{Number(view.penalty.estimated_amount).toLocaleString('fa-IR')} ریال</strong></span> : <span />}{officialUrl && <a href={officialUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-bold text-amber-400 hover:text-amber-300">مشاهده منبع یا سامانه رسمی <ExternalLink className="h-3.5 w-3.5" /></a>}</div>}
-    </div>{view.task && view.step && <TaskForm task={view.task} step={view.step} onCompleted={onCompleted} />}
+    </div>{view.task && view.step && <TaskForm task={view.task} step={view.step} transitions={view.transitions} onCompleted={onCompleted} />}
   </article>
 }
 
-function TaskForm({ task, step, onCompleted }: { task: CaseTask; step: WorkflowStep; onCompleted: () => Promise<void> }) {
+function TaskForm({ task, step, transitions, onCompleted }: { task: CaseTask; step: WorkflowStep; transitions: WorkflowTransition[]; onCompleted: () => Promise<void> }) {
   const fields = useMemo(() => parseFields(step.form_schema), [step.form_schema])
   const [values, setValues] = useState<Record<string, string | number | boolean>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [transitionId, setTransitionId] = useState(transitions.length === 1 ? transitions[0].id : '')
   const submit = async () => {
     const missing = fields.find((field) => field.required && (values[field.key] === undefined || values[field.key] === '' || (field.type === 'checkbox' && values[field.key] !== true)))
     if (missing) return toast.error(`لطفاً «${missing.label}» را تکمیل کنید.`)
     const response: Record<string, Json> = {}
     fields.forEach((field) => { const value = values[field.key]; if (field.type === 'number' && typeof value === 'string' && value !== '') response[field.key] = Number(value); else if (value !== undefined && value !== '') response[field.key] = value })
     setSubmitting(true)
-    const { error } = await supabase.rpc('complete_case_task', { requested_task_id: task.id, requested_response: response })
+    if (!transitionId) { setSubmitting(false); return toast.error('نتیجه این مرحله را انتخاب کنید.') }
+    const { error } = await supabase.rpc('complete_case_task', { requested_task_id: task.id, requested_transition_id: transitionId, requested_response: response })
     setSubmitting(false)
     if (error) return toast.error(error.message)
     toast.success('این کار انجام شد و مرحله بعدی آماده است.')
     await onCompleted()
   }
-  return <div className="border-t border-amber-900/40 bg-amber-950/10 p-5 sm:p-6"><p className="text-xs font-bold text-amber-400">الان چه کاری انجام دهم؟</p><h4 className="mt-1 font-black">{step.title}</h4>{step.instructions && <p className="mt-2 text-sm leading-7 text-zinc-400">{step.instructions}</p>}{fields.length > 0 && <div className="mt-4 grid gap-4 md:grid-cols-2">{fields.map((field) => <DynamicField key={field.key} field={field} value={values[field.key]} onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))} />)}</div>}<Button onClick={submit} disabled={submitting} size="lg" className="mt-5 w-full sm:w-auto">{submitting && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}ثبت انجام کار و ادامه</Button></div>
+  return <div className="border-t border-amber-900/40 bg-amber-950/10 p-5 sm:p-6"><p className="text-xs font-bold text-amber-400">الان چه کاری انجام دهم؟</p><h4 className="mt-1 font-black">{step.title}</h4>{step.instructions && <p className="mt-2 text-sm leading-7 text-zinc-400">{step.instructions}</p>}{fields.length > 0 && <div className="mt-4 grid gap-4 md:grid-cols-2">{fields.map((field) => <DynamicField key={field.key} field={field} value={values[field.key]} onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))} />)}</div>}{transitions.length > 0 && <div className="mt-4 max-w-xl space-y-2"><Label>نتیجه و مسیر بعدی</Label><Select value={transitionId} onValueChange={setTransitionId}><SelectTrigger><SelectValue placeholder="مسیر معتبر را انتخاب کنید" /></SelectTrigger><SelectContent>{transitions.map((transition) => <SelectItem key={transition.id} value={transition.id}>{transition.title}</SelectItem>)}</SelectContent></Select></div>}<Button onClick={submit} disabled={submitting || transitions.length === 0} size="lg" className="mt-5 w-full sm:w-auto">{submitting && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}ثبت نتیجه و ادامه در مسیر انتخاب‌شده</Button></div>
 }
 
 function DynamicField({ field, value, onChange }: { field: FormField; value: string | number | boolean | undefined; onChange: (value: string | boolean) => void }) {
