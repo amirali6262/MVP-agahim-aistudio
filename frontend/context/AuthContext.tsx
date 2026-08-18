@@ -53,6 +53,8 @@ interface AuthContextValue {
   signIn: (identifier: string, password: string) => Promise<{ error: string | null }>
   signInAdmin: (identifier: string, password: string) => Promise<{ error: string | null }>
   signUp: (identifier: string, password: string) => Promise<{ error: string | null; requiresEmailConfirmation?: boolean }>
+  requestPasswordReset: (email: string, redirectPath?: string) => Promise<{ error: string | null }>
+  updatePassword: (password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
 
@@ -63,6 +65,8 @@ const defaultAuthContext: AuthContextValue = {
   signIn: async () => ({ error: 'Auth not initialized' }),
   signInAdmin: async () => ({ error: 'Auth not initialized' }),
   signUp: async () => ({ error: 'Auth not initialized' }),
+  requestPasswordReset: async () => ({ error: 'Auth not initialized' }),
+  updatePassword: async () => ({ error: 'Auth not initialized' }),
   signOut: async () => {},
 }
 
@@ -381,8 +385,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null)
   }
 
+  const requestPasswordReset = async (email: string, redirectPath = '/login?recovery=1'): Promise<{ error: string | null }> => {
+    const trimmed = email.trim().toLowerCase()
+    if (!isSupabaseConfigured) return { error: AUTH_CONFIG_ERROR }
+    if (!isEmailIdentifier(trimmed)) return { error: 'برای بازیابی رمز، ایمیل معتبر وارد کنید.' }
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+      redirectTo: new URL(redirectPath, window.location.origin).toString(),
+    })
+    return { error: error ? translateAuthError(error.message) : null }
+  }
+
+  const updatePassword = async (password: string): Promise<{ error: string | null }> => {
+    if (!isSupabaseConfigured) return { error: AUTH_CONFIG_ERROR }
+    if (password.length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      return { error: 'رمز عبور باید حداقل ۱۰ کاراکتر و شامل حرف انگلیسی و عدد باشد.' }
+    }
+    const { error } = await supabase.auth.updateUser({ password })
+    return { error: error ? translateAuthError(error.message) : null }
+  }
+
   return (
-    <AuthContext.Provider value={{ session, profile, loading, signIn, signInAdmin, signUp, signOut }}>
+    <AuthContext.Provider value={{ session, profile, loading, signIn, signInAdmin, signUp, requestPasswordReset, updatePassword, signOut }}>
       {children}
     </AuthContext.Provider>
   )
