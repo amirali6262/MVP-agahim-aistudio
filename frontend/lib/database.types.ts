@@ -614,6 +614,12 @@ export type Database = {
         }
         Relationships: []
       }
+      obligation_version_penalties: {
+        Row: { amount: number | null; created_at: string; id: string; obligation_version_id: string; penalty_type: string; rate_percent: number | null; sequence: number; title: string; updated_at: string }
+        Insert: { amount?: number | null; created_at?: string; id?: string; obligation_version_id: string; penalty_type: string; rate_percent?: number | null; sequence: number; title: string; updated_at?: string }
+        Update: { amount?: number | null; id?: string; obligation_version_id?: string; penalty_type?: string; rate_percent?: number | null; sequence?: number; title?: string; updated_at?: string }
+        Relationships: []
+      }
       obligation_versions: {
         Row: {
           audience_summary: string | null
