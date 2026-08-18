@@ -75,6 +75,10 @@ jobs:
         if: inputs.mode == 'apply'
         run: supabase db push --linked
 
-      - name: Verify migration history
+      - name: Verify migration parity
         if: inputs.mode == 'apply'
-        run: supabase migration list --linked
+        run: bash scripts/verify-supabase-migrations.sh
+
+      - name: Lint linked database
+        if: inputs.mode == 'apply'
+        run: supabase db lint --linked --level error

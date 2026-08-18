@@ -28,6 +28,21 @@ npx supabase db push
 
 Confirm that local and remote migration versions match before and after `db push`.
 
+After an apply, the guarded deployment workflow verifies that every migration
+version exists in both columns of the linked migration history and runs
+`supabase db lint --linked --level error`. It fails rather than reporting a
+successful deployment when a new table has not reached the linked project.
+
+Run the same parity check from any checkout that has already been linked:
+
+```bash
+bash scripts/verify-supabase-migrations.sh
+```
+
+Deploy database migrations before deploying frontend features that use them.
+The browser publishable key can access objects allowed by RLS, but cannot create
+missing tables or apply migration files.
+
 ## Frontend environment
 
 Create a local `.env` file and keep it out of Git:
