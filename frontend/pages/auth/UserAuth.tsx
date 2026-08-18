@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Eye, EyeOff, Building2 } from 'lucide-react'
+import { Eye, EyeOff, Building2, Shield, Sparkles } from 'lucide-react'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
 import { useAuth } from '../../context/AuthContext'
+import { isMockAuthEnabled } from '../../lib/supabase'
 
 interface Props {
   mode: 'login' | 'register'
@@ -220,6 +221,35 @@ export default function UserAuth({ mode }: Props) {
               isRegister ? 'ایجاد حساب' : 'ورود'
             )}
           </Button>
+
+          {/* Quick Demo Fill if Mock Auth is enabled */}
+          {isMockAuthEnabled && !isRegister && (
+            <div className="mt-2 pt-4 border-t border-zinc-800 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier('user@samaneh.ir')
+                  setPassword('User@1234')
+                  toast.info('اطلاعات کاربر آزمایشی درج شد.')
+                }}
+                className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-zinc-900 border border-emerald-800/40 text-emerald-400 hover:bg-emerald-950/30 text-xs transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                ورود سریع با حساب کاربری آزمایشی (Demo User)
+              </button>
+            </div>
+          )}
+
+          {/* Admin link */}
+          <div className="pt-2 text-center border-t border-zinc-800/60 mt-1">
+            <Link
+              to="/admin/login"
+              className="text-xs text-zinc-500 hover:text-amber-400 inline-flex items-center gap-1.5 transition-colors"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              ورود به پنل مدیریت سیستم (Platform Admin)
+            </Link>
+          </div>
         </form>
       </div>
     </div>

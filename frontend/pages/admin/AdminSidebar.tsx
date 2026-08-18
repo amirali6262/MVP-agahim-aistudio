@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from '../../lib/shadcn/tooltip'
 import { cn } from '../../lib/shadcn/utils'
+import ThemeToggle from '../../components/ThemeToggle'
 
 // ---------------------------------------------------------------------------
 // Menu configuration
@@ -38,8 +39,7 @@ interface MenuSection {
   children: SubItem[]
 }
 
-const DEMO_MODULES_ENABLED =
-  import.meta.env.DEV && import.meta.env['VITE_ENABLE_MOCK_DATA'] === 'true'
+const DEMO_MODULES_ENABLED = true
 
 const CORE_MENU: MenuSection[] = [
   {
@@ -60,11 +60,11 @@ const DEMO_MENU: MenuSection[] = [
     icon: Receipt,
     children: [
       { id: 'tax-corporate', label: 'مالیات بر عملکرد اشخاص حقوقی', path: '/admin/tax/corporate', active: true },
-      { id: 'tax-individual', label: 'مالیات بر عملکرد اشخاص حقیقی', path: null, active: false },
+      { id: 'tax-individual', label: 'مالیات بر عملکرد اشخاص حقیقی', path: '/admin/tax/individual', active: true },
       { id: 'vat', label: 'مالیات بر ارزش افزوده', path: '/admin/tax/vat', active: true },
-      { id: 'payroll-tax', label: 'مالیات بر حقوق', path: null, active: false },
-      { id: 'tax-duties', label: 'مالیات بر تکالیفی', path: null, active: false },
-      { id: 'claim-169', label: 'مطالبه ۱۶۹ مکرر ق.م.م', path: null, active: false },
+      { id: 'payroll-tax', label: 'مالیات بر حقوق', path: '/admin/tax/payroll', active: true },
+      { id: 'tax-duties', label: 'مالیات بر تکالیفی', path: '/admin/tax/duties', active: true },
+      { id: 'claim-169', label: 'مطالبه ۱۶۹ مکرر ق.م.م', path: '/admin/tax/claim169', active: true },
     ],
   },
   {
@@ -104,8 +104,8 @@ const DEMO_MENU: MenuSection[] = [
     label: 'بیمه',
     icon: Shield,
     children: [
-      { id: 'ins-contract', label: 'حق بیمه قراردادها', path: null, active: false },
-      { id: 'ins-audit', label: 'حسابرسی بیمه', path: null, active: false },
+      { id: 'ins-contract', label: 'حق بیمه قراردادها', path: '/admin/insurance/contract', active: true },
+      { id: 'ins-audit', label: 'حسابرسی بیمه', path: '/admin/insurance/audit', active: true },
     ],
   },
 ]
@@ -298,6 +298,11 @@ export default function AdminSidebar({ collapsed, onToggle }: Props) {
           )
         })}
       </nav>
+
+      {/* ── Sidebar Theme Toggle Footer ── */}
+      <div className="p-3 border-t border-zinc-800/80 mt-auto flex-shrink-0">
+        <ThemeToggle className="w-full justify-center" showText={!collapsed} />
+      </div>
     </aside>
   )
 }

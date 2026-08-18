@@ -20,7 +20,60 @@ import {
   TableRow,
 } from '../../../lib/shadcn/table'
 import { mockObjectionTemplatesDb, mockObligationsDb } from '../../../lib/mockDb'
-import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField } from '../../../lib/supabase'
+import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField, TaxTypeOverride } from '../../../lib/supabase'
+
+const DEFAULT_TAX_OVERRIDES: TaxTypeOverride[] = [
+  {
+    tax_type: 'TAX_CORPORATE',
+    tax_type_title: 'مالیات بر عملکرد اشخاص حقوقی',
+    statutory_deadline_override: 30,
+    deadline_unit: 'روز',
+    legal_reference_override: 'ماده ۲۳۸ و ۲۴۴ قانون مالیات‌های مستقیم (مهلت ثبت ۳۰ روز - مهلت توافق ۴۵ روز)',
+    special_tribunal_name: 'هیأت حل اختلاف مالیاتی بدوی و تجدیدنظر (ماده ۲۴۴ و ۲۴۷ ق.م.م)',
+    notes: 'طبق ماده ۱۵۶ ق.م.م، چنانچه ظرف یک سال از تاریخ تسلیم اظهارنامه برگ تشخیص صادر نشود، ارقام ابرازی خودکار قطعی می‌گردد.',
+    is_custom_path_active: true,
+  },
+  {
+    tax_type: 'VAT',
+    tax_type_title: 'مالیات بر ارزش افزوده (قانون دائمی)',
+    statutory_deadline_override: 20,
+    deadline_unit: 'روز',
+    legal_reference_override: 'ماده ۳۴ و ۳۶ قانون دائمی مالیات بر ارزش افزوده و ماده ۲۳۸ ق.م.م',
+    special_tribunal_name: 'هیأت‌های تخصصی حل اختلاف ارزش افزوده و کارگروه اعتبارات مالیاتی',
+    notes: 'مهلت اعتراض به برگ مطالبه ارزش افزوده ظرف ۲۰ روز از تاریخ ابلاغ اداری/الکترونیکی است.',
+    is_custom_path_active: true,
+  },
+  {
+    tax_type: 'SALARY_TAX',
+    tax_type_title: 'مالیات بر درآمد حقوق و مالیات‌های تکلیفی',
+    statutory_deadline_override: 30,
+    deadline_unit: 'روز',
+    legal_reference_override: 'ماده ۸۶ و تبصره ماده ۲۱۶ قانون مالیات‌های مستقیم',
+    special_tribunal_name: 'هیأت حل اختلاف مالیاتی موضوع ماده ۲۱۶ ق.م.م (رسیدگی به شکایات وصول و اجرا)',
+    notes: 'دادرسی در خصوص مطالبه مالیات تکلیفی از پرداخت‌کننده از طریق هیأت ماده ۲۱۶ صورت می‌گیرد.',
+    is_custom_path_active: true,
+  },
+  {
+    tax_type: 'SEASONAL_REPORT',
+    tax_type_title: 'صورت معاملات فصلی (ماده ۱۶۹ مکرر)',
+    statutory_deadline_override: 30,
+    deadline_unit: 'روز',
+    legal_reference_override: 'ماده ۱۶۹ و تبصره‌های ماده ۱۹۲ ق.م.م (جرایم عدم ارسال صورت معاملات)',
+    special_tribunal_name: 'هیأت حل اختلاف مالیاتی بدوی (ماده ۲۴۴ ق.م.م)',
+    notes: 'جرایم عدم ارائه فهرست معاملات مشمول بخشودگی‌های خاص موضوع ماده ۱۹۱ ق.م.م است.',
+    is_custom_path_active: true,
+  },
+  {
+    tax_type: 'INVOICE_SYSTEM',
+    tax_type_title: 'قانون پایانه‌های فروشگاهی و سامانه مؤدیان',
+    statutory_deadline_override: 30,
+    deadline_unit: 'روز',
+    legal_reference_override: 'ماده ۹ و ۱۰ قانون پایانه‌های فروشگاهی و سامانه مؤدیان',
+    special_tribunal_name: 'کارگروه ویژه راهبری سامانه مؤدیان و هیأت ۲۴۴ ق.م.م',
+    notes: 'صورتحساب‌های الکترونیکی ثبت‌شده در سامانه مؤدیان معتبر بوده و رسیدگی خارج از سامانه ممنوع است.',
+    is_custom_path_active: true,
+  },
+]
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import ObjectionTimelineModal from '../../../components/ObjectionTimelineModal'
 import ObjectionFlowDiagramModal from '../../../components/ObjectionFlowDiagramModal'
@@ -143,7 +196,9 @@ export default function ObjectionTemplatesPage() {
 
   // Form State
   const [templateName, setTemplateName] = useState('')
+  const [isBaseTemplate, setIsBaseTemplate] = useState(true)
   const [steps, setSteps] = useState<ObjectionStep[]>([])
+  const [taxOverrides, setTaxOverrides] = useState<TaxTypeOverride[]>(DEFAULT_TAX_OVERRIDES)
   const [selectedObligationIds, setSelectedObligationIds] = useState<string[]>([])
 
   // Step Fields Modal State
@@ -183,6 +238,12 @@ export default function ObjectionTemplatesPage() {
     )
   }
 
+  const handleUpdateTaxOverride = (taxType: string, key: keyof TaxTypeOverride, val: any) => {
+    setTaxOverrides((prev) =>
+      prev.map((item) => (item.tax_type === taxType ? { ...item, [key]: val } : item))
+    )
+  }
+
   const loadData = () => {
     setTemplates(mockObjectionTemplatesDb.getAll())
     setAllObligations(mockObligationsDb.getAll())
@@ -199,7 +260,9 @@ export default function ObjectionTemplatesPage() {
     if (tmpl) {
       setEditingTemplate(tmpl)
       setTemplateName(tmpl.template_name)
+      setIsBaseTemplate(tmpl.is_base_template ?? true)
       setSteps(tmpl.steps || [])
+      setTaxOverrides(tmpl.tax_type_overrides || DEFAULT_TAX_OVERRIDES)
       const linked = obligations
         .filter((o) => o.objection_template_id === tmpl.id)
         .map((o) => o.id)
@@ -208,6 +271,7 @@ export default function ObjectionTemplatesPage() {
     } else {
       setEditingTemplate(null)
       setTemplateName('')
+      setIsBaseTemplate(true)
       setSteps([
         {
           id: 'step-' + Date.now(),
@@ -217,6 +281,7 @@ export default function ObjectionTemplatesPage() {
           gap_unit: 'روز',
         },
       ])
+      setTaxOverrides(DEFAULT_TAX_OVERRIDES)
       setSelectedObligationIds([])
       setIsCreating(true)
     }
@@ -227,6 +292,7 @@ export default function ObjectionTemplatesPage() {
     setIsCreating(false)
     setTemplateName('')
     setSteps([])
+    setTaxOverrides(DEFAULT_TAX_OVERRIDES)
     setSelectedObligationIds([])
   }
 
@@ -352,12 +418,16 @@ export default function ObjectionTemplatesPage() {
     if (editingTemplate) {
       mockObjectionTemplatesDb.update(editingTemplate.id, {
         template_name: templateName.trim(),
+        is_base_template: isBaseTemplate,
         steps,
+        tax_type_overrides: taxOverrides,
       })
     } else {
       const created = mockObjectionTemplatesDb.insert({
         template_name: templateName.trim(),
+        is_base_template: isBaseTemplate,
         steps,
+        tax_type_overrides: taxOverrides,
       })
       templateId = created.id
     }
@@ -896,6 +966,111 @@ export default function ObjectionTemplatesPage() {
                       </div>
                     )
                   })}
+                </div>
+              </div>
+
+              {/* ── بخش بازنویسی الگوی پایه برای انواع مختلف مالیات (Tax-Specific Overrides) ── */}
+              <div className="pt-6 mt-6 border-t border-zinc-800 flex flex-col gap-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h3 className="text-purple-300 font-bold text-sm flex items-center gap-2">
+                      <Scale className="w-4 h-4 text-purple-400" />
+                      تنظیمات بازنویسی و مهلت‌های قانونی بر اساس نوع مالیات (Tax-Specific Overrides)
+                    </h3>
+                    <p className="text-zinc-400 text-xs mt-0.5">
+                      الگوی پایه دادرسی به‌صورت پیش‌فرض برای تمامی پرونده‌ها اعمال می‌شود، اما می‌توانید برای هر نوع مالیات مهلت‌ها، مراجع اختصاصی و ارجاعات قانونی را بازنویسی (Override) نمایید.
+                    </p>
+                  </div>
+                  <span className="text-xs text-purple-300 bg-purple-950/60 border border-purple-800 px-3 py-1 rounded-full font-medium">
+                    {taxOverrides.length} نوع مالیات تعریف‌شده
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3.5">
+                  {taxOverrides.map((ov) => (
+                    <div
+                      key={ov.tax_type}
+                      className="bg-zinc-950/70 border border-zinc-800/80 hover:border-purple-800/60 rounded-xl p-4 flex flex-col gap-3 transition-colors shadow-xs"
+                    >
+                      <div className="flex items-center justify-between border-b border-zinc-800/60 pb-2.5 flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
+                          <span className="font-bold text-xs text-zinc-100">{ov.tax_type_title}</span>
+                          <span className="font-mono text-[10px] text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                            {ov.tax_type}
+                          </span>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={ov.is_custom_path_active !== false}
+                            onChange={(e) =>
+                              handleUpdateTaxOverride(ov.tax_type, 'is_custom_path_active', e.target.checked)
+                            }
+                            className="w-3.5 h-3.5 accent-purple-500 rounded"
+                          />
+                          <span>فعال‌سازی مسیر و مهلت‌های اختصاصی</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div className="flex flex-col gap-1">
+                          <Label className="text-zinc-400 text-[11px]">مهلت قانونی ثبت اعتراض</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              value={ov.statutory_deadline_override ?? 30}
+                              onChange={(e) =>
+                                handleUpdateTaxOverride(
+                                  ov.tax_type,
+                                  'statutory_deadline_override',
+                                  parseInt(e.target.value, 10) || 0
+                                )
+                              }
+                              className="bg-zinc-900 border-zinc-700 text-purple-300 font-mono font-bold h-8 text-xs text-center"
+                            />
+                            <span className="text-zinc-400 text-xs shrink-0">روز</span>
+                          </div>
+                        </div>
+
+                        <div className="sm:col-span-2 flex flex-col gap-1">
+                          <Label className="text-zinc-400 text-[11px]">استناد قانونی اختصاصی</Label>
+                          <Input
+                            value={ov.legal_reference_override || ''}
+                            onChange={(e) =>
+                              handleUpdateTaxOverride(ov.tax_type, 'legal_reference_override', e.target.value)
+                            }
+                            placeholder="مثال: ماده ۳۴ قانون دائمی مالیات بر ارزش افزوده"
+                            className="bg-zinc-900 border-zinc-700 text-zinc-200 h-8 text-xs"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-3 flex flex-col gap-1">
+                          <Label className="text-zinc-400 text-[11px]">مرجع و هیأت حل اختلاف تخصصی</Label>
+                          <Input
+                            value={ov.special_tribunal_name || ''}
+                            onChange={(e) =>
+                              handleUpdateTaxOverride(ov.tax_type, 'special_tribunal_name', e.target.value)
+                            }
+                            placeholder="مثال: هیأت تخصصی ارزش افزوده / هیأت ۲۱۶ ق.م.م"
+                            className="bg-zinc-900 border-zinc-700 text-zinc-200 h-8 text-xs"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-3 flex flex-col gap-1">
+                          <Label className="text-zinc-400 text-[11px]">نکات و شرایط قانونی رسیدگی</Label>
+                          <Input
+                            value={ov.notes || ''}
+                            onChange={(e) =>
+                              handleUpdateTaxOverride(ov.tax_type, 'notes', e.target.value)
+                            }
+                            placeholder="ملاحظات قانونی، قطعیت خودکار ماده ۱۵۶ یا شرایط خاص..."
+                            className="bg-zinc-900 border-zinc-700 text-zinc-300 h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 

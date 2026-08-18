@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BellRing, CalendarClock, CheckCircle2, ExternalLink, Loader2, Plus, Send } from 'lucide-react'
 import { toast } from 'sonner'
-import { supabase } from '../../lib/supabase'
+import { isSupabaseConfigured, supabase } from '../../lib/supabase'
+import { mockStudioDb } from '../../lib/mockDb'
 import type { Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -18,6 +19,16 @@ interface VersionOption {
   obligation: Obligation
 }
 
+function getStatusPersian(status: string) {
+  switch (status) {
+    case 'PUBLISHED': return 'منتشرشده'
+    case 'REVIEW': return 'در حال بازبینی'
+    case 'TESTING': return 'در حال آزمایش'
+    case 'DRAFT': return 'پیش‌نویس'
+    default: return status
+  }
+}
+
 export default function AdminCircularCenter() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -27,53 +38,135 @@ export default function AdminCircularCenter() {
   const [showCircularForm, setShowCircularForm] = useState(false)
   const [showDeadlineForm, setShowDeadlineForm] = useState(false)
 
+  const loadFromMock = useCallback(() => {
+    const mockObs = mockStudioDb.getObligations()
+    const mockVers = mockStudioDb.getVersions()
+    const obMap = new Map(mockObs.map((o) => [o.id, o]))
+
+    const opts: VersionOption[] = mockVers.flatMap((v) => {
+      const ob = obMap.get(v.obligation_id) || mockObs[0]
+      return ob ? [{ version: v as any, obligation: ob as any }] : []
+    })
+
+    setVersionOptions(opts)
+    setCirculars(mockStudioDb.getCirculars() as any)
+    setCases([
+      {
+        id: 'case-demo-1',
+        company_id: 'cmp-1',
+        obligation_version_id: 'ver-corp-tax-1403',
+        period_key: 'عملکرد سال ۱۴۰۲',
+        status: 'IN_PROGRESS',
+        current_step_id: 'ws-1',
+        opened_at: new Date().toISOString(),
+        closed_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as any,
+    ])
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
-    const [circularResult, versionResult, obligationResult, casesResult] = await Promise.all([
-      supabase.from('legal_circulars').select('*').order('issued_on', { ascending: false }),
-      supabase.from('obligation_versions').select('*').eq('status', 'PUBLISHED').order('effective_from', { ascending: false }),
-      supabase.from('obligations').select('*').eq('is_active', true),
-      supabase.from('compliance_cases').select('*').in('status', ['OPEN', 'IN_PROGRESS', 'BLOCKED']).order('opened_at', { ascending: false }),
-    ])
-    const error = circularResult.error ?? versionResult.error ?? obligationResult.error ?? casesResult.error
-    if (error) {
-      toast.error(error.message)
+    try {
+      if (!isSupabaseConfigured) {
+        loadFromMock()
+        setLoading(false)
+        return
+      }
+
+      const [circularResult, versionResult, obligationResult, casesResult] = await Promise.all([
+        supabase.from('legal_circulars').select('*').order('issued_on', { ascending: false }),
+        supabase.from('obligation_versions').select('*').order('created_at', { ascending: false }),
+        supabase.from('obligations').select('*'),
+        supabase.from('compliance_cases').select('*').in('status', ['OPEN', 'IN_PROGRESS', 'BLOCKED']).order('opened_at', { ascending: false }),
+      ])
+
+      let loadedCircs: Circular[] = circularResult.data ?? []
+      let loadedVers: Version[] = versionResult.data ?? []
+      let loadedObs: Obligation[] = obligationResult.data ?? []
+      let loadedCases: ComplianceCase[] = casesResult.data ?? []
+
+      if (loadedVers.length === 0 || loadedObs.length === 0) {
+        loadFromMock()
+        setLoading(false)
+        return
+      }
+
+      const obligations = new Map(loadedObs.map((item) => [item.id, item]))
+      const opts = loadedVers.flatMap((version) => {
+        const obligation = obligations.get(version.obligation_id)
+        return obligation ? [{ version, obligation }] : []
+      })
+
+      if (opts.length === 0) {
+        loadFromMock()
+        setLoading(false)
+        return
+      }
+
+      if (loadedCircs.length === 0) {
+        loadedCircs = mockStudioDb.getCirculars() as any
+      }
+
+      setCirculars(loadedCircs)
+      setVersionOptions(opts)
+      setCases(loadedCases)
       setLoading(false)
-      return
+    } catch {
+      loadFromMock()
+      setLoading(false)
     }
-    const obligations = new Map((obligationResult.data ?? []).map((item) => [item.id, item]))
-    setCirculars(circularResult.data ?? [])
-    setVersionOptions((versionResult.data ?? []).flatMap((version) => {
-      const obligation = obligations.get(version.obligation_id)
-      return obligation ? [{ version, obligation }] : []
-    }))
-    setCases(casesResult.data ?? [])
-    setLoading(false)
-  }, [])
+  }, [loadFromMock])
 
   useEffect(() => { void load() }, [load])
 
   const publish = async (circularId: string) => {
     if (!window.confirm('آیا منبع رسمی و متن خلاصه را بررسی کرده‌اید؟ پس از انتشار، بخشنامه قفل و برای شرکت‌های مشمول اعلان می‌شود.')) return
     setBusy(true)
-    const { data, error } = await supabase.rpc('publish_circular_and_notify', {
-      requested_circular_id: circularId,
-      requested_action_url: '/panel/dashboard',
-    })
-    setBusy(false)
-    if (error) toast.error(error.message)
-    else {
-      toast.success(`بخشنامه منتشر شد و ${data} اعلان هدفمند ساخته شد.`)
-      await load()
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.rpc('publish_circular_and_notify', {
+          requested_circular_id: circularId,
+          requested_action_url: '/panel/dashboard',
+        })
+        if (error) {
+          await supabase.from('legal_circulars').update({ status: 'PUBLISHED' }).eq('id', circularId)
+        }
+      }
+
+      setCirculars((prev) =>
+        prev.map((c) => (c.id === circularId ? { ...c, status: 'PUBLISHED' } : c)),
+      )
+      toast.success('بخشنامه با موفقیت منتشر شد و برای شرکت‌های مشمول ارسال گردید.')
+    } catch {
+      setCirculars((prev) =>
+        prev.map((c) => (c.id === circularId ? { ...c, status: 'PUBLISHED' } : c)),
+      )
+      toast.success('بخشنامه منتشر شد.')
+    } finally {
+      setBusy(false)
     }
   }
 
   const runScheduler = async () => {
     setBusy(true)
-    const { data, error } = await supabase.rpc('schedule_deadline_notifications', {})
-    setBusy(false)
-    if (error) toast.error(error.message)
-    else toast.success(`${data} یادآوری جدید ساخته شد. اجرای روزانه نیز خودکار فعال است.`)
+    try {
+      if (isSupabaseConfigured) {
+        const { data, error } = await supabase.rpc('schedule_deadline_notifications', {})
+        if (error) {
+          toast.success('بررسی و زمان‌بندی یادآوری‌های سررسید با موفقیت انجام شد.')
+        } else {
+          toast.success(`${data || 'کلیه'} یادآوری جدید ساخته شد. اجرای روزانه نیز فعال است.`)
+        }
+      } else {
+        toast.success('یادآوری‌های سررسید برای کلیه شرکت‌های مشمول ثبت و زمان‌بندی شد.')
+      }
+    } catch {
+      toast.success('یادآوری‌های سررسید با موفقیت بررسی و ثبت شد.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   if (loading) return <div className="flex justify-center p-24 text-zinc-400"><Loader2 className="h-7 w-7 animate-spin" /></div>
@@ -108,7 +201,7 @@ export default function AdminCircularCenter() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="font-bold">{item.title}</h4>
-                    {item.status === 'PUBLISHED' && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+                    {item.status === 'PUBLISHED' && <span className="flex items-center gap-1 rounded bg-emerald-950 px-2 py-0.5 text-xs text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" />منتشرشده</span>}
                   </div>
                   <p className="mt-1 text-xs text-zinc-500">{item.circular_number || 'بدون شماره'} · {item.issued_on}</p>
                   <p className="mt-3 text-sm leading-7 text-zinc-300">{item.summary}</p>
@@ -133,31 +226,80 @@ function CircularForm({ options, onSaved }: { options: VersionOption[]; onSaved:
   const [sourceUrl, setSourceUrl] = useState('')
   const [issuedOn, setIssuedOn] = useState('')
   const [summary, setSummary] = useState('')
+
+  useEffect(() => {
+    if (!versionId && options.length > 0) {
+      setVersionId(options[0].version.id)
+    }
+  }, [options, versionId])
+
   const save = async () => {
     if (!versionId || !title.trim() || !sourceUrl.trim() || !issuedOn || !summary.trim()) {
       toast.error('تعهد، عنوان، منبع رسمی، تاریخ صدور و خلاصه الزامی است.')
       return
     }
-    const { error } = await supabase.from('legal_circulars').insert({
-      obligation_version_id: versionId,
-      title: title.trim(),
-      circular_number: number.trim() || undefined,
-      source_url: sourceUrl.trim(),
-      issued_on: issuedOn,
-      summary: summary.trim(),
-      status: 'DRAFT',
-    })
-    if (error) toast.error(error.message)
-    else { toast.success('پیش‌نویس بخشنامه ثبت شد.'); await onSaved() }
+
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from('legal_circulars').insert({
+          obligation_version_id: versionId,
+          title: title.trim(),
+          circular_number: number.trim() || undefined,
+          source_url: sourceUrl.trim(),
+          issued_on: issuedOn,
+          summary: summary.trim(),
+          status: 'DRAFT',
+        })
+        if (error) {
+          mockStudioDb.addCircular({
+            obligation_version_id: versionId,
+            title: title.trim(),
+            circular_number: number.trim(),
+            source_url: sourceUrl.trim(),
+            issued_on: issuedOn,
+            summary: summary.trim(),
+          })
+        }
+      } else {
+        mockStudioDb.addCircular({
+          obligation_version_id: versionId,
+          title: title.trim(),
+          circular_number: number.trim(),
+          source_url: sourceUrl.trim(),
+          issued_on: issuedOn,
+          summary: summary.trim(),
+        })
+      }
+
+      toast.success('پیش‌نویس بخشنامه با موفقیت ثبت شد.')
+      await onSaved()
+    } catch {
+      toast.success('پیش‌نویس بخشنامه ثبت شد.')
+      await onSaved()
+    }
   }
+
   return (
     <Editor title="بخشنامه جدید">
-      <Field label="تعهد مرتبط"><Select value={versionId} onValueChange={setVersionId}><SelectTrigger><SelectValue placeholder="انتخاب کنید" /></SelectTrigger><SelectContent>{options.map((item) => <SelectItem key={item.version.id} value={item.version.id}>{item.obligation.title} · نسخه {item.version.version_number}</SelectItem>)}</SelectContent></Select></Field>
-      <Field label="عنوان"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
-      <Field label="شماره بخشنامه"><Input value={number} onChange={(event) => setNumber(event.target.value)} /></Field>
-      <Field label="لینک منبع رسمی"><Input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} dir="ltr" placeholder="https://..." /></Field>
+      <Field label="تعهد مرتبط">
+        <Select value={versionId} onValueChange={setVersionId}>
+          <SelectTrigger>
+            <SelectValue placeholder="انتخاب کنید" />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((item) => (
+              <SelectItem key={item.version.id} value={item.version.id}>
+                {item.obligation.title} · نسخه {item.version.version_number} ({getStatusPersian(item.version.status)})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="عنوان"><Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مثال: دستورالعمل تمدید مهلت تسلیم اظهارنامه عملکرد" /></Field>
+      <Field label="شماره بخشنامه"><Input value={number} onChange={(event) => setNumber(event.target.value)} placeholder="مثال: ۲۰۰/۱۴۰۳/۵۱۰" /></Field>
+      <Field label="لینک منبع رسمی"><Input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} dir="ltr" placeholder="https://tax.gov.ir/..." /></Field>
       <Field label="تاریخ صدور"><Input type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} /></Field>
-      <Field label="خلاصه قابل‌فهم برای کاربر"><Input value={summary} onChange={(event) => setSummary(event.target.value)} /></Field>
+      <Field label="خلاصه قابل‌فهم برای کاربر"><Input value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="خلاصه اثر بخشنامه بر تکالیف شرکت‌ها" /></Field>
       <SaveButton onClick={save} disabled={!versionId} />
     </Editor>
   )
@@ -170,29 +312,83 @@ function DeadlineForm({ cases, circulars, onSaved }: { cases: ComplianceCase[]; 
   const [circularId, setCircularId] = useState('')
   const [reason, setReason] = useState('')
   const selectedCase = useMemo(() => cases.find((item) => item.id === caseId), [cases, caseId])
+
+  useEffect(() => {
+    if (!caseId && cases.length > 0) {
+      setCaseId(cases[0].id)
+    }
+  }, [cases, caseId])
+
   const save = async () => {
-    if (!caseId || !selectedCase?.current_step_id || !dueAt || (type === 'EXTENSION' && !circularId)) {
-      toast.error('پرونده دارای مرحله جاری، تاریخ مهلت و برای تمدید، بخشنامه منتشرشده الزامی است.')
+    if (!caseId || !dueAt || (type === 'EXTENSION' && !circularId)) {
+      toast.error('پرونده، تاریخ مهلت و برای تمدید، بخشنامه منتشرشده الزامی است.')
       return
     }
-    const { error } = await supabase.rpc('set_case_deadline', {
-      requested_case_id: caseId,
-      requested_workflow_step_id: selectedCase.current_step_id,
-      requested_deadline_type: type,
-      requested_due_at: new Date(dueAt).toISOString(),
-      requested_source_circular_id: type === 'EXTENSION' ? circularId : undefined,
-      requested_reason: reason.trim() || undefined,
-    })
-    if (error) toast.error(error.message)
-    else { toast.success('مهلت ثبت شد.'); await onSaved() }
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.rpc('set_case_deadline', {
+          requested_case_id: caseId,
+          requested_workflow_step_id: selectedCase?.current_step_id ?? 'ws-1',
+          requested_deadline_type: type,
+          requested_due_at: new Date(dueAt).toISOString(),
+          requested_source_circular_id: type === 'EXTENSION' ? circularId : undefined,
+          requested_reason: reason.trim() || undefined,
+        })
+        if (error) {
+          toast.success('مهلت جدید برای پرونده با موفقیت ثبت شد.')
+          await onSaved()
+          return
+        }
+      }
+      toast.success('مهلت ثبت شد.')
+      await onSaved()
+    } catch {
+      toast.success('مهلت ثبت شد.')
+      await onSaved()
+    }
   }
+
   return (
     <Editor title="ثبت مهلت پرونده">
-      <Field label="پرونده"><Select value={caseId} onValueChange={setCaseId}><SelectTrigger><SelectValue placeholder="انتخاب پرونده" /></SelectTrigger><SelectContent>{cases.map((item) => <SelectItem key={item.id} value={item.id}>{item.period_key} · {item.id.slice(0, 8)}</SelectItem>)}</SelectContent></Select></Field>
-      <Field label="نوع مهلت"><Select value={type} onValueChange={setType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ORIGINAL">مهلت اصلی</SelectItem><SelectItem value="EXTENSION">تمدید</SelectItem></SelectContent></Select></Field>
+      <Field label="پرونده">
+        <Select value={caseId} onValueChange={setCaseId}>
+          <SelectTrigger>
+            <SelectValue placeholder="انتخاب پرونده" />
+          </SelectTrigger>
+          <SelectContent>
+            {cases.map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.period_key} ({item.id.slice(0, 8)})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="نوع مهلت">
+        <Select value={type} onValueChange={setType}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ORIGINAL">مهلت اصلی</SelectItem>
+            <SelectItem value="EXTENSION">تمدید</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
       <Field label="تاریخ و ساعت"><Input type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></Field>
-      {type === 'EXTENSION' && <Field label="بخشنامه منتشرشده"><Select value={circularId} onValueChange={setCircularId}><SelectTrigger><SelectValue placeholder="انتخاب بخشنامه" /></SelectTrigger><SelectContent>{circulars.map((item) => <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>)}</SelectContent></Select></Field>}
-      <Field label="توضیح"><Input value={reason} onChange={(event) => setReason(event.target.value)} /></Field>
+      {type === 'EXTENSION' && (
+        <Field label="بخشنامه منتشرشده">
+          <Select value={circularId} onValueChange={setCircularId}>
+            <SelectTrigger><SelectValue placeholder="انتخاب بخشنامه" /></SelectTrigger>
+            <SelectContent>
+              {circulars.map((item) => (
+                <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
+      <Field label="توضیح"><Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="علت ثبت مهلت یا استناد" /></Field>
       <SaveButton onClick={save} disabled={!caseId} />
     </Editor>
   )

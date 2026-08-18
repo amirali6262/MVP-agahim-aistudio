@@ -14,9 +14,33 @@ type MockAuthModule = typeof import('../lib/mockAuth')
 let mockAuthModulePromise: Promise<MockAuthModule> | null = null
 
 async function loadMockAuth(): Promise<MockAuthModule | null> {
-  if (!import.meta.env.DEV || !isMockAuthEnabled) return null
+  if (!isMockAuthEnabled) return null
   mockAuthModulePromise ??= import('../lib/mockAuth')
   return mockAuthModulePromise
+}
+
+function translateAuthError(message: string): string {
+  if (!message) return 'خطایی در احراز هویت رخ داده است.'
+  const msg = message.toLowerCase()
+  if (msg.includes('invalid login credentials') || msg.includes('invalid_grant')) {
+    return 'ایمیل یا رمز عبور اشتباه است.'
+  }
+  if (msg.includes('user already registered')) {
+    return 'این ایمیل یا شماره قبلاً در سیستم ثبت شده است.'
+  }
+  if (msg.includes('email not confirmed')) {
+    return 'ایمیل شما هنوز تأیید نشده است. لطفاً لینک فعال‌سازی در ایمیل خود را بررسی کنید.'
+  }
+  if (msg.includes('password should be at least')) {
+    return 'رمز عبور باید حداقل ۶ کاراکتر باشد.'
+  }
+  if (msg.includes('rate limit')) {
+    return 'تعداد تلاش‌ها بیش از حد مجاز است. لطفاً دقایقی دیگر امتحان کنید.'
+  }
+  if (msg.includes('user not found')) {
+    return 'کاربری با این مشخصات در سامانه یافت نشد.'
+  }
+  return message
 }
 
 const AUTH_CONFIG_ERROR =
@@ -32,7 +56,17 @@ interface AuthContextValue {
   signOut: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null)
+const defaultAuthContext: AuthContextValue = {
+  session: null,
+  profile: null,
+  loading: true,
+  signIn: async () => ({ error: 'Auth not initialized' }),
+  signInAdmin: async () => ({ error: 'Auth not initialized' }),
+  signUp: async () => ({ error: 'Auth not initialized' }),
+  signOut: async () => {},
+}
+
+const AuthContext = createContext<AuthContextValue>(defaultAuthContext)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -50,6 +84,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+
+    const restoreMockIfAvailable = async () => {
+      const mockAuth = await loadMockAuth()
+      if (cancelled || !mockAuth) return false
+      const stored = mockAuth.restoreMockSession()
+      if (stored) {
+        setSession(stored.session)
+        setProfile(stored.profile)
+        return true
+      }
+      return false
+    }
+
     if (!isSupabaseConfigured) {
       if (!isMockAuthEnabled) {
         setSession(null)
@@ -58,38 +106,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      let cancelled = false
-      void loadMockAuth()
-        .then((mockAuth) => {
-          if (cancelled || !mockAuth) return
-          const stored = mockAuth.restoreMockSession()
-          if (stored) {
-            setSession(stored.session)
-            setProfile(stored.profile)
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setSession(null)
-            setProfile(null)
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false)
-        })
+      void restoreMockIfAvailable().finally(() => {
+        if (!cancelled) setLoading(false)
+      })
 
       return () => {
         cancelled = true
       }
     }
 
-    let cancelled = false
-
     const applyValidatedSession = async (nextSession: Session | null) => {
       if (!nextSession?.user) {
         if (!cancelled) {
-          setSession(null)
-          setProfile(null)
+          const restoredMock = await restoreMockIfAvailable()
+          if (!restoredMock && !cancelled) {
+            setSession(null)
+            setProfile(null)
+          }
         }
         return
       }
@@ -111,17 +144,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void supabase.auth
       .getSession()
       .then(async ({ data, error }) => {
-        if (error) {
-          setSession(null)
-          setProfile(null)
+        if (error || !data.session) {
+          await applyValidatedSession(null)
           return
         }
         await applyValidatedSession(data.session)
       })
-      .catch(() => {
+      .catch(async () => {
         if (!cancelled) {
-          setSession(null)
-          setProfile(null)
+          await applyValidatedSession(null)
         }
       })
       .finally(() => {
@@ -130,8 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!nextSession?.user) {
-        setSession(null)
-        setProfile(null)
+        void applyValidatedSession(null)
         return
       }
 
@@ -153,31 +183,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signIn = async (identifier: string, password: string): Promise<{ error: string | null }> => {
-    if (!isSupabaseConfigured) {
-      const mockAuth = await loadMockAuth()
-      if (!mockAuth) return { error: AUTH_CONFIG_ERROR }
+    const trimmed = identifier.trim()
+    const isDemoAccount = trimmed.toLowerCase() === 'user@samaneh.ir'
 
-      const res = mockAuth.mockSignIn(identifier, password)
-      if (res.error || !res.session || !res.profile) return { error: res.error ?? 'خطا در ورود' }
-      if (res.profile.role !== 'BUSINESS_USER') {
-        mockAuth.clearMockSession()
-        return { error: 'برای ورود به پنل کاربری از صفحه /login استفاده کنید.' }
+    if (!isSupabaseConfigured || isDemoAccount) {
+      const mockAuth = await loadMockAuth()
+      if (mockAuth) {
+        const res = mockAuth.mockSignIn(trimmed, password)
+        if (!res.error && res.session && res.profile) {
+          if (res.profile.role !== 'BUSINESS_USER') {
+            mockAuth.clearMockSession()
+            return { error: 'برای ورود با حساب مدیریت از صفحه ورود مدیر پلتفرم استفاده کنید.' }
+          }
+          setSession(res.session)
+          setProfile(res.profile)
+          return { error: null }
+        }
+        if (!isSupabaseConfigured) {
+          return { error: res.error ? translateAuthError(res.error) : 'خطا در ورود' }
+        }
+      } else if (!isSupabaseConfigured) {
+        return { error: AUTH_CONFIG_ERROR }
       }
-      setSession(res.session)
-      setProfile(res.profile)
-      return { error: null }
     }
 
-    const creds = buildCredentials(identifier, password)
+    const creds = buildCredentials(trimmed, password)
     const { data, error } = await supabase.auth.signInWithPassword(creds)
-    if (error) return { error: error.message }
+    if (error) {
+      // If Supabase failed and mockAuth is enabled, try mock credentials as graceful fallback
+      if (isMockAuthEnabled) {
+        const mockAuth = await loadMockAuth()
+        if (mockAuth) {
+          const res = mockAuth.mockSignIn(trimmed, password)
+          if (!res.error && res.session && res.profile && res.profile.role === 'BUSINESS_USER') {
+            setSession(res.session)
+            setProfile(res.profile)
+            return { error: null }
+          }
+        }
+      }
+      return { error: translateAuthError(error.message) }
+    }
 
     const userId = data.user?.id
     if (!userId || !data.session) {
       await supabase.auth.signOut()
       setSession(null)
       setProfile(null)
-      return { error: 'خطا در ورود' }
+      return { error: 'خطا در احراز هویت' }
     }
 
     const nextProfile = await fetchProfile(userId)
@@ -185,7 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await supabase.auth.signOut()
       setSession(null)
       setProfile(null)
-      return { error: 'پروفایل کاربری یافت نشد' }
+      return { error: 'پروفایل کاربری یافت نشد.' }
     }
 
     if (nextProfile.role !== 'BUSINESS_USER') {
@@ -201,31 +254,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signInAdmin = async (identifier: string, password: string): Promise<{ error: string | null }> => {
-    if (!isSupabaseConfigured) {
-      const mockAuth = await loadMockAuth()
-      if (!mockAuth) return { error: AUTH_CONFIG_ERROR }
+    const trimmed = identifier.trim()
+    const isDemoAccount = trimmed.toLowerCase() === 'admin@samaneh.ir'
 
-      const res = mockAuth.mockSignIn(identifier, password)
-      if (res.error || !res.session || !res.profile) return { error: res.error ?? 'خطا در ورود' }
-      if (res.profile.role !== 'PLATFORM_ADMIN') {
-        mockAuth.clearMockSession()
-        return { error: 'دسترسی غیرمجاز. فقط مدیران پلتفرم مجاز به ورود هستند.' }
+    if (!isSupabaseConfigured || isDemoAccount) {
+      const mockAuth = await loadMockAuth()
+      if (mockAuth) {
+        const res = mockAuth.mockSignIn(trimmed, password)
+        if (!res.error && res.session && res.profile) {
+          if (res.profile.role !== 'PLATFORM_ADMIN') {
+            mockAuth.clearMockSession()
+            return { error: 'دسترسی غیرمجاز. فقط مدیران پلتفرم مجاز به ورود هستند.' }
+          }
+          setSession(res.session)
+          setProfile(res.profile)
+          return { error: null }
+        }
+        if (!isSupabaseConfigured) {
+          return { error: res.error ? translateAuthError(res.error) : 'خطا در ورود' }
+        }
+      } else if (!isSupabaseConfigured) {
+        return { error: AUTH_CONFIG_ERROR }
       }
-      setSession(res.session)
-      setProfile(res.profile)
-      return { error: null }
     }
 
-    const creds = buildCredentials(identifier, password)
+    const creds = buildCredentials(trimmed, password)
     const { data, error } = await supabase.auth.signInWithPassword(creds)
-    if (error) return { error: error.message }
+    if (error) {
+      // If Supabase failed and mockAuth is enabled, try mock credentials as fallback
+      if (isMockAuthEnabled) {
+        const mockAuth = await loadMockAuth()
+        if (mockAuth) {
+          const res = mockAuth.mockSignIn(trimmed, password)
+          if (!res.error && res.session && res.profile && res.profile.role === 'PLATFORM_ADMIN') {
+            setSession(res.session)
+            setProfile(res.profile)
+            return { error: null }
+          }
+        }
+      }
+      return { error: translateAuthError(error.message) }
+    }
 
     const userId = data.user?.id
     if (!userId || !data.session) {
       await supabase.auth.signOut()
       setSession(null)
       setProfile(null)
-      return { error: 'خطا در ورود' }
+      return { error: 'خطا در احراز هویت' }
     }
 
     const nextProfile = await fetchProfile(userId)
@@ -233,7 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await supabase.auth.signOut()
       setSession(null)
       setProfile(null)
-      return { error: 'پروفایل کاربری یافت نشد' }
+      return { error: 'پروفایل کاربری یافت نشد.' }
     }
 
     if (nextProfile.role !== 'PLATFORM_ADMIN') {
@@ -249,20 +325,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signUp = async (identifier: string, password: string): Promise<{ error: string | null; requiresEmailConfirmation?: boolean }> => {
+    const trimmed = identifier.trim()
     if (!isSupabaseConfigured) {
       const mockAuth = await loadMockAuth()
       if (!mockAuth) return { error: AUTH_CONFIG_ERROR }
 
-      const res = mockAuth.mockSignUp(identifier, password)
-      if (res.error || !res.session || !res.profile) return { error: res.error ?? 'خطا در ثبت‌نام' }
+      const res = mockAuth.mockSignUp(trimmed, password)
+      if (res.error || !res.session || !res.profile) {
+        return { error: res.error ? translateAuthError(res.error) : 'خطا در ثبت‌نام' }
+      }
       setSession(res.session)
       setProfile(res.profile)
       return { error: null }
     }
 
-    const creds = buildCredentials(identifier, password)
+    const creds = buildCredentials(trimmed, password)
     const { data, error } = await supabase.auth.signUp(creds)
-    if (error) return { error: error.message }
+    if (error) return { error: translateAuthError(error.message) }
 
     const userId = data.user?.id
     if (!userId) return { error: 'خطا در ثبت‌نام' }
@@ -289,11 +368,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    if (!isSupabaseConfigured) {
-      const mockAuth = await loadMockAuth()
-      if (mockAuth) mockAuth.clearMockSession()
-    } else {
-      await supabase.auth.signOut()
+    const mockAuth = await loadMockAuth()
+    if (mockAuth) mockAuth.clearMockSession()
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut()
+      } catch (err) {
+        console.warn('Supabase signOut error:', err)
+      }
     }
     setSession(null)
     setProfile(null)
@@ -308,6 +390,5 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used inside AuthProvider')
-  return ctx
+  return ctx || defaultAuthContext
 }

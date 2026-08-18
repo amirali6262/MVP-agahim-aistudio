@@ -8,11 +8,14 @@ import type { Database, Tables } from './database.types'
 const supabaseUrl = (import.meta.env['VITE_SUPABASE_URL'] as string | undefined) ?? ''
 const supabasePublishableKey = (import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] as string | undefined) ?? ''
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey)
+export const isSupabaseConfigured = Boolean(
+  supabaseUrl &&
+  supabasePublishableKey &&
+  !supabaseUrl.includes('placeholder') &&
+  !supabasePublishableKey.includes('placeholder')
+)
 
 export const isMockAuthEnabled =
-  import.meta.env.DEV &&
-  !isSupabaseConfigured &&
   import.meta.env['VITE_ENABLE_MOCK_AUTH'] !== 'false'
 
 export const supabase = createClient<Database>(
@@ -101,6 +104,29 @@ export type StepActor =
   | 'TAX_AUTHORITY'  // سازمان امور مالیاتی / هیأت‌های حل اختلاف
   | 'COURT_DIVAN'     // دیوان عدالت اداری
 
+export type TransitionTriggerType = 'USER_ACTION' | 'TIMEOUT_AUTO'
+
+export type TransitionTargetType =
+  | 'STEP'
+  | 'LOOP_PREVIOUS'
+  | 'TERMINAL_AGREED'
+  | 'TERMINAL_SETTLED'
+  | 'TERMINAL_EXPIRED'
+  | 'TERMINAL_FINAL'
+
+export interface StepTransition {
+  id: string
+  title: string
+  trigger_type: TransitionTriggerType
+  timeout_days?: number
+  timeout_desc?: string
+  target_type: TransitionTargetType
+  target_step_id?: string
+  action_label?: string
+  legal_reference?: string
+  description?: string
+}
+
 export interface ObjectionStep {
   id: string
   title: string
@@ -110,15 +136,31 @@ export interface ObjectionStep {
   step_nature?: ObjectionStepNature
   actor?: StepActor
   note?: string
+  legal_basis?: string
   fields?: WorkflowStepField[]
   is_skippable?: boolean
   skip_reasons?: string[]
+  transitions?: StepTransition[]
+}
+
+export interface TaxTypeOverride {
+  tax_type: 'TAX_CORPORATE' | 'VAT' | 'SALARY_TAX' | 'SEASONAL_REPORT' | 'INVOICE_SYSTEM'
+  tax_type_title: string
+  statutory_deadline_override?: number
+  deadline_unit?: string
+  legal_reference_override?: string
+  special_tribunal_name?: string
+  notes?: string
+  is_custom_path_active?: boolean
 }
 
 export interface ObjectionTemplate {
   id: string
   template_name: string
+  description?: string
+  is_base_template?: boolean
   steps: ObjectionStep[]
+  tax_type_overrides?: TaxTypeOverride[]
   created_at?: string
 }
 

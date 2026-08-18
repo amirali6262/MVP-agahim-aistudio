@@ -9,6 +9,7 @@ import { mockTenantsDb } from '../../lib/mockDb'
 import type { Tenant, UserTenantWithTenant } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
+import ThemeToggle from '../../components/ThemeToggle'
 
 interface Props {
   onAddNew: () => void
@@ -85,28 +86,30 @@ export default function TenantSwitcher({ onAddNew }: Props) {
   })
 
   return (
-    <div className="min-h-screen p-6 max-w-7xl mx-auto" style={{ background: '#0a0c0b' }}>
+    <div className="min-h-screen p-4 sm:p-6 max-w-7xl mx-auto bg-[#F7F5F0] dark:bg-[#0a0c0b] text-[#1C231F] dark:text-zinc-100" dir="rtl">
       {/* Header */}
       <header
-        className="flex items-center justify-between px-6 py-4 rounded-xl border border-zinc-800 mb-8"
-        style={{ background: '#141615' }}
+        className="flex items-center justify-between px-4 sm:px-6 py-4 rounded-2xl border border-[#E5E0D8] dark:border-zinc-800 mb-8 bg-white dark:bg-[#141615] shadow-xs"
       >
         <div className="flex items-center gap-3">
-          <Building2 className="w-5 h-5 text-[#E5A93C]" />
-          <span className="text-zinc-100 font-bold">انتخاب شرکت و محیط کاری</span>
+          <Building2 className="w-5 h-5 text-[#B8842E] dark:text-[#E5A93C]" />
+          <span className="text-[#1C231F] dark:text-zinc-100 font-bold text-sm sm:text-base">انتخاب شرکت و محیط کاری</span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-zinc-400 text-sm truncate max-w-[200px]">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Quick Theme Switcher */}
+          <ThemeToggle className="h-8 sm:h-9 text-xs px-2.5 sm:px-3" />
+
+          <span className="text-zinc-600 dark:text-zinc-400 text-xs sm:text-sm truncate max-w-[120px] sm:max-w-[200px] hidden xs:inline">
             {profile?.email ?? profile?.phone ?? '—'}
           </span>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleSignOut}
-            className="text-zinc-400 hover:text-red-400 hover:bg-red-900/20 gap-2 text-xs"
+            className="text-zinc-600 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 gap-1.5 text-xs"
           >
             <LogOut className="w-4 h-4" />
-            خروج
+            <span className="hidden sm:inline">خروج</span>
           </Button>
         </div>
       </header>

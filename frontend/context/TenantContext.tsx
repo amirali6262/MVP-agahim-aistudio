@@ -15,7 +15,14 @@ interface StoredTenantSelection {
   userId: string
 }
 
-const TenantContext = createContext<TenantContextValue | null>(null)
+const defaultTenantContext: TenantContextValue = {
+  selectedTenant: null,
+  loading: true,
+  selectTenant: () => {},
+  clearTenant: () => {},
+}
+
+const TenantContext = createContext<TenantContextValue>(defaultTenantContext)
 
 const STORAGE_KEY = 'selected_tenant'
 
@@ -90,7 +97,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       let tenant: Tenant | null = null
 
       if (!isSupabaseConfigured) {
-        if (import.meta.env.DEV && isMockAuthEnabled) {
+        if (isMockAuthEnabled) {
           const { mockTenantsDb } = await import('../lib/mockDb')
           tenant = mockTenantsDb
             .getForUser(userId)
@@ -138,6 +145,5 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
 export function useTenant(): TenantContextValue {
   const ctx = useContext(TenantContext)
-  if (!ctx) throw new Error('useTenant must be used inside TenantProvider')
-  return ctx
+  return ctx || defaultTenantContext
 }

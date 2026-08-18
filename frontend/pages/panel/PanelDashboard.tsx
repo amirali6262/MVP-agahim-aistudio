@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
 import CompanyBusinessProfile from '../../components/CompanyBusinessProfile'
 import CompanyComplianceOverview from '../../components/CompanyComplianceOverview'
+import ThemeToggle from '../../components/ThemeToggle'
 
 type ActiveTab = 'OVERVIEW' | 'BUSINESS_PROFILE'
 
@@ -40,24 +41,27 @@ export default function PanelDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0c0b] p-4 text-zinc-100 sm:p-6" dir="rtl">
+    <div className="min-h-screen bg-[#F7F5F0] dark:bg-[#0a0c0b] p-4 text-[#1C231F] dark:text-zinc-100 sm:p-6" dir="rtl">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-6 flex items-center justify-between rounded-2xl border border-zinc-800 bg-[#141615] px-4 py-4 shadow-md sm:px-6">
+        <header className="mb-6 flex items-center justify-between rounded-2xl border border-[#E5E0D8] dark:border-zinc-800 bg-white dark:bg-[#141615] px-4 py-4 shadow-xs sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <button onClick={handleSwitchTenant} className="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-white" aria-label="تغییر کسب‌وکار">
+            <button onClick={handleSwitchTenant} className="rounded-lg p-1 text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-white" aria-label="تغییر کسب‌وکار">
               <ArrowRight className="h-5 w-5" />
             </button>
-            <Building2 className="h-5 w-5 shrink-0 text-amber-400" />
+            <Building2 className="h-5 w-5 shrink-0 text-[#B8842E] dark:text-amber-400" />
             <div className="min-w-0">
-              <p className="truncate font-bold">{selectedTenant.name}</p>
-              <p className="text-xs text-zinc-500">مرکز تعهدات قانونی</p>
+              <p className="truncate font-bold text-[#1C231F] dark:text-white">{selectedTenant.name}</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">مرکز تعهدات قانونی</p>
             </div>
           </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <Button variant="ghost" size="sm" onClick={handleSwitchTenant} className="hidden text-xs text-zinc-400 hover:bg-zinc-800 hover:text-white sm:flex">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Theme Toggle Button */}
+            <ThemeToggle className="h-8 sm:h-9 text-xs px-2.5 sm:px-3" />
+
+            <Button variant="ghost" size="sm" onClick={handleSwitchTenant} className="hidden text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white sm:flex">
               تغییر کسب‌وکار
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-2 text-xs text-zinc-400 hover:bg-red-950/30 hover:text-red-400">
+            <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-1.5 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400">
               <LogOut className="h-4 w-4" /><span className="hidden sm:inline">خروج</span>
             </Button>
           </div>

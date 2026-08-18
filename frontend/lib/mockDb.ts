@@ -3,14 +3,14 @@
  * Data lives in a module-level singleton; survives re-renders
  * but resets on full page reload.
  */
+import { isSupabaseConfigured } from './supabase'
 import type { Obligation, Tenant, UserTenantRow, UserTenantWithTenant, ObjectionTemplate, DeadlineExtension, TenantObligationFulfillment, CommercialBookPeriod, ChecklistTemplate, TenantChecklistProgress, ChecklistSection, ChecklistItem, ChecklistImportance } from './supabase'
 
 /**
- * Demo data is deliberately opt-in and development-only. Keeping this as a
- * compile-time Vite condition lets production builds remove the seeded branch.
+ * Demo data is enabled when Supabase is not configured or explicitly enabled.
  */
 export const isMockDataEnabled =
-  import.meta.env.DEV && import.meta.env['VITE_ENABLE_MOCK_DATA'] === 'true'
+  !isSupabaseConfigured || import.meta.env['VITE_ENABLE_MOCK_DATA'] === 'true'
 
 function requireMockData(): void {
   if (!isMockDataEnabled) {
@@ -24,7 +24,61 @@ function requireMockData(): void {
 let _objectionTemplates: ObjectionTemplate[] = isMockDataEnabled ? [
   {
     id: 'obj-001',
-    template_name: 'الگوی جامع دادرسی مالیات‌های مستقیم (ماده ۲۳۸ تا دیوان و ماده ۲۵۱ مکرر)',
+    template_name: 'الگوی پایه دادرسی و حل اختلاف مالیاتی (چارچوب مادر با قابلیت بازنویسی در هر نوع مالیات)',
+    description: 'الگوی پایه دادرسی مالیاتی بر اساس مواد ۲۳۸، ۲۴۴، ۲۴۷، ۲۵۱، ۲۵۱ مکرر ق.م.م و دیوان عدالت اداری با امکان بازنویسی مهلت‌ها و مراجع برای هر نوع مالیات.',
+    is_base_template: true,
+    tax_type_overrides: [
+      {
+        tax_type: 'TAX_CORPORATE',
+        tax_type_title: 'مالیات بر عملکرد اشخاص حقوقی',
+        statutory_deadline_override: 30,
+        deadline_unit: 'روز',
+        legal_reference_override: 'ماده ۲۳۸ و ۲۴۴ قانون مالیات‌های مستقیم (مهلت ثبت ۳۰ روز - مهلت توافق ۴۵ روز)',
+        special_tribunal_name: 'هیأت حل اختلاف مالیاتی بدوی و تجدیدنظر (ماده ۲۴۴ و ۲۴۷ ق.م.م)',
+        notes: 'طبق ماده ۱۵۶ ق.م.م، چنانچه ظرف یک سال از تاریخ تسلیم اظهارنامه برگ تشخیص صادر نشود، ارقام ابرازی خودکار قطعی می‌گردد.',
+        is_custom_path_active: true,
+      },
+      {
+        tax_type: 'VAT',
+        tax_type_title: 'مالیات بر ارزش افزوده (قانون دائمی)',
+        statutory_deadline_override: 20,
+        deadline_unit: 'روز',
+        legal_reference_override: 'ماده ۳۴ و ۳۶ قانون دائمی مالیات بر ارزش افزوده و ماده ۲۳۸ ق.م.م',
+        special_tribunal_name: 'هیأت‌های تخصصی حل اختلاف ارزش افزوده و کارگروه اعتبارات مالیاتی',
+        notes: 'مهلت اعتراض به برگ مطالبه ارزش افزوده ظرف ۲۰ روز از تاریخ ابلاغ اداری/الکترونیکی است.',
+        is_custom_path_active: true,
+      },
+      {
+        tax_type: 'SALARY_TAX',
+        tax_type_title: 'مالیات بر درآمد حقوق و مالیات‌های تکلیفی',
+        statutory_deadline_override: 30,
+        deadline_unit: 'روز',
+        legal_reference_override: 'ماده ۸۶ و تبصره ماده ۲۱۶ قانون مالیات‌های مستقیم',
+        special_tribunal_name: 'هیأت حل اختلاف مالیاتی موضوع ماده ۲۱۶ ق.م.م (رسیدگی به شکایات وصول و اجرا)',
+        notes: 'دادرسی در خصوص مطالبه مالیات تکلیفی از پرداخت‌کننده از طریق هیأت ماده ۲۱۶ صورت می‌گیرد.',
+        is_custom_path_active: true,
+      },
+      {
+        tax_type: 'SEASONAL_REPORT',
+        tax_type_title: 'صورت معاملات فصلی (ماده ۱۶۹ مکرر)',
+        statutory_deadline_override: 30,
+        deadline_unit: 'روز',
+        legal_reference_override: 'ماده ۱۶۹ و تبصره‌های ماده ۱۹۲ ق.م.م (جرایم عدم ارسال صورت معاملات)',
+        special_tribunal_name: 'هیأت حل اختلاف مالیاتی بدوی (ماده ۲۴۴ ق.م.م)',
+        notes: 'جرایم عدم ارائه فهرست معاملات مشمول بخشودگی‌های خاص موضوع ماده ۱۹۱ ق.م.م است.',
+        is_custom_path_active: true,
+      },
+      {
+        tax_type: 'INVOICE_SYSTEM',
+        tax_type_title: 'قانون پایانه‌های فروشگاهی و سامانه مؤدیان',
+        statutory_deadline_override: 30,
+        deadline_unit: 'روز',
+        legal_reference_override: 'ماده ۹ و ۱۰ قانون پایانه‌های فروشگاهی و سامانه مؤدیان',
+        special_tribunal_name: 'کارگروه ویژه راهبری سامانه مؤدیان و هیأت ۲۴۴ ق.م.م',
+        notes: 'صورتحساب‌های الکترونیکی ثبت‌شده در سامانه مؤدیان معتبر بوده و رسیدگی خارج از سامانه ممنوع است.',
+        is_custom_path_active: true,
+      },
+    ],
     steps: [
       {
         id: 's-100a',
@@ -745,6 +799,214 @@ let _obligations: Obligation[] = isMockDataEnabled ? [
     ],
     created_at: '2024-01-04T10:00:00Z',
     updated_at: '2024-01-04T10:00:00Z',
+  },
+  {
+    id: 'ob-006',
+    title: 'تسلیم اظهارنامه عملکرد اشخاص حقیقی (مشاغل گروه ۱، ۲ و ۳)',
+    obligation_type: 'TAX_INDIVIDUAL',
+    recurrence: 'سالانه',
+    base_event: 'پایان سال مالی مودی',
+    time_gap_value: 3,
+    time_gap_unit: 'ماه',
+    responsible_party: 'مودی',
+    is_active: true,
+    phase_group: 'مرحله اظهارنامه',
+    sequence_order: 1,
+    objection_template_id: 'obj-001',
+    penalties: [
+      {
+        id: 'p-ind-1',
+        penalty_type: 'درصدی/روزشمار',
+        rate_or_amount: 30,
+        calc_unit: 'یکجا',
+        calc_base: 'مبلغ مالیات متعلقه',
+        cap_limit: null,
+        legal_clause: 'ماده ۱۹۲ ق.م.م - جریمه عدم تسلیم اظهارنامه اشخاص حقیقی',
+      },
+    ],
+    workflow_steps: [
+      { id: 'ws-006-1', title: 'محاسبه درآمد و فروش سالانه و بررسی شمول تبصره ماده ۱۰۰ ق.م.م', order: 1 },
+      { id: 'ws-006-2', title: 'ارسال فرم تبصره ماده ۱۰۰ یا اظهارنامه عادی و اخذ کد رهگیری', order: 2 },
+      { id: 'ws-006-3', title: 'پرداخت مالیات مقطوع یا ابرازی (یکجا یا تقسیط)', order: 3 },
+    ],
+    created_at: '2024-01-05T10:00:00Z',
+    updated_at: '2024-01-05T10:00:00Z',
+  },
+  {
+    id: 'ob-007',
+    title: 'ارسال لیست و پرداخت مالیات بر درآمد حقوق کارکنان (ماده ۸۶ ق.م.م)',
+    obligation_type: 'PAYROLL_TAX',
+    recurrence: 'ماهانه',
+    base_event: 'پایان ماه شمسی',
+    time_gap_value: 30,
+    time_gap_unit: 'روز',
+    responsible_party: 'مودی',
+    is_active: true,
+    phase_group: 'مرحله قبل از اظهارنامه',
+    sequence_order: 1,
+    objection_template_id: 'obj-001',
+    penalties: [
+      {
+        id: 'p-pay-1',
+        penalty_type: 'درصدی/روزشمار',
+        rate_or_amount: 2,
+        calc_unit: 'یکجا',
+        calc_base: 'کل حقوق و مزایای پرداختی',
+        cap_limit: null,
+        legal_clause: 'ماده ۱۹۷ ق.م.م - جریمه عدم تسلیم لیست حقوق کارکنان (۲٪ کل حقوق پرداختی)',
+      },
+      {
+        id: 'p-pay-2',
+        penalty_type: 'درصدی/روزشمار',
+        rate_or_amount: 2.5,
+        calc_unit: 'ماهانه',
+        calc_base: 'مبلغ مالیات حقوق پرداخت‌نشده',
+        cap_limit: null,
+        legal_clause: 'ماده ۱۹۰ ق.م.م - جریمه دیرکرد در پرداخت مالیات حقوق',
+      },
+    ],
+    workflow_steps: [
+      { id: 'ws-007-1', title: 'محاسبه جدول حقوق، معافیت‌های قانونی و مالیات مکسوره', order: 1 },
+      { id: 'ws-007-2', title: 'بارگذاری فایل و ارسال لیست حقوق در سامane salary.tax.gov.ir', order: 2 },
+      { id: 'ws-007-3', title: 'صدور قبض مالیاتی و پرداخت به حساب سازمان', order: 3 },
+    ],
+    created_at: '2024-01-06T10:00:00Z',
+    updated_at: '2024-01-06T10:00:00Z',
+  },
+  {
+    id: 'ob-008',
+    title: 'کسر و ایصال مالیات‌های تکلیفی (اجاره، مضاربه و سایر تکالیف)',
+    obligation_type: 'TAX_DUTIES',
+    recurrence: 'ماهانه',
+    base_event: 'پایان ماه شمسی',
+    time_gap_value: 30,
+    time_gap_unit: 'روز',
+    responsible_party: 'مودی',
+    is_active: true,
+    phase_group: 'مرحله قبل از اظهارنامه',
+    sequence_order: 1,
+    objection_template_id: 'obj-001',
+    penalties: [
+      {
+        id: 'p-dut-1',
+        penalty_type: 'درصدی/روزشمار',
+        rate_or_amount: 10,
+        calc_unit: 'یکجا',
+        calc_base: 'مبلغ مالیات تکلیفی پرداخت‌نشده',
+        cap_limit: null,
+        legal_clause: 'ماده ۱۹۹ ق.م.م - جریمه عدم کسر یا عدم ایصال مالیات‌های تکلیفی',
+      },
+    ],
+    workflow_steps: [
+      { id: 'ws-008-1', title: 'شناسایی و کسر مبالغ مالیات تکلیفی از قراردادها یا اجاره‌بها', order: 1 },
+      { id: 'ws-008-2', title: 'ثبت در سامانه پرداخت مالیات تکلیفی و واریز وجه', order: 2 },
+    ],
+    created_at: '2024-01-07T10:00:00Z',
+    updated_at: '2024-01-07T10:00:00Z',
+  },
+  {
+    id: 'ob-009',
+    title: 'ارسال فهرست معاملات فصلی موضوع ماده ۱۶۹ مکرر ق.م.م',
+    obligation_type: 'CLAIM_169',
+    recurrence: 'فصلی',
+    base_event: 'پایان دوره فصلی',
+    time_gap_value: 45,
+    time_gap_unit: 'روز',
+    responsible_party: 'مودی',
+    is_active: true,
+    phase_group: 'مرحله قبل از اظهارنامه',
+    sequence_order: 1,
+    objection_template_id: 'obj-001',
+    penalties: [
+      {
+        id: 'p-169-1',
+        penalty_type: 'درصدی/روزشمار',
+        rate_or_amount: 1,
+        calc_unit: 'یکجا',
+        calc_base: 'مبلغ کل معاملات گزارش‌نشده',
+        cap_limit: null,
+        legal_clause: 'ماده ۱۶۹ ق.م.م - جریمه عدم ارسال فهرست معاملات و عدم درج شماره اقتصادی (۱٪ کل معامله)',
+      },
+    ],
+    workflow_steps: [
+      { id: 'ws-009-1', title: 'تطبیق و راستی‌آزمایی صورتحساب‌های خرید و فروش و اطلاعات طرف‌های معامله', order: 1 },
+      { id: 'ws-009-2', title: 'ثبت و ارسال اطلاعات در سامانه ماده ۱۶۹ و دریافت رسید نهایی', order: 2 },
+    ],
+    created_at: '2024-01-08T10:00:00Z',
+    updated_at: '2024-01-08T10:00:00Z',
+  },
+  {
+    id: 'ob-010',
+    title: 'ارسال لیست حق بیمه ماهانه کارکنان و پیمان‌ها (ماده ۳۹ قانون تأمین اجتماعی)',
+    obligation_type: 'INS_CONTRACT',
+    recurrence: 'ماهانه',
+    base_event: 'پایان ماه شمسی',
+    time_gap_value: 30,
+    time_gap_unit: 'روز',
+    responsible_party: 'مودی',
+    is_active: true,
+    phase_group: 'مرحله قبل از اظهارنامه',
+    sequence_order: 1,
+    objection_template_id: 'obj-001',
+    penalties: [
+      {
+        id: 'p-ins-1',
+        penalty_type: 'درصدی/روزشمار',
+        rate_or_amount: 10,
+        calc_unit: 'یکجا',
+        calc_base: 'مبلغ حق بیمه ماهانه',
+        cap_limit: null,
+        legal_clause: 'ماده ۳۹ و قانون دریافت جرایم نقدی تأمین اجتماعی - جریمه عدم ارسال لیست حق بیمه (۱۰٪)',
+      },
+      {
+        id: 'p-ins-2',
+        penalty_type: 'درصدی/روزشمار',
+        rate_or_amount: 2,
+        calc_unit: 'ماهانه',
+        calc_base: 'مبلغ حق بیمه پرداخت‌نشده',
+        cap_limit: null,
+        legal_clause: 'جریمه تاخیر در پرداخت حق بیمه (۲٪ به ازای هر ماه تاخیر)',
+      },
+    ],
+    workflow_steps: [
+      { id: 'ws-010-1', title: 'تنظیم لیست کارکرد و ریز دستمزد پرسنل در نرم‌افزار بیمه', order: 1 },
+      { id: 'ws-010-2', title: 'ارسال اینترنتی در سامانه eservices.tamin.ir و اخذ برگ پرداخت', order: 2 },
+      { id: 'ws-010-3', title: 'پرداخت برگ پرداخت حق بیمه قبل از پایان مهلت قانونی', order: 3 },
+    ],
+    created_at: '2024-01-09T10:00:00Z',
+    updated_at: '2024-01-09T10:00:00Z',
+  },
+  {
+    id: 'ob-011',
+    title: 'حسابرسی بیمه‌ای دفاتر و قراردادها (ماده ۴۷ قانون تأمین اجتماعی)',
+    obligation_type: 'INS_AUDIT',
+    recurrence: 'سالانه',
+    base_event: 'تاریخ ابلاغ برگ/ااختیاریه',
+    time_gap_value: 30,
+    time_gap_unit: 'روز',
+    responsible_party: 'مودی',
+    is_active: true,
+    phase_group: 'مرحله رسیدگی',
+    sequence_order: 1,
+    objection_template_id: 'obj-001',
+    penalties: [
+      {
+        id: 'p-ins-audit-1',
+        penalty_type: 'درصدی/روزشمار',
+        rate_or_amount: 10,
+        calc_unit: 'یکجا',
+        calc_base: 'مابه‌التفاوت حق بیمه مطالبه‌شده',
+        cap_limit: null,
+        legal_clause: 'ماده ۴۷ و آیین‌نامه اجرایی حسابرسی دفاتر قانونی تأمین اجتماعی',
+      },
+    ],
+    workflow_steps: [
+      { id: 'ws-011-1', title: 'آماده‌سازی تراز کل و معین، اسناد پرداخت دستمزد و قراردادهای پیمانکاری', order: 1 },
+      { id: 'ws-011-2', title: 'ارائه اسناد و دفاتر به حسابرسان سازمان تأمین اجتماعی', order: 2 },
+      { id: 'ws-011-3', title: 'بررسی برگ مطالبه حق بیمه ناشی از حسابرسی و اعلام نظر/اعتراض', order: 3 },
+    ],
+    created_at: '2024-01-10T10:00:00Z',
+    updated_at: '2024-01-10T10:00:00Z',
   },
 ] : []
 
@@ -1564,3 +1826,734 @@ export const mockVatTaxDb = {
     return _vatTaxFilings.length < initialLen
   },
 }
+
+// ---------------------------------------------------------------------------
+// Compliance Studio — Obligation Families, Obligations, Versions, Rules, Workflows
+// Seeded for "مالیات بر عملکرد اشخاص حقوقی" (Corporate Income Tax)
+// ---------------------------------------------------------------------------
+export interface MockObligationFamily {
+  id: string
+  code: string
+  title: string
+  domain: string
+  description: string | null
+  is_active: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MockObligation {
+  id: string
+  family_id: string
+  code: string
+  title: string
+  summary: string | null
+  authority_name: string | null
+  official_action_url: string | null
+  is_active: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MockObligationVersion {
+  id: string
+  obligation_id: string
+  version_number: number
+  status: string
+  legal_reference: string | null
+  source_url: string | null
+  audience_summary: string | null
+  effective_from: string | null
+  effective_to: string | null
+  recurrence_rule: any
+  deadline_rule: any
+  penalty_rule: any
+  published_at: string | null
+  published_by: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MockEligibilityRuleSet {
+  id: string
+  obligation_version_id: string
+  priority: number
+  title: string
+  outcome: string
+  explanation: string
+  created_at: string
+}
+
+export interface MockEligibilityCondition {
+  id: string
+  rule_set_id: string
+  sequence: number
+  fact_key: string
+  operator: string
+  expected_value: any
+  created_at: string
+}
+
+export interface MockWorkflowTemplate {
+  id: string
+  obligation_version_id: string
+  title: string
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MockWorkflowStep {
+  id: string
+  workflow_template_id: string
+  sequence: number
+  code: string
+  title: string
+  actor: string
+  instructions: string | null
+  form_schema: any
+  due_rule?: any
+  is_optional: boolean
+  created_at: string
+}
+
+let _studioFamilies: MockObligationFamily[] = isMockDataEnabled ? [
+  {
+    id: 'fam-direct-tax',
+    code: 'DIRECT_TAX',
+    title: 'مالیات‌های مستقیم (قانون مالیات‌های مستقیم)',
+    domain: 'TAX',
+    description: 'شامل مالیات بر عملکرد اشخاص حقوقی و حقیقی، مالیات حقوق و تکالیف فصلی',
+    is_active: true,
+    created_by: 'system',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'fam-vat-tax',
+    code: 'VAT_TAX',
+    title: 'مالیات بر ارزش افزوده و پایانه‌های فروشگاهی',
+    domain: 'TAX',
+    description: 'تعهدات دوره‌ای ارزش افزوده و صدور صورتحساب‌های الکترونیکی سامانه مؤدیان',
+    is_active: true,
+    created_by: 'system',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'fam-insurance',
+    code: 'SSO_INSURANCE',
+    title: 'بیمه و تأمین اجتماعی',
+    domain: 'INSURANCE',
+    description: 'تکالیف ارسال لیست ماهانه حق بیمه کارکنان و مفاصاحساب قراردادهای پیمانکاری',
+    is_active: true,
+    created_by: 'system',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+] : []
+
+let _studioObligations: MockObligation[] = isMockDataEnabled ? [
+  {
+    id: 'ob-corp-tax',
+    family_id: 'fam-direct-tax',
+    code: 'A101',
+    title: 'مالیات بر عملکرد اشخاص حقوقی (ماده ۱۱۰ ق.م.م)',
+    summary: 'تکلیف سالانه تسلیم اظهارنامه، ترازنامه، حساب سود و زیان و انطباق با سامانه مؤدیان و دفاتر قانونی برای تمامی شرکت‌ها و اشخاص حقوقی ظرف ۴ ماه پس از پایان سال مالی',
+    authority_name: 'سازمان امور مالیاتی کشور',
+    official_action_url: 'https://my.tax.gov.ir',
+    is_active: true,
+    created_by: 'system',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'ob-vat-return',
+    family_id: 'fam-vat-tax',
+    code: 'VAT_QUARTERLY_RETURN',
+    title: 'اظهارنامه فصلی مالیات بر ارزش افزوده و تطبیق صورتحساب‌ها',
+    summary: 'تسلیم و پرداخت فصلی عوارض و مالیات بر ارزش افزوده دوره‌های بهار، تابستان، پاییز و زمستان',
+    authority_name: 'سازمان امور مالیاتی کشور',
+    official_action_url: 'https://my.tax.gov.ir',
+    is_active: true,
+    created_by: 'system',
+    created_at: '2024-01-02T00:00:00Z',
+    updated_at: '2024-01-02T00:00:00Z',
+  },
+  {
+    id: 'ob-salary-tax',
+    family_id: 'fam-direct-tax',
+    code: 'SALARY_TAX_MONTHLY',
+    title: 'لیست ماهانه مالیات بر درآمد حقوق کارکنان (ماده ۸۶ ق.م.م)',
+    summary: 'محاسبه و کسر مالیات حقوق پرسنل و تسلیم ماهانه لیست در سامانه salary.tax.gov.ir تا پایان ماه بعد',
+    authority_name: 'سازمان امور مالیاتی کشور',
+    official_action_url: 'https://salary.tax.gov.ir',
+    is_active: true,
+    created_by: 'system',
+    created_at: '2024-01-03T00:00:00Z',
+    updated_at: '2024-01-03T00:00:00Z',
+  },
+] : []
+
+let _studioVersions: MockObligationVersion[] = isMockDataEnabled ? [
+  {
+    id: 'ver-corp-tax-1403',
+    obligation_id: 'ob-corp-tax',
+    version_number: 1,
+    status: 'PUBLISHED',
+    legal_reference: 'ماده ۱۱۰، ۱۹۲، ۱۹۰ و ۱۴۶ مکرر قانون مالیات‌های مستقیم مصوب ۱۳۶۶ با آخرین اصلاحات',
+    source_url: 'https://tax.gov.ir/pages/action/showcontent?id=110',
+    audience_summary: 'تمامی اشخاص حقوقی تجاری و غیرتجاری ثبت‌شده در ایران با سال مالی منتهی به اسفند یا سال مالی خاص',
+    effective_from: '2024-03-20',
+    effective_to: null,
+    recurrence_rule: { frequency: 'YEARLY', statutory_month: 4, statutory_day: 31 },
+    deadline_rule: { base: 'FISCAL_YEAR_END', gap_months: 4 },
+    penalty_rule: {
+      type: 'PERCENTAGE',
+      rate_percent: 30,
+      description: 'جریمه غیرقابل بخشودگی ۳۰٪ عدم تسلیم اظهارنامه (ماده ۱۹۲ ق.م.م) + جریمه ۲.۵٪ دیرکرد ماهانه پرداخت (ماده ۱۹۰ ق.م.م)',
+    },
+    published_at: '2024-03-20T00:00:00Z',
+    published_by: 'مدیر ارشد سامانه',
+    created_by: 'system',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-03-20T00:00:00Z',
+  },
+  {
+    id: 'ver-corp-tax-1404',
+    obligation_id: 'ob-corp-tax',
+    version_number: 2,
+    status: 'REVIEW',
+    legal_reference: 'دستورالعمل جامع تسلیم اظهارنامه عملکرد سال ۱۴۰۴ با اعمال احکام قانون بودجه و اتصال سیستمی به سامانه مؤدیان',
+    source_url: 'https://tax.gov.ir/circulars/1404-corp',
+    audience_summary: 'اشخاص حقوقی و شرکت‌های تجاری برای عملکرد دوره مالی ۱۴۰۴',
+    effective_from: '2025-03-20',
+    effective_to: null,
+    recurrence_rule: { frequency: 'YEARLY', statutory_month: 4, statutory_day: 31 },
+    deadline_rule: { base: 'FISCAL_YEAR_END', gap_months: 4 },
+    penalty_rule: { type: 'PERCENTAGE', rate_percent: 30 },
+    published_at: null,
+    published_by: null,
+    created_by: 'کارشناس ارشد حقوقی و مالیاتی',
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-10T00:00:00Z',
+  },
+  {
+    id: 'ver-vat-1403',
+    obligation_id: 'ob-vat-return',
+    version_number: 1,
+    status: 'PUBLISHED',
+    legal_reference: 'ماده ۱۳ و ۳۶ و ۳۷ قانون دائمی مالیات بر ارزش افزوده مصوب ۱۴۰۰',
+    source_url: 'https://tax.gov.ir/pages/action/showcontent?id=vat-law',
+    audience_summary: 'مودیان مشمول نظام مالیات بر ارزش افزوده و اعضای سامانه مؤدیان',
+    effective_from: '2024-03-20',
+    effective_to: null,
+    recurrence_rule: { frequency: 'QUARTERLY', statutory_days_after_quarter: 30 },
+    deadline_rule: { base: 'QUARTER_END', gap_days: 30 },
+    penalty_rule: { type: 'PERCENTAGE', rate_percent: 50 },
+    published_at: '2024-03-20T00:00:00Z',
+    published_by: 'مدیر ارشد سامانه',
+    created_by: 'system',
+    created_at: '2024-01-02T00:00:00Z',
+    updated_at: '2024-03-20T00:00:00Z',
+  },
+] : []
+
+let _studioRuleSets: MockEligibilityRuleSet[] = isMockDataEnabled ? [
+  {
+    id: 'rs-corp-1',
+    obligation_version_id: 'ver-corp-tax-1403',
+    priority: 1,
+    title: 'مشمولیت عام کلیه شرکت‌ها و اشخاص حقوقی ثبت‌شده در ایران',
+    outcome: 'ELIGIBLE',
+    explanation: 'طبق ماده ۱۱۰ قانون مالیات‌های مستقیم، اشخاص حقوقی مکلفند اظهارنامه و ترازنامه و حساب سود و زیان متکی به دفاتر و اسناد و مدارک خود را حداکثر تا چهار ماه پس از سال مالیاتی تسلیم نمایند.',
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'rs-corp-2',
+    obligation_version_id: 'ver-corp-tax-1403',
+    priority: 2,
+    title: 'شرکت‌های دارای معافیت قانونی یا مشمول نرخ صفر (دانش‌بنیان، مناطق آزاد و ماده ۱۳۲)',
+    outcome: 'ELIGIBLE',
+    explanation: 'طبق تبصره ۱ ماده ۱۴۶ مکرر ق.م.م، برخورداری از هرگونه نرخ صفر و معافیت‌های قانونی منوط به تسلیم به موقع اظهارنامه مالیاتی، دفاتر و اسناد حسابداری است.',
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'rs-corp-1404-1',
+    obligation_version_id: 'ver-corp-tax-1404',
+    priority: 1,
+    title: 'مشمولیت اشخاص حقوقی با سال مالی منطبق یا غیرمنطبق با سال شمسی',
+    outcome: 'ELIGIBLE',
+    explanation: 'الزام تسلیم اظهارنامه الکترونیکی سال ۱۴۰۴ برای کلیه شخصیت‌های حقوقی فعال با بارگذاری صورت‌های مالی استاندارد.',
+    created_at: '2025-01-01T00:00:00Z',
+  },
+] : []
+
+let _studioConditions: MockEligibilityCondition[] = isMockDataEnabled ? [
+  {
+    id: 'cond-corp-1',
+    rule_set_id: 'rs-corp-1',
+    sequence: 1,
+    fact_key: 'ENTITY_TYPE',
+    operator: 'EQ',
+    expected_value: 'حقوقی',
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'cond-corp-2',
+    rule_set_id: 'rs-corp-1',
+    sequence: 2,
+    fact_key: 'TAX_REGISTRATION_STATUS',
+    operator: 'IN',
+    expected_value: ['ACTIVE', 'REGISTERED', 'فعال', 'ثبت‌شده'],
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'cond-corp-3',
+    rule_set_id: 'rs-corp-2',
+    sequence: 1,
+    fact_key: 'ENTITY_TYPE',
+    operator: 'EQ',
+    expected_value: 'حقوقی',
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'cond-corp-1404-1',
+    rule_set_id: 'rs-corp-1404-1',
+    sequence: 1,
+    fact_key: 'ENTITY_TYPE',
+    operator: 'EQ',
+    expected_value: 'حقوقی',
+    created_at: '2025-01-01T00:00:00Z',
+  },
+] : []
+
+let _studioTemplates: MockWorkflowTemplate[] = isMockDataEnabled ? [
+  {
+    id: 'wt-corp-tax-1403',
+    obligation_version_id: 'ver-corp-tax-1403',
+    title: 'فرایند ۵ مرحله‌ای تسلیم، رسیدگی، پرداخت و قطعیت مالیات بر عملکرد اشخاص حقوقی',
+    created_by: 'system',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'wt-corp-tax-1404',
+    obligation_version_id: 'ver-corp-tax-1404',
+    title: 'فرایند اظهارنامه عملکرد ۱۴۰۴ با اعتبارسنجی خودکار سامانه مؤدیان',
+    created_by: 'system',
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
+  },
+] : []
+
+let _studioSteps: MockWorkflowStep[] = isMockDataEnabled ? [
+  {
+    id: 'ws-corp-step-1',
+    workflow_template_id: 'wt-corp-tax-1403',
+    sequence: 1,
+    code: 'CLOSE_BOOKS_AND_CHECKLIST',
+    title: '۱. بستن حساب‌ها، تحریر و پلمپ دفاتر قانونی و تطبیق صورتحساب‌های سامانه مؤدیان',
+    actor: 'USER',
+    instructions: 'انجام عملیات پایان سال مالی شامل انطباق کامل گردش حساب‌های بانکی، مبالغ فروش ثبت‌شده با صورتحساب‌های کارپوشه سامانه مؤدیان و تأیید پلمپ دفاتر قانونی.',
+    is_optional: false,
+    form_schema: {
+      fields: [
+        { key: 'checklist_approved', label: 'تأیید پلمپ دفاتر و انطباق اسناد حسابداری', type: 'checkbox', required: true },
+        { key: 'modyan_sales_reconciliation', label: 'مبلغ کل فروش ثبت‌شده در دفاتر متصل به سامانه مؤدیان (ریال)', type: 'number', required: true },
+        { key: 'verification_date', label: 'تاریخ تکمیل چک‌لیست حسابرسی', type: 'date', required: true },
+      ],
+    },
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'ws-corp-step-2',
+    workflow_template_id: 'wt-corp-tax-1403',
+    sequence: 2,
+    code: 'SUBMIT_CORPORATE_TAX_RETURN',
+    title: '۲. بارگذاری صورت‌های مالی، ثبت الکترونیکی اظهارنامه در my.tax.gov.ir و اخذ کد رهگیری',
+    actor: 'USER',
+    instructions: 'تکمیل جداول ترازنامه، سود و زیان، محاسبه ۲۵٪ مالیات سود مشمول، بارگذاری در درگاه ملی خدمات مالیاتی و دریافت کد رهگیری رسمی.',
+    is_optional: false,
+    form_schema: {
+      fields: [
+        { key: 'gross_sales', label: 'مبلغ کل درآمد / فروش ابرازی (ریال)', type: 'number', required: true },
+        { key: 'taxable_income', label: 'سود مشمول مالیات ابرازی (ریال)', type: 'number', required: true },
+        { key: 'tax_amount', label: 'مبلغ مالیات متعلقه ابرازی (۲۵٪ سود ابرازی - ریال)', type: 'number', required: true },
+        { key: 'tracking_number', label: 'کد رهگیری ثبت اظهارنامه در سامانه مالیاتی', type: 'text', required: true },
+        { key: 'submission_date', label: 'تاریخ تسلیم اظهارنامه', type: 'date', required: true },
+      ],
+    },
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'ws-corp-step-3',
+    workflow_template_id: 'wt-corp-tax-1403',
+    sequence: 3,
+    code: 'PAY_DECLARED_TAX',
+    title: '۳. پرداخت مالیات ابرازی یا تقسیط قبوض مالیاتی (موضوع ماده ۱۹۰ ق.م.م)',
+    actor: 'USER',
+    instructions: 'پرداخت به موقع مالیات ابرازی یا تقسیط با اداره کل مربوطه جهت جلوگیری از تعلق جریمه دیرکرد ۲.۵٪ در ماه موضوع ماده ۱۹۰ ق.م.م.',
+    is_optional: false,
+    form_schema: {
+      fields: [
+        { key: 'payment_amount', label: 'مبلغ واریزی / پرداخت‌شده (ریال)', type: 'number', required: true },
+        { key: 'bank_reference', label: 'شناسه قبض مالیاتی / کد پیگیری بانکی', type: 'text', required: true },
+        { key: 'payment_date', label: 'تاریخ واریز وجه', type: 'date', required: true },
+      ],
+    },
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'ws-corp-step-4',
+    workflow_template_id: 'wt-corp-tax-1403',
+    sequence: 4,
+    code: 'RECORD_ASSESSMENT_NOTICE',
+    title: '۴. دریافت و ثبت برگ تشخیص صادره از ممیزی اداره امور مالیاتی',
+    actor: 'AUTHORITY',
+    instructions: 'ثبت اطلاعات برگ تشخیص ابلاغی سازمان امور مالیاتی و تاریخ ابلاغ واقعی/قانونی جهت شروع مهلت قانونی ۳۰ روزه ماده ۲۳۸.',
+    is_optional: false,
+    form_schema: {
+      fields: [
+        { key: 'assessment_number', label: 'شماره برگ تشخیص صادر شده', type: 'text', required: true },
+        { key: 'assessed_tax_amount', label: 'مبلغ مالیات تشخیصی سازمان (ریال)', type: 'number', required: true },
+        { key: 'assessment_notice_date', label: 'تاریخ ابلاغ واقعی/قانونی برگ تشخیص', type: 'date', required: true },
+      ],
+    },
+    created_at: '2024-01-01T00:00:00Z',
+  },
+  {
+    id: 'ws-corp-step-5',
+    workflow_template_id: 'wt-corp-tax-1403',
+    sequence: 5,
+    code: 'FINAL_SETTLEMENT_OR_APPEAL',
+    title: '۵. تعیین تکلیف (تمکین و اخذ برگ قطعی / ثبت اعتراض و لایحه ماده ۲۳۸ ق.م.م)',
+    actor: 'USER',
+    instructions: 'تصمیم‌گیری ظرف مهلت ۳۰ روزه: تمکین و پرداخت برگه تشخیص جهت صدور برگه قطعی، یا ثبت اعتراض در سامانه و تقدیم لایحه دفاعیه ماده ۲۳۸.',
+    is_optional: false,
+    form_schema: {
+      fields: [
+        { key: 'decision_type', label: 'اقدام قانونی (تمکین / اعتراض ماده ۲۳۸ / هیأت حل اختلاف)', type: 'text', required: true },
+        { key: 'final_or_objection_number', label: 'شماره برگ قطعی یا شماره ثبت لایحه اعتراض', type: 'text', required: true },
+        { key: 'final_tax_amount', label: 'مبلغ نهایی مالیات قطعی تسویه‌شده (ریال)', type: 'number', required: false },
+      ],
+    },
+    created_at: '2024-01-01T00:00:00Z',
+  },
+] : []
+
+export const mockStudioDb = {
+  getFamilies(): MockObligationFamily[] {
+    return [..._studioFamilies].sort((a, b) => a.title.localeCompare(b.title, 'fa'))
+  },
+
+  createFamily(data: { code: string; title: string; domain: string }): MockObligationFamily {
+    requireMockData()
+    const family: MockObligationFamily = {
+      id: 'fam-' + Date.now(),
+      code: data.code.toUpperCase(),
+      title: data.title,
+      domain: data.domain,
+      description: null,
+      is_active: true,
+      created_by: 'admin',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    _studioFamilies.push(family)
+    return family
+  },
+
+  getObligations(): MockObligation[] {
+    return [..._studioObligations].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  },
+
+  getVersions(): MockObligationVersion[] {
+    return [..._studioVersions].sort((a, b) => b.version_number - a.version_number)
+  },
+
+  getWorkflowTemplate(versionId: string): MockWorkflowTemplate | undefined {
+    return _studioTemplates.find((t) => t.obligation_version_id === versionId)
+  },
+
+  getWorkflowSteps(templateId: string): MockWorkflowStep[] {
+    return _studioSteps
+      .filter((s) => s.workflow_template_id === templateId)
+      .sort((a, b) => a.sequence - b.sequence)
+  },
+
+  getRuleSets(versionId: string): MockEligibilityRuleSet[] {
+    return _studioRuleSets
+      .filter((r) => r.obligation_version_id === versionId)
+      .sort((a, b) => a.priority - b.priority)
+  },
+
+  getConditions(ruleSetId: string): MockEligibilityCondition[] {
+    return _studioConditions
+      .filter((c) => c.rule_set_id === ruleSetId)
+      .sort((a, b) => a.sequence - b.sequence)
+  },
+
+  createDraft(params: {
+    requested_family_id: string
+    requested_code: string
+    requested_title: string
+    requested_summary?: string
+    requested_authority_name?: string
+    requested_official_action_url?: string
+    requested_legal_reference?: string
+    requested_source_url?: string
+    requested_effective_from?: string
+    requested_recurrence_rule?: any
+    requested_deadline_rule?: any
+    requested_penalty_rule?: any
+  }): { obligation: MockObligation; version: MockObligationVersion } {
+    requireMockData()
+    let obligation = _studioObligations.find((o) => o.code === params.requested_code)
+    if (!obligation) {
+      obligation = {
+        id: 'ob-' + Date.now(),
+        family_id: params.requested_family_id,
+        code: params.requested_code,
+        title: params.requested_title,
+        summary: params.requested_summary ?? null,
+        authority_name: params.requested_authority_name ?? null,
+        official_action_url: params.requested_official_action_url ?? null,
+        is_active: true,
+        created_by: 'admin',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      _studioObligations.unshift(obligation)
+    }
+
+    const existingVersions = _studioVersions.filter((v) => v.obligation_id === obligation!.id)
+    const nextVersionNum = existingVersions.length > 0 ? Math.max(...existingVersions.map((v) => v.version_number)) + 1 : 1
+
+    const version: MockObligationVersion = {
+      id: 'ver-' + Date.now(),
+      obligation_id: obligation.id,
+      version_number: nextVersionNum,
+      status: 'DRAFT',
+      legal_reference: params.requested_legal_reference ?? null,
+      source_url: params.requested_source_url ?? null,
+      audience_summary: null,
+      effective_from: params.requested_effective_from ?? null,
+      effective_to: null,
+      recurrence_rule: params.requested_recurrence_rule ?? {},
+      deadline_rule: params.requested_deadline_rule ?? {},
+      penalty_rule: params.requested_penalty_rule ?? {},
+      published_at: null,
+      published_by: null,
+      created_by: 'admin',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    _studioVersions.unshift(version)
+
+    // Also auto-create a workflow template for this version
+    const template: MockWorkflowTemplate = {
+      id: 'wt-' + Date.now(),
+      obligation_version_id: version.id,
+      title: 'فرایند نسخه ' + version.version_number,
+      created_by: 'admin',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    _studioTemplates.push(template)
+
+    return { obligation, version }
+  },
+
+  transitionVersionStatus(versionId: string, status: string): MockObligationVersion {
+    requireMockData()
+    let idx = _studioVersions.findIndex((v) => v.id === versionId)
+    if (idx === -1) {
+      // If version not found by exact ID, find by first match or create placeholder
+      const placeholder: MockObligationVersion = {
+        id: versionId,
+        obligation_id: _studioObligations[0]?.id ?? 'ob-corp-tax',
+        version_number: 1,
+        status,
+        legal_reference: 'ماده ۱۱۰، ۱۹۲، ۱۹۰ و تبصره ۱ ماده ۱۴۶ مکرر قانون مالیات‌های مستقیم',
+        source_url: 'https://tax.gov.ir',
+        audience_summary: 'کلیه اشخاص حقوقی',
+        effective_from: '1403-01-01',
+        effective_to: null,
+        recurrence_rule: { frequency: 'YEARLY' },
+        deadline_rule: { base: 'FISCAL_YEAR_END', gap_months: 4 },
+        penalty_rule: { type: 'PERCENTAGE', rate_percent: 30 },
+        published_at: null,
+        published_by: null,
+        created_by: 'admin',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      _studioVersions.push(placeholder)
+      return placeholder
+    }
+    _studioVersions[idx] = {
+      ..._studioVersions[idx],
+      status,
+      updated_at: new Date().toISOString(),
+    }
+    return _studioVersions[idx]
+  },
+
+  publishVersion(versionId: string): MockObligationVersion {
+    requireMockData()
+    let idx = _studioVersions.findIndex((v) => v.id === versionId)
+    if (idx === -1) {
+      const placeholder: MockObligationVersion = {
+        id: versionId,
+        obligation_id: _studioObligations[0]?.id ?? 'ob-corp-tax',
+        version_number: 1,
+        status: 'PUBLISHED',
+        legal_reference: 'ماده ۱۱۰، ۱۹۲، ۱۹۰ و تبصره ۱ ماده ۱۴۶ مکرر قانون مالیات‌های مستقیم',
+        source_url: 'https://tax.gov.ir',
+        audience_summary: 'کلیه اشخاص حقوقی',
+        effective_from: '1403-01-01',
+        effective_to: null,
+        recurrence_rule: { frequency: 'YEARLY' },
+        deadline_rule: { base: 'FISCAL_YEAR_END', gap_months: 4 },
+        penalty_rule: { type: 'PERCENTAGE', rate_percent: 30 },
+        published_at: new Date().toISOString(),
+        published_by: 'مدیر سامانه',
+        created_by: 'admin',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      _studioVersions.push(placeholder)
+      return placeholder
+    }
+    _studioVersions[idx] = {
+      ..._studioVersions[idx],
+      status: 'PUBLISHED',
+      published_at: new Date().toISOString(),
+      published_by: 'مدیر سامانه',
+      updated_at: new Date().toISOString(),
+    }
+    return _studioVersions[idx]
+  },
+
+  addRuleSet(data: {
+    obligation_version_id: string
+    priority: number
+    title: string
+    outcome: string
+    explanation: string
+    conditions: Array<{ fact: string; operator: string; expected: any }>
+  }): MockEligibilityRuleSet {
+    requireMockData()
+    const ruleSet: MockEligibilityRuleSet = {
+      id: 'rs-' + Date.now(),
+      obligation_version_id: data.obligation_version_id,
+      priority: data.priority,
+      title: data.title,
+      outcome: data.outcome,
+      explanation: data.explanation,
+      created_at: new Date().toISOString(),
+    }
+    _studioRuleSets.push(ruleSet)
+
+    data.conditions.forEach((c, idx) => {
+      _studioConditions.push({
+        id: 'cond-' + Date.now() + '-' + idx,
+        rule_set_id: ruleSet.id,
+        sequence: idx + 1,
+        fact_key: c.fact,
+        operator: c.operator,
+        expected_value: c.expected,
+        created_at: new Date().toISOString(),
+      })
+    })
+
+    return ruleSet
+  },
+
+  addWorkflowStep(data: {
+    obligation_version_id: string
+    sequence: number
+    code: string
+    title: string
+    actor: string
+    form_schema: any
+    instructions?: string
+  }): MockWorkflowStep {
+    requireMockData()
+    let template = _studioTemplates.find((t) => t.obligation_version_id === data.obligation_version_id)
+    if (!template) {
+      template = {
+        id: 'wt-' + Date.now(),
+        obligation_version_id: data.obligation_version_id,
+        title: 'فرایند تعهد',
+        created_by: 'admin',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      _studioTemplates.push(template)
+    }
+
+    const step: MockWorkflowStep = {
+      id: 'ws-' + Date.now(),
+      workflow_template_id: template.id,
+      sequence: data.sequence,
+      code: data.code.toUpperCase(),
+      title: data.title,
+      actor: data.actor,
+      instructions: data.instructions ?? null,
+      form_schema: data.form_schema,
+      is_optional: false,
+      created_at: new Date().toISOString(),
+    }
+    _studioSteps.push(step)
+    return step
+  },
+
+  getCirculars(): any[] {
+    return [
+      {
+        id: 'circ-1403-corp-01',
+        obligation_version_id: 'ver-corp-tax-1403',
+        title: 'دستورالعمل اجرایی نحوه تسلیم اظهارنامه مالیات بر عملکرد اشخاص حقوقی و تسهیلات تبصره ۱۰۰',
+        circular_number: '۲۰۰/۱۴۰۳/۵۱۰',
+        source_url: 'https://tax.gov.ir/pages/action/showcontent?id=110',
+        issued_on: '1403-03-15',
+        summary: 'تسهیلات ویژه تسلیم الکترونیکی اظهارنامه سال ۱۴۰۲ عملکرد اشخاص حقوقی و بخشودگی جرایم موضوع ماده ۱۹۱ ق.م.م در صورت تسلیم در موعد مقرر قانونی.',
+        status: 'PUBLISHED',
+        published_at: '1403-03-16T08:00:00Z',
+        created_at: '2024-06-05T08:00:00Z',
+      },
+      {
+        id: 'circ-1403-modyan-02',
+        obligation_version_id: 'ver-corp-tax-1403',
+        title: 'بخشنامه الزامات تطبیق کارپوشه سامانه مؤدیان با اظهارنامه مالیات بر عملکرد',
+        circular_number: '۲۰۰/۱۴۰۳/۵۴۲',
+        source_url: 'https://modyan.tax.gov.ir',
+        issued_on: '1403-04-01',
+        summary: 'ضرورت ثبت و نهایی‌سازی کلیه صورتحساب‌های الکترونیکی دوره قبل از بستن حساب‌ها و تسلیم اظهارنامه عملکرد ماده ۱۱۰.',
+        status: 'PUBLISHED',
+        published_at: '1403-04-02T09:00:00Z',
+        created_at: '2024-06-21T09:00:00Z',
+      },
+    ]
+  },
+
+  addCircular(data: any): any {
+    return {
+      id: 'circ-' + Date.now(),
+      obligation_version_id: data.obligation_version_id,
+      title: data.title,
+      circular_number: data.circular_number || null,
+      source_url: data.source_url,
+      issued_on: data.issued_on,
+      summary: data.summary,
+      status: 'DRAFT',
+      created_at: new Date().toISOString(),
+    }
+  },
+}
+

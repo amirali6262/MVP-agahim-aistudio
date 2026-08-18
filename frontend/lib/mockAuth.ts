@@ -3,10 +3,11 @@
  * are not configured. Credentials are stored only in localStorage.
  */
 import type { Session } from '@supabase/supabase-js'
+import { isSupabaseConfigured } from './supabase'
 import type { AppUser, UserRole } from './supabase'
 
 const isMockAuthRuntimeEnabled =
-  import.meta.env.DEV &&
+  !isSupabaseConfigured ||
   import.meta.env['VITE_ENABLE_MOCK_AUTH'] !== 'false'
 
 function assertMockAuthEnabled(): void {

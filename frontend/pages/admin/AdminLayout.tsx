@@ -6,6 +6,7 @@ import { Button } from '../../lib/shadcn/button'
 import { TooltipProvider } from '../../lib/shadcn/tooltip'
 import AdminSidebar from './AdminSidebar'
 import { useAuth } from '../../context/AuthContext'
+import ThemeToggle from '../../components/ThemeToggle'
 
 interface Props {
   children: React.ReactNode
@@ -28,7 +29,7 @@ export default function AdminLayout({ children }: Props) {
         RTL flex row: first child → RIGHT side (sidebar)
                       second child → LEFT side (content)
       */}
-      <div className="flex h-screen overflow-hidden" style={{ background: '#181614' }}>
+      <div className="flex h-screen overflow-hidden bg-[#F7F5F0] dark:bg-[#181614] text-[#1C231F] dark:text-zinc-100">
         {/* Sidebar — appears on RIGHT in RTL */}
         <AdminSidebar
           collapsed={collapsed}
@@ -39,16 +40,18 @@ export default function AdminLayout({ children }: Props) {
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {/* Top header */}
           <header
-            className="flex items-center justify-between h-16 px-6 border-b border-zinc-800/80 flex-shrink-0"
-            style={{ background: '#211d1a' }}
+            className="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-[#E5E0D8] dark:border-zinc-800/80 bg-white dark:bg-[#211d1a] flex-shrink-0"
           >
-            <h1 className="text-white font-semibold text-sm hidden sm:block">
+            <h1 className="text-[#1C231F] dark:text-white font-semibold text-sm hidden sm:block">
               پنل مدیریت پلتفرم
             </h1>
-            <div className="flex items-center gap-3 mr-auto">
-              <div className="flex items-center gap-2 text-zinc-200 text-sm">
-                <User className="w-4 h-4 text-[#E5A93C]" />
-                <span className="truncate max-w-[180px] font-medium text-white">
+            <div className="flex items-center gap-2 sm:gap-3 mr-auto">
+              {/* Theme Toggle Button */}
+              <ThemeToggle className="h-9 px-2.5 sm:px-3 text-xs" />
+
+              <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-200 text-xs sm:text-sm">
+                <User className="w-4 h-4 text-[#B8842E] dark:text-[#E5A93C]" />
+                <span className="truncate max-w-[120px] sm:max-w-[180px] font-medium text-[#1C231F] dark:text-white">
                   {profile?.email ?? profile?.phone ?? '—'}
                 </span>
               </div>
@@ -56,7 +59,7 @@ export default function AdminLayout({ children }: Props) {
                 variant="ghost"
                 size="sm"
                 onClick={handleSignOut}
-                className="text-zinc-300 hover:text-red-400 hover:bg-red-900/20 gap-2"
+                className="text-zinc-600 dark:text-zinc-300 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 gap-1.5 px-2.5 sm:px-3"
               >
                 <LogOut className="w-4 h-4" />
                 <span className="hidden sm:inline text-xs">خروج</span>
@@ -65,7 +68,7 @@ export default function AdminLayout({ children }: Props) {
           </header>
 
           {/* Page content */}
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto bg-[#F7F5F0] dark:bg-[#181614]">
             {children}
           </main>
         </div>
@@ -73,3 +76,4 @@ export default function AdminLayout({ children }: Props) {
     </TooltipProvider>
   )
 }
+
