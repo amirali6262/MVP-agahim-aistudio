@@ -86,9 +86,4 @@ jobs:
 
       - name: Lint linked database
         if: github.event_name == 'push' || inputs.mode == 'apply'
-        if: inputs.mode == 'apply'
-        run: bash scripts/verify-supabase-migrations.sh
-
-      - name: Lint linked database
-        if: inputs.mode == 'apply'
         run: supabase db lint --linked --level error
