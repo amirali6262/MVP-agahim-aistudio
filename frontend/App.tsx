@@ -11,8 +11,7 @@ import AdminLayout from './pages/admin/AdminLayout'
 
 import AdminLogin from './pages/admin/AdminLogin'
 import AdminDashboard from './pages/admin/AdminDashboard'
-import AdminComplianceStudioV3 from './pages/admin/AdminComplianceStudioV3'
-import AdminComplianceStudio from './pages/admin/AdminComplianceStudioV2'
+import { ComplianceStudioRoute } from './pages/admin/AdminComplianceStudio'
 import AdminCircularCenter from './pages/admin/AdminCircularCenter'
 import TaxCorporatePage from './pages/admin/tax/TaxCorporatePage'
 import CommercialBooksAdminPage from './pages/admin/books/CommercialBooksAdminPage'
@@ -28,6 +27,7 @@ import './styles/persian.css'
 // Wrapper: ProtectedRoute → AdminLayout → page
 function AdminPage({ children }: { children: React.ReactNode }) {
   const location = useLocation()
+
   return (
     <ProtectedRoute requireRole="PLATFORM_ADMIN">
       <AdminLayout key={location.pathname}>{children}</AdminLayout>
@@ -40,16 +40,23 @@ function TenantPage({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0c0b' }}>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: '#0a0c0b' }}
+      >
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-zinc-400 text-sm">در حال بررسی دسترسی به شرکت...</span>
+          <span className="text-zinc-400 text-sm">
+            در حال بررسی دسترسی به شرکت...
+          </span>
         </div>
       </div>
     )
   }
 
-  if (!selectedTenant) return <Navigate to="/workspace" replace />
+  if (!selectedTenant) {
+    return <Navigate to="/workspace" replace />
+  }
 
   return <>{children}</>
 }
@@ -57,7 +64,9 @@ function TenantPage({ children }: { children: React.ReactNode }) {
 export default function App() {
   useEffect(() => {
     document.documentElement.dir = 'rtl'
+
     const savedTheme = localStorage.getItem('theme')
+
     if (savedTheme === 'light') {
       document.documentElement.classList.remove('dark')
     } else {
@@ -95,71 +104,155 @@ export default function App() {
             {/* ── Admin panel (all behind AdminLayout + PLATFORM_ADMIN guard) ── */}
             <Route
               path="/admin/dashboard"
-              element={<AdminPage><AdminDashboard /></AdminPage>}
+              element={
+                <AdminPage>
+                  <AdminDashboard />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/studio"
-              element={<AdminPage><AdminComplianceStudioV3 /></AdminPage>}
+              element={
+                <AdminPage>
+                  <ComplianceStudioRoute />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/circulars"
-              element={<AdminPage><AdminCircularCenter /></AdminPage>}
+              element={
+                <AdminPage>
+                  <AdminCircularCenter />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/tax/corporate"
-              element={<AdminPage><TaxCorporatePage type="TAX_CORPORATE" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="TAX_CORPORATE" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/tax/individual"
-              element={<AdminPage><TaxCorporatePage type="TAX_INDIVIDUAL" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="TAX_INDIVIDUAL" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/tax/vat"
-              element={<AdminPage><TaxCorporatePage type="VAT" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="VAT" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/tax/payroll"
-              element={<AdminPage><TaxCorporatePage type="PAYROLL_TAX" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="PAYROLL_TAX" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/tax/duties"
-              element={<AdminPage><TaxCorporatePage type="TAX_DUTIES" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="TAX_DUTIES" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/tax/claim169"
-              element={<AdminPage><TaxCorporatePage type="CLAIM_169" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="CLAIM_169" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/tax/*"
-              element={<AdminPage><TaxCorporatePage type="ALL" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="ALL" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/insurance/contract"
-              element={<AdminPage><TaxCorporatePage type="INS_CONTRACT" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="INS_CONTRACT" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/insurance/audit"
-              element={<AdminPage><TaxCorporatePage type="INS_AUDIT" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="INS_AUDIT" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/insurance/*"
-              element={<AdminPage><TaxCorporatePage type="INS_CONTRACT" /></AdminPage>}
+              element={
+                <AdminPage>
+                  <TaxCorporatePage type="INS_CONTRACT" />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/books"
-              element={<AdminPage><CommercialBooksAdminPage /></AdminPage>}
+              element={
+                <AdminPage>
+                  <CommercialBooksAdminPage />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/checklists"
-              element={<AdminPage><ChecklistAdminPage /></AdminPage>}
+              element={
+                <AdminPage>
+                  <ChecklistAdminPage />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/objections/*"
-              element={<AdminPage><ObjectionTemplatesPage /></AdminPage>}
+              element={
+                <AdminPage>
+                  <ObjectionTemplatesPage />
+                </AdminPage>
+              }
             />
+
             <Route
               path="/admin/extensions"
-              element={<AdminPage><DeadlineExtensionsPage /></AdminPage>}
+              element={
+                <AdminPage>
+                  <DeadlineExtensionsPage />
+                </AdminPage>
+              }
             />
 
             {/* ── Protected user routes ── */}
@@ -171,6 +264,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/panel/dashboard"
               element={
@@ -181,6 +275,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/panel"
               element={
