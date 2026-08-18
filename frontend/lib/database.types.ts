@@ -122,6 +122,44 @@ export type Database = {
           },
         ]
       }
+      case_transition_history: {
+        Row: {
+          case_id: string
+          executed_at: string
+          executed_by: string | null
+          from_step_id: string
+          id: string
+          outcome_code: string
+          response_data: Json
+          to_step_id: string | null
+          transition_id: string
+          trigger_type: string
+        }
+        Insert: {
+          case_id: string
+          executed_at?: string
+          executed_by?: string | null
+          from_step_id: string
+          id?: string
+          outcome_code: string
+          response_data?: Json
+          to_step_id?: string | null
+          transition_id: string
+          trigger_type: string
+        }
+        Update: {
+          case_id?: string
+          executed_at?: string
+          executed_by?: string | null
+          from_step_id?: string
+          outcome_code?: string
+          response_data?: Json
+          to_step_id?: string | null
+          transition_id?: string
+          trigger_type?: string
+        }
+        Relationships: []
+      }
       case_tasks: {
         Row: {
           case_id: string
@@ -983,6 +1021,58 @@ export type Database = {
           },
         ]
       }
+      workflow_transitions: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          event_code: string | null
+          from_step_id: string
+          id: string
+          legal_reference: string | null
+          outcome_code: string
+          priority: number
+          terminal_status: string | null
+          timeout_interval: string | null
+          title: string
+          to_step_id: string | null
+          trigger_type: string
+          workflow_template_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          event_code?: string | null
+          from_step_id: string
+          id?: string
+          legal_reference?: string | null
+          outcome_code: string
+          priority?: number
+          terminal_status?: string | null
+          timeout_interval?: string | null
+          title: string
+          to_step_id?: string | null
+          trigger_type: string
+          workflow_template_id: string
+        }
+        Update: {
+          code?: string
+          description?: string | null
+          event_code?: string | null
+          from_step_id?: string
+          legal_reference?: string | null
+          outcome_code?: string
+          priority?: number
+          terminal_status?: string | null
+          timeout_interval?: string | null
+          title?: string
+          to_step_id?: string | null
+          trigger_type?: string
+          workflow_template_id?: string
+        }
+        Relationships: []
+      }
       workflow_templates: {
         Row: {
           created_at: string
@@ -1024,7 +1114,7 @@ export type Database = {
     }
     Functions: {
       complete_case_task: {
-        Args: { requested_response?: Json; requested_task_id: string }
+        Args: { requested_response?: Json; requested_task_id: string; requested_transition_id: string }
         Returns: {
           assessment_id: string
           closed_at: string | null
@@ -1196,6 +1286,23 @@ export type Database = {
           to: "compliance_cases"
           isOneToOne: false
           isSetofReturn: true
+        }
+      }
+      record_case_system_event: {
+        Args: { requested_event_code: string; requested_payload?: Json; requested_task_id: string }
+        Returns: {
+          assessment_id: string
+          closed_at: string | null
+          created_at: string
+          current_step_id: string | null
+          id: string
+          obligation_version_id: string
+          opened_at: string
+          period_key: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          workflow_template_id: string
         }
       }
       transition_obligation_version_status: {
