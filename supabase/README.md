@@ -64,6 +64,17 @@ where email = 'admin@example.com';
 
 Never expose an endpoint that lets ordinary authenticated users change `public.users.role`.
 
+The administrator must first exist in **Authentication → Users**. Inserting an
+email only into `public.users` does not create login credentials, and the
+database password is never a valid panel password. The panel uses the password
+stored by Supabase Auth for that user. If it is unknown, use the password-reset
+action on `/admin/login`; ensure the deployed `/admin/login?recovery=1` URL is
+allowed in Supabase Authentication redirect URLs.
+
+Business users have the same recovery flow on `/login`. Add both
+`/login?recovery=1` and `/admin/login?recovery=1` (with each deployed origin)
+to the Authentication redirect allow-list.
+
 ## Ownership constraints
 
 Tenant creation uses the atomic `create_tenant_with_owner` RPC. It validates the caller and inputs, then creates the tenant and first `OWNER` membership in one transaction. A tenant cannot be left without an owner, and an owner cannot remove or downgrade their own membership. The current foundation does not implement ownership transfer. Because `tenants.created_by` uses `ON DELETE RESTRICT`, a creator account cannot be deleted while its tenant still exists.
