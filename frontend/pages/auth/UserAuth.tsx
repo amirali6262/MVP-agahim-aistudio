@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Eye, EyeOff, Building2, Shield, Sparkles } from 'lucide-react'
+import { Eye, EyeOff, Building2, Shield, Sparkles, KeyRound } from 'lucide-react'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
@@ -13,8 +13,10 @@ interface Props {
 }
 
 export default function UserAuth({ mode }: Props) {
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, requestPasswordReset, updatePassword } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const recoveryMode = mode === 'login' && searchParams.get('recovery') === '1'
 
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
@@ -35,6 +37,22 @@ export default function UserAuth({ mode }: Props) {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+
+    if (recoveryMode) {
+      if (password.length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+        toast.error('رمز جدید باید حداقل ۱۰ کاراکتر و شامل حرف انگلیسی و عدد باشد.')
+        return
+      }
+      if (password !== confirmPassword) return toast.error('رمز جدید و تکرار آن مطابقت ندارند.')
+      setSubmitting(true)
+      const { error } = await updatePassword(password)
+      setSubmitting(false)
+      if (error) return toast.error(error)
+      toast.success('رمز عبور با موفقیت تغییر کرد. اکنون وارد حساب شوید.')
+      resetForm()
+      navigate('/login', { replace: true })
+      return
+    }
 
     if (!identifier.trim() || !password) {
       toast.error('لطفاً تمام فیلدها را پر کنید.')
@@ -87,6 +105,15 @@ export default function UserAuth({ mode }: Props) {
     }
   }
 
+  const handleResetPassword = async () => {
+    if (!identifier.includes('@')) return toast.error('برای بازیابی رمز، ابتدا ایمیل حساب را وارد کنید.')
+    setSubmitting(true)
+    const { error } = await requestPasswordReset(identifier, '/login?recovery=1')
+    setSubmitting(false)
+    if (error) return toast.error(error)
+    toast.success('اگر این ایمیل ثبت شده باشد، لینک بازیابی رمز ارسال می‌شود.')
+  }
+
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4"
@@ -102,12 +129,12 @@ export default function UserAuth({ mode }: Props) {
             <Building2 className="w-6 h-6 text-emerald-400" />
           </div>
           <h1 className="text-xl font-semibold text-zinc-100">
-            {isRegister ? 'ایجاد حساب کاربری' : 'ورود به حساب'}
+            {recoveryMode ? 'تعیین رمز عبور جدید' : isRegister ? 'ایجاد حساب کاربری' : 'ورود به حساب'}
           </h1>
         </div>
 
         {/* Tab switcher */}
-        <div className="flex rounded-lg bg-zinc-900 p-1 mb-6">
+        {!recoveryMode && <div className="flex rounded-lg bg-zinc-900 p-1 mb-6">
           <Link
             to="/login"
             replace
@@ -130,12 +157,12 @@ export default function UserAuth({ mode }: Props) {
           >
             ثبت‌نام
           </Link>
-        </div>
+        </div>}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           {/* Identifier */}
-          <div className="flex flex-col gap-2">
+          {!recoveryMode && <div className="flex flex-col gap-2">
             <Label htmlFor="identifier" className="text-zinc-300 text-sm">
               ایمیل یا شماره موبایل
             </Label>
@@ -149,12 +176,12 @@ export default function UserAuth({ mode }: Props) {
               className="bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-600 h-11"
               dir="ltr"
             />
-          </div>
+          </div>}
 
           {/* Password */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="password" className="text-zinc-300 text-sm">
-              رمز عبور
+              {recoveryMode ? 'رمز عبور جدید' : 'رمز عبور'}
             </Label>
             <div className="relative">
               <Input
@@ -163,7 +190,7 @@ export default function UserAuth({ mode }: Props) {
                 placeholder={isRegister ? 'حداقل ۱۰ کاراکتر، شامل حرف و عدد' : '••••••••'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete={isRegister ? 'new-password' : 'current-password'}
+                autoComplete={isRegister || recoveryMode ? 'new-password' : 'current-password'}
                 className="bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-600 h-11 pl-11"
                 dir="ltr"
               />
@@ -179,10 +206,10 @@ export default function UserAuth({ mode }: Props) {
           </div>
 
           {/* Confirm Password (register only) */}
-          {isRegister && (
+          {(isRegister || recoveryMode) && (
             <div className="flex flex-col gap-2">
               <Label htmlFor="confirm-password" className="text-zinc-300 text-sm">
-                تکرار رمز عبور
+                {recoveryMode ? 'تکرار رمز عبور جدید' : 'تکرار رمز عبور'}
               </Label>
               <div className="relative">
                 <Input
@@ -215,15 +242,17 @@ export default function UserAuth({ mode }: Props) {
             {submitting ? (
               <span className="flex items-center gap-2">
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {isRegister ? 'در حال ثبت‌نام...' : 'در حال ورود...'}
+                {recoveryMode ? 'در حال ذخیره رمز...' : isRegister ? 'در حال ثبت‌نام...' : 'در حال ورود...'}
               </span>
             ) : (
-              isRegister ? 'ایجاد حساب' : 'ورود'
+              recoveryMode ? 'ذخیره رمز جدید' : isRegister ? 'ایجاد حساب' : 'ورود'
             )}
           </Button>
 
+          {!isRegister && !recoveryMode && <Button type="button" variant="outline" disabled={submitting} onClick={() => void handleResetPassword()} className="w-full gap-2 border-emerald-800/70 text-emerald-300 hover:bg-emerald-950/40"><KeyRound className="h-4 w-4" />فراموشی رمز عبور</Button>}
+
           {/* Quick Demo Fill if Mock Auth is enabled */}
-          {isMockAuthEnabled && !isRegister && (
+          {isMockAuthEnabled && !isRegister && !recoveryMode && (
             <div className="mt-2 pt-4 border-t border-zinc-800 flex flex-col gap-2">
               <button
                 type="button"
