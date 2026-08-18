@@ -164,6 +164,7 @@ revoke all on function private.execute_case_transition(uuid, uuid, jsonb, uuid, 
   from public, anon, authenticated, service_role;
 
 drop function if exists public.complete_case_task(uuid, jsonb);
+drop function public.complete_case_task(uuid, jsonb);
 
 create or replace function public.complete_case_task(
   requested_task_id uuid,
