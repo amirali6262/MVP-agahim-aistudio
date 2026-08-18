@@ -1,0 +1,89 @@
+name: Supabase migration deployment (automatic)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Preview pending migrations or apply them to production
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+      confirmation:
+        description: Type APPLY when mode is apply
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: ${{ github.event_name == 'push' && 'Apply merged migrations' || (inputs.mode == 'apply' && 'Apply migrations' || 'Plan migrations') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+        with:
+          version: latest
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "Missing SUPABASE_ACCESS_TOKEN"; exit 1; }
+          test -n "$SUPABASE_DB_PASSWORD" || { echo "Missing SUPABASE_DB_PASSWORD"; exit 1; }
+          test -n "$SUPABASE_PROJECT_ID" || { echo "Missing SUPABASE_PROJECT_ID"; exit 1; }
+
+      - name: Link production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Show migration history
+        run: supabase migration list --linked
+
+      - name: Preview pending migrations
+        run: supabase db push --dry-run --linked
+
+      - name: Require explicit apply confirmation
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'apply'
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        shell: bash
+        run: |
+          if [[ "$CONFIRMATION" != "APPLY" ]]; then
+            echo "Apply mode requires confirmation value APPLY."
+            exit 1
+          fi
+
+      - name: Apply pending migrations
+        if: github.event_name == 'push' || inputs.mode == 'apply'
+        run: supabase db push --linked
+
+      - name: Verify migration parity
+        if: github.event_name == 'push' || inputs.mode == 'apply'
+        run: bash scripts/verify-supabase-migrations.sh
+
+      - name: Lint linked database
+        if: github.event_name == 'push' || inputs.mode == 'apply'
+        run: supabase db lint --linked --level error

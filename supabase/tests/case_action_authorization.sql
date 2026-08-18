@@ -84,6 +84,16 @@ insert into public.workflow_steps (
   'مرحله کاربر', 'USER', '{"fields":[]}'::jsonb
 );
 
+insert into public.workflow_transitions (
+  id, workflow_template_id, from_step_id, code, title, trigger_type,
+  terminal_status, outcome_code
+) values (
+  'ab000000-0000-0000-0000-000000000001',
+  'a8000000-0000-0000-0000-000000000001',
+  'a9000000-0000-0000-0000-000000000001',
+  'CASE_AUTH_COMPLETE', 'تکمیل آزمون', 'USER_ACTION', 'COMPLETED', 'COMPLETED'
+);
+
 insert into public.eligibility_assessments (
   id, tenant_id, obligation_version_id, profile_version_id,
   matched_rule_set_id, outcome, explanation, evaluated_by
@@ -182,6 +192,7 @@ begin
   begin
     perform public.complete_case_task(
       current_setting('case_auth_test.admin_task_id')::uuid,
+      'ab000000-0000-0000-0000-000000000001'::uuid,
       '{}'::jsonb
     );
     raise exception 'MEMBER completed a USER task';
@@ -201,6 +212,7 @@ begin
   begin
     perform public.complete_case_task(
       current_setting('case_auth_test.admin_task_id')::uuid,
+      'ab000000-0000-0000-0000-000000000001'::uuid,
       '{}'::jsonb
     );
     raise exception 'cross-tenant OWNER completed a USER task';
@@ -217,6 +229,7 @@ select set_config('request.jwt.claim.sub', 'a1000000-0000-0000-0000-000000000002
 select set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-000000000002","role":"authenticated","is_anonymous":false}', true);
 select public.complete_case_task(
   current_setting('case_auth_test.admin_task_id')::uuid,
+  'ab000000-0000-0000-0000-000000000001'::uuid,
   '{}'::jsonb
 );
 reset role;
@@ -226,6 +239,7 @@ select set_config('request.jwt.claim.sub', 'a1000000-0000-0000-0000-000000000001
 select set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}', true);
 select public.complete_case_task(
   current_setting('case_auth_test.owner_task_id')::uuid,
+  'ab000000-0000-0000-0000-000000000001'::uuid,
   '{}'::jsonb
 );
 reset role;
@@ -271,7 +285,7 @@ begin
   if has_function_privilege(
     'anon', 'public.open_eligible_cases(uuid,text)', 'EXECUTE'
   ) or has_function_privilege(
-    'anon', 'public.complete_case_task(uuid,jsonb)', 'EXECUTE'
+    'anon', 'public.complete_case_task(uuid,uuid,jsonb)', 'EXECUTE'
   ) then
     raise exception 'anonymous role can execute case mutation RPCs';
   end if;
