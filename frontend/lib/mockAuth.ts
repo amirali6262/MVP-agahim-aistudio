@@ -1,17 +1,13 @@
 /**
- * Mock authentication — used when VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY
- * are not configured. Credentials are stored only in localStorage.
+ * Mock authentication — used only when VITE_ENABLE_MOCK_AUTH=true.
+ * Credentials are stored only in localStorage.
  */
 import type { Session } from '@supabase/supabase-js'
-import { isSupabaseConfigured } from './supabase'
+import { isMockAuthEnabled } from './supabase'
 import type { AppUser, UserRole } from './supabase'
 
-const isMockAuthRuntimeEnabled =
-  !isSupabaseConfigured ||
-  import.meta.env['VITE_ENABLE_MOCK_AUTH'] !== 'false'
-
 function assertMockAuthEnabled(): void {
-  if (!isMockAuthRuntimeEnabled) {
+  if (!isMockAuthEnabled) {
     throw new Error('Mock authentication is disabled outside explicitly enabled development mode.')
   }
 }

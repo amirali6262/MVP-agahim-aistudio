@@ -1,6 +1,11 @@
 name: Supabase migration deployment
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
   workflow_dispatch:
     inputs:
       mode:
@@ -26,7 +31,7 @@ concurrency:
 
 jobs:
   migrate:
-    name: ${{ inputs.mode == 'apply' && 'Apply migrations' || 'Plan migrations' }}
+    name: ${{ github.event_name == 'push' && 'Apply merged migrations' || (inputs.mode == 'apply' && 'Apply migrations' || 'Plan migrations') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -61,7 +66,7 @@ jobs:
         run: supabase db push --dry-run --linked
 
       - name: Require explicit apply confirmation
-        if: inputs.mode == 'apply'
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'apply'
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
         shell: bash
@@ -72,9 +77,13 @@ jobs:
           fi
 
       - name: Apply pending migrations
-        if: inputs.mode == 'apply'
+        if: github.event_name == 'push' || inputs.mode == 'apply'
         run: supabase db push --linked
 
-      - name: Verify migration history
-        if: inputs.mode == 'apply'
-        run: supabase migration list --linked
+      - name: Verify migration parity
+        if: github.event_name == 'push' || inputs.mode == 'apply'
+        run: bash scripts/verify-supabase-migrations.sh
+
+      - name: Lint linked database
+        if: github.event_name == 'push' || inputs.mode == 'apply'
+        run: supabase db lint --linked --level error

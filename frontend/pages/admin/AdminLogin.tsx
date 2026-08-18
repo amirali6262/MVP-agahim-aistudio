@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Shield, Eye, EyeOff, Sparkles, ArrowRight } from 'lucide-react'
+import { Shield, Eye, EyeOff, Sparkles, ArrowRight, KeyRound } from 'lucide-react'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
@@ -9,8 +9,10 @@ import { useAuth } from '../../context/AuthContext'
 import { isMockAuthEnabled } from '../../lib/supabase'
 
 export default function AdminLogin() {
-  const { signInAdmin } = useAuth()
+  const { signInAdmin, requestPasswordReset, updatePassword } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const recoveryMode = searchParams.get('recovery') === '1'
 
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
@@ -19,6 +21,17 @@ export default function AdminLogin() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (recoveryMode) {
+      if (password.length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) return toast.error('رمز جدید باید حداقل ۱۰ کاراکتر و شامل حرف انگلیسی و عدد باشد.')
+      setSubmitting(true)
+      const { error } = await updatePassword(password)
+      setSubmitting(false)
+      if (error) return toast.error(error)
+      toast.success('رمز حساب Supabase Auth با موفقیت تغییر کرد. اکنون وارد شوید.')
+      navigate('/admin/login', { replace: true })
+      setPassword('')
+      return
+    }
     if (!identifier.trim() || !password) {
       toast.error('لطفاً تمام فیلدها را پر کنید.')
       return
@@ -37,6 +50,15 @@ export default function AdminLogin() {
     navigate('/admin/dashboard', { replace: true })
   }
 
+  const handleResetPassword = async () => {
+    if (!identifier.includes('@')) return toast.error('ابتدا ایمیل حساب مدیر را وارد کنید.')
+    setSubmitting(true)
+    const { error } = await requestPasswordReset(identifier, '/admin/login?recovery=1')
+    setSubmitting(false)
+    if (error) return toast.error(error)
+    toast.success('اگر این ایمیل در Supabase Auth ثبت شده باشد، لینک بازیابی ارسال می‌شود.')
+  }
+
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4"
@@ -51,15 +73,15 @@ export default function AdminLogin() {
           <div className="w-12 h-12 rounded-xl bg-[#E5A93C]/20 border border-[#E5A93C]/50 flex items-center justify-center">
             <Shield className="w-6 h-6 text-[#E5A93C]" />
           </div>
-          <h1 className="text-xl font-semibold text-zinc-100">ورود مدیر پلتفرم</h1>
+          <h1 className="text-xl font-semibold text-zinc-100">{recoveryMode ? 'تعیین رمز جدید مدیر' : 'ورود مدیر پلتفرم'}</h1>
           <p className="text-sm text-zinc-500 text-center">
-            این صفحه فقط برای مدیران سیستم است
+            {recoveryMode ? 'رمز جدید حساب Supabase Auth را وارد کنید' : 'این صفحه فقط برای مدیران سیستم است'}
           </p>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <div className="flex flex-col gap-2">
+          {!recoveryMode && <div className="flex flex-col gap-2">
             <Label htmlFor="identifier" className="text-zinc-300 text-sm">
               ایمیل یا شماره موبایل
             </Label>
@@ -73,11 +95,11 @@ export default function AdminLogin() {
               className="bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-[#E5A93C] h-11"
               dir="ltr"
             />
-          </div>
+          </div>}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="password" className="text-zinc-300 text-sm">
-              رمز عبور
+              {recoveryMode ? 'رمز عبور جدید' : 'رمز عبور حساب Supabase Auth'}
             </Label>
             <div className="relative">
               <Input
@@ -86,7 +108,7 @@ export default function AdminLogin() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                autoComplete={recoveryMode ? 'new-password' : 'current-password'}
                 className="bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-[#E5A93C] h-11 pl-11"
                 dir="ltr"
               />
@@ -101,6 +123,8 @@ export default function AdminLogin() {
             </div>
           </div>
 
+          {!recoveryMode && <div className="-mt-3 rounded-lg border border-amber-900/50 bg-amber-950/20 p-3 text-xs leading-6 text-amber-200">رمز ورود مدیر، رمز کاربر در بخش <span dir="ltr" className="font-mono">Authentication → Users</span> است؛ رمز Database برای ورود به پنل قابل استفاده نیست.</div>}
+
           <Button
             type="submit"
             disabled={submitting}
@@ -112,12 +136,14 @@ export default function AdminLogin() {
                 در حال ورود...
               </span>
             ) : (
-              'ورود به پنل مدیریت'
+              recoveryMode ? 'ذخیره رمز جدید' : 'ورود به پنل مدیریت'
             )}
           </Button>
 
+          {!recoveryMode && <Button type="button" variant="outline" disabled={submitting} onClick={() => void handleResetPassword()} className="w-full gap-2 border-amber-800/70 text-amber-300 hover:bg-amber-950/40"><KeyRound className="h-4 w-4" />فراموشی رمز عبور مدیر</Button>}
+
           {/* Quick Demo Fill */}
-          {isMockAuthEnabled && (
+          {!recoveryMode && isMockAuthEnabled && (
             <div className="mt-2 pt-4 border-t border-zinc-800 flex flex-col gap-2">
               <button
                 type="button"
