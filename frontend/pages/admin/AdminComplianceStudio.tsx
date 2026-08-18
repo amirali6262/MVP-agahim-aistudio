@@ -866,7 +866,14 @@ export default function AdminComplianceStudio() {
                 <div className="flex items-center justify-between gap-3"><div><h3 className="flex items-center gap-2 font-bold"><GitBranch className="h-4 w-4 text-violet-400" />مسیرها و خروجی‌های فرایند ({transitions.length})</h3><p className="mt-1 text-xs text-zinc-500">هر مسیر، نتیجه یک مرحله را به مرحله بعدی، حلقه بازگشتی یا وضعیت پایانی متصل می‌کند.</p></div></div>
                 <div className="mt-5 grid gap-3 md:grid-cols-2">{transitions.map((transition) => <div key={transition.id} className="rounded-xl border border-zinc-700/80 bg-[#1b1e1c] p-4"><div className="flex items-center justify-between gap-3"><p className="font-bold">{transition.title}</p><span className={`rounded-full border px-2.5 py-1 text-[11px] ${transition.trigger_type === 'TIMEOUT' ? 'border-orange-800 bg-orange-950/50 text-orange-300' : transition.trigger_type === 'SYSTEM_EVENT' ? 'border-violet-800 bg-violet-950/50 text-violet-300' : 'border-sky-800 bg-sky-950/50 text-sky-300'}`}>{transitionTriggerLabel(transition.trigger_type)}</span></div><p className="mt-2 text-xs text-zinc-500">خروجی: {transition.outcome_code} · {transition.to_step_id ? 'انتقال به یک مرحله' : `پایان: ${transition.terminal_status}`}</p></div>)}</div>
                 {!transitionSchemaReady && <div className="mt-5 rounded-xl border border-red-800 bg-red-950/30 p-4 text-sm leading-7 text-red-200">جدول مسیرها هنوز در Supabase ایجاد نشده است. ابتدا migration <code dir="ltr">20260818170000_add_branching_workflow_engine.sql</code> را روی پروژه اعمال و Schema Cache را refresh کنید.</div>}
-                {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && transitionSchemaReady && <WorkflowTransitionForm version={selectedVersion} steps={steps} nextPriority={transitions.length + 1} onSaved={loadDefinition} />}
+                {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && transitionSchemaReady && (
+                  <WorkflowTransitionForm
+                    version={selectedVersion}
+                    steps={steps}
+                    nextPriority={transitions.length + 1}
+                    onSaved={loadDefinition}
+                  />
+                )}
               </div>
             </>
           )}
