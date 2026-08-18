@@ -2275,6 +2275,30 @@ export const mockStudioDb = {
     return [..._studioVersions].sort((a, b) => b.version_number - a.version_number)
   },
 
+  deleteObligation(obligationId: string): boolean {
+    requireMockData()
+    const versionIds = _studioVersions.filter((version) => version.obligation_id === obligationId).map((version) => version.id)
+    const templateIds = _studioTemplates.filter((template) => versionIds.includes(template.obligation_version_id)).map((template) => template.id)
+    const ruleIds = _studioRuleSets.filter((rule) => versionIds.includes(rule.obligation_version_id)).map((rule) => rule.id)
+    const initialLength = _studioObligations.length
+    _studioConditions = _studioConditions.filter((condition) => !ruleIds.includes(condition.rule_set_id))
+    _studioRuleSets = _studioRuleSets.filter((rule) => !versionIds.includes(rule.obligation_version_id))
+    _studioSteps = _studioSteps.filter((step) => !templateIds.includes(step.workflow_template_id))
+    _studioTemplates = _studioTemplates.filter((template) => !versionIds.includes(template.obligation_version_id))
+    _studioVersions = _studioVersions.filter((version) => version.obligation_id !== obligationId)
+    _studioObligations = _studioObligations.filter((obligation) => obligation.id !== obligationId)
+    return _studioObligations.length < initialLength
+  },
+
+  updateVersionPenalty(versionId: string, penaltyRule: any): boolean {
+    requireMockData()
+    const version = _studioVersions.find((item) => item.id === versionId)
+    if (!version) return false
+    version.penalty_rule = penaltyRule
+    version.updated_at = new Date().toISOString()
+    return true
+  },
+
   getWorkflowTemplate(versionId: string): MockWorkflowTemplate | undefined {
     return _studioTemplates.find((t) => t.obligation_version_id === versionId)
   },
@@ -2556,4 +2580,3 @@ export const mockStudioDb = {
     }
   },
 }
-

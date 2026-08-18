@@ -89,6 +89,7 @@ export default function AdminLayout({ children }: Props) {
               <span className="font-semibold text-zinc-800 dark:text-zinc-200">{currentLabel}</span>
             </nav>
             {location.pathname === '/admin/studio' ? <AdminComplianceStudioV4 /> : children}
+            {children}
           </main>
         </div>
       </div>
