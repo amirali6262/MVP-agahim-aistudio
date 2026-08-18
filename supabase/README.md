@@ -28,6 +28,26 @@ npx supabase db push
 
 Confirm that local and remote migration versions match before and after `db push`.
 
+After an apply, the guarded deployment workflow verifies that every migration
+version exists in both columns of the linked migration history and runs
+`supabase db lint --linked --level error`. It fails rather than reporting a
+successful deployment when a new table has not reached the linked project.
+
+Run the same parity check from any checkout that has already been linked:
+
+```bash
+bash scripts/verify-supabase-migrations.sh
+```
+
+Deploy database migrations before deploying frontend features that use them.
+The browser publishable key can access objects allowed by RLS, but cannot create
+missing tables or apply migration files.
+
+Migrations merged into `main` are applied automatically by the protected
+`Supabase migration deployment` workflow. A manual run remains available for a
+plan or recovery apply. The final schema-cache migration notifies PostgREST to
+reload, so Studio controls become available without restarting the frontend.
+
 ## Frontend environment
 
 Create a local `.env` file and keep it out of Git:
@@ -36,9 +56,21 @@ Create a local `.env` file and keep it out of Git:
 VITE_SUPABASE_URL=https://<project-ref>.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 VITE_ENABLE_MOCK_AUTH=false
+VITE_ENABLE_MOCK_DATA=false
 ```
 
+This repository also includes `frontend/.env.development` with the shared
+development project's public URL and publishable browser key, so `npm run dev`
+works immediately after checkout. Override it with `frontend/.env.local` when
+using another project. Publishable keys are client identifiers protected by
+RLS; secret, `service_role`, and database credentials must never be added.
+
 Only the Project URL and Publishable Key belong in the frontend. Never put a Supabase Secret Key, database password, access token, or `service_role` key in frontend code, Vite variables, commits, or pull requests.
+
+Mock authentication is opt-in: set `VITE_ENABLE_MOCK_AUTH=true` only for an
+intentional local demo. Keep it disabled in deployed environments because demo
+sessions are client-side placeholders and do not represent authenticated
+Supabase users.
 
 ## Authentication behavior
 
@@ -57,6 +89,17 @@ where email = 'admin@example.com';
 ```
 
 Never expose an endpoint that lets ordinary authenticated users change `public.users.role`.
+
+The administrator must first exist in **Authentication → Users**. Inserting an
+email only into `public.users` does not create login credentials, and the
+database password is never a valid panel password. The panel uses the password
+stored by Supabase Auth for that user. If it is unknown, use the password-reset
+action on `/admin/login`; ensure the deployed `/admin/login?recovery=1` URL is
+allowed in Supabase Authentication redirect URLs.
+
+Business users have the same recovery flow on `/login`. Add both
+`/login?recovery=1` and `/admin/login?recovery=1` (with each deployed origin)
+to the Authentication redirect allow-list.
 
 ## Ownership constraints
 
@@ -110,7 +153,7 @@ Penalty values are estimates based on the published rule snapshot, the latest re
 
 ### Dynamic workflow forms
 
-`public.complete_case_task` is intentionally exposed as an authenticated `SECURITY DEFINER` RPC because clients cannot write case tasks or cases directly. It locks the active task and case, enforces the step actor (`USER` versus `PLATFORM_ADMIN`/`AUTHORITY`), validates every response against the bounded published form schema, rejects unknown or missing fields, and advances exactly one step atomically. Anonymous users and cross-tenant callers are rejected. The form vocabulary is deliberately limited to text, number, date, checkbox, and select; file upload is not enabled until a separately secured Storage design is added.
+`public.complete_case_task` is intentionally exposed as an authenticated `SECURITY DEFINER` RPC because clients cannot write case tasks or cases directly. It locks the active task and case, enforces the step actor (`USER` versus `PLATFORM_ADMIN`/`AUTHORITY`), validates every response against the bounded published form schema, rejects unknown or missing fields, and atomically follows the explicitly selected `workflow_transitions` edge. Anonymous users, cross-tenant callers, timeout edges, and system-event edges are rejected from the interactive RPC. System events use the platform-admin-only `record_case_system_event` RPC, while timeout edges are evaluated by the scheduled private processor. Every accepted edge is appended to `case_transition_history`, including backward/self-referencing loops and terminal outcomes. The form vocabulary is deliberately limited to text, number, date, checkbox, and select; file upload is not enabled until a separately secured Storage design is added.
 
 ### Admin obligation authoring
 
