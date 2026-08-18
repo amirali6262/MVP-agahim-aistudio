@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 
 import { AuthProvider } from './context/AuthContext'
@@ -11,7 +11,7 @@ import AdminLayout from './pages/admin/AdminLayout'
 
 import AdminLogin from './pages/admin/AdminLogin'
 import AdminDashboard from './pages/admin/AdminDashboard'
-import AdminComplianceStudioV3 from './pages/admin/AdminComplianceStudioV3'
+import AdminComplianceStudio from './pages/admin/AdminComplianceStudio'
 import AdminCircularCenter from './pages/admin/AdminCircularCenter'
 import TaxCorporatePage from './pages/admin/tax/TaxCorporatePage'
 import CommercialBooksAdminPage from './pages/admin/books/CommercialBooksAdminPage'
@@ -26,10 +26,9 @@ import './styles/persian.css'
 
 // Wrapper: ProtectedRoute → AdminLayout → page
 function AdminPage({ children }: { children: React.ReactNode }) {
-  const location = useLocation()
   return (
     <ProtectedRoute requireRole="PLATFORM_ADMIN">
-      <AdminLayout key={location.pathname}>{children}</AdminLayout>
+      <AdminLayout>{children}</AdminLayout>
     </ProtectedRoute>
   )
 }
@@ -98,7 +97,7 @@ export default function App() {
             />
             <Route
               path="/admin/studio"
-              element={<AdminPage><AdminComplianceStudioV3 /></AdminPage>}
+              element={<AdminPage><AdminComplianceStudio /></AdminPage>}
             />
             <Route
               path="/admin/circulars"
