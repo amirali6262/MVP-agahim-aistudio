@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 
 import { AuthProvider } from './context/AuthContext'
@@ -11,7 +11,7 @@ import AdminLayout from './pages/admin/AdminLayout'
 
 import AdminLogin from './pages/admin/AdminLogin'
 import AdminDashboard from './pages/admin/AdminDashboard'
-import AdminComplianceStudio from './pages/admin/AdminComplianceStudio'
+import AdminComplianceStudio from './pages/admin/AdminComplianceStudioV2'
 import AdminCircularCenter from './pages/admin/AdminCircularCenter'
 import TaxCorporatePage from './pages/admin/tax/TaxCorporatePage'
 import CommercialBooksAdminPage from './pages/admin/books/CommercialBooksAdminPage'
@@ -26,9 +26,10 @@ import './styles/persian.css'
 
 // Wrapper: ProtectedRoute → AdminLayout → page
 function AdminPage({ children }: { children: React.ReactNode }) {
+  const location = useLocation()
   return (
     <ProtectedRoute requireRole="PLATFORM_ADMIN">
-      <AdminLayout>{children}</AdminLayout>
+      <AdminLayout key={location.pathname}>{children}</AdminLayout>
     </ProtectedRoute>
   )
 }
