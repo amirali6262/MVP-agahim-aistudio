@@ -43,6 +43,14 @@ const DEMO_MODULES_ENABLED = true
 
 const CORE_MENU: MenuSection[] = [
   {
+    id: 'overview',
+    label: 'نمای کلی',
+    icon: LayoutDashboard,
+    children: [
+      { id: 'admin-dashboard', label: 'داشبورد مدیریت', path: '/admin/dashboard', active: true },
+    ],
+  },
+  {
     id: 'studio',
     label: 'طراحی فرایندها',
     icon: Workflow,
