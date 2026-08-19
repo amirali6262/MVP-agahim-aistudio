@@ -24,6 +24,7 @@ import type { Json, Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
+import { Switch } from '../../lib/shadcn/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../lib/shadcn/table'
 
@@ -78,6 +79,20 @@ const booleanFacts = new Set(['HAS_ACTIVE_CONTRACTS', 'PAYS_SALARIES'])
 const arrayFacts = new Set(['ACTIVITY_CODES', 'CONTRACT_TYPES'])
 const mockDeletedObligationIds = new Set<string>()
 
+const OBLIGATION_TYPE_OPTIONS = [
+  ['TAX_CORPORATE', 'مالیات بر عملکرد اشخاص حقوقی'],
+  ['TAX_INDIVIDUAL', 'مالیات بر عملکرد اشخاص حقیقی'],
+  ['VAT', 'مالیات بر ارزش افزوده'],
+  ['PAYROLL_TAX', 'مالیات بر حقوق'],
+  ['TAX_DUTIES', 'مالیات تکلیفی'],
+  ['CLAIM_169', 'مطالبه ۱۶۹ مکرر'],
+  ['INS_CONTRACT', 'حق بیمه قراردادها'],
+  ['INS_AUDIT', 'حسابرسی بیمه'],
+] as const
+const RECURRENCE_OPTIONS = ['سالانه', 'فصلی', 'ماهانه', 'موردی/رویداد محور', 'یک‌بار برای همیشه']
+const BASE_EVENT_OPTIONS = ['پایان سال مالی مودی', 'پایان دوره فصلی', 'پایان ماه شمسی', 'تاریخ ابلاغ برگ/اخطاریه', 'تاریخ وقوع رویداد', 'تاریخ ثبت اعتراض توسط مودی', 'تاریخ صدور صورتحساب', 'تاریخ صدور رأی/ابلاغیه']
+const PHASE_GROUP_OPTIONS = ['مرحله قبل از اظهارنامه', 'مرحله اظهارنامه', 'مرحله پس از اظهارنامه', 'مرحله رسیدگی', 'مرحله اعتراض', 'مرحله اجرا']
+
 interface DraftCondition {
   fact: string
   operator: string
@@ -99,8 +114,6 @@ export default function AdminComplianceStudio() {
   const [definitionCounts, setDefinitionCounts] = useState<Record<string, { rules: number; steps: number }>>({})
   const [transitionSchemaReady, setTransitionSchemaReady] = useState(true)
   const [penaltySchemaReady, setPenaltySchemaReady] = useState(true)
-  const [obligationTitle, setObligationTitle] = useState('')
-  const [titleDirty, setTitleDirty] = useState(false)
   const [familyDirty, setFamilyDirty] = useState(false)
   const [draftDirty, setDraftDirty] = useState(false)
 
@@ -114,35 +127,10 @@ export default function AdminComplianceStudio() {
     [catalog, selectedVersionId]
   )
 
-  useEffect(() => {
-    setObligationTitle(selectedCatalogItem?.obligation.title ?? '')
-    setTitleDirty(false)
-  }, [selectedCatalogItem])
-
-  useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => { if (titleDirty) event.preventDefault() }
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [titleDirty])
-
   const closeDetails = () => {
     const hasOpenEditor = document.querySelector('[data-studio-dirty="true"]') !== null
-    if ((titleDirty || hasOpenEditor) && !window.confirm('تغییرات ذخیره‌نشده وجود دارد. بدون ذخیره خارج می‌شوید؟')) return
-    setMode('LIST'); setSelectedVersionId(null); setTitleDirty(false)
-  }
-
-  const saveObligationTitle = async () => {
-    if (!selectedCatalogItem || !obligationTitle.trim()) return toast.error('نام تعهد الزامی است.')
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.from('obligations').update({ title: obligationTitle.trim() }).eq('id', selectedCatalogItem.obligation.id)
-      if (error) return toast.error(error.message)
-    } else {
-      const obligation = mockStudioDb.getObligations().find((item) => item.id === selectedCatalogItem.obligation.id)
-      if (!obligation) return toast.error('تعهد پیدا نشد.')
-      obligation.title = obligationTitle.trim()
-      obligation.updated_at = new Date().toISOString()
-    }
-    setTitleDirty(false); toast.success('نام تعهد ذخیره شد.'); await loadCatalog()
+    if (hasOpenEditor && !window.confirm('تغییرات ذخیره‌نشده وجود دارد. بدون ذخیره خارج می‌شوید؟')) return
+    setMode('LIST'); setSelectedVersionId(null)
   }
 
   const openItem = (item: CatalogItem, nextMode: Exclude<StudioMode, 'LIST'>) => {
@@ -172,7 +160,10 @@ export default function AdminComplianceStudio() {
       toast.success('تعهد حذف شد.')
       await loadCatalog()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'حذف تعهد انجام نشد.')
+      const message = errorMessage(error, 'حذف تعهد انجام نشد.')
+      toast.error(message.includes('published obligation versions are immutable')
+        ? 'نسخه منتشرشده قابل حذف نیست؛ برای توقف استفاده، تعهد را در فرم ویرایش غیرفعال کنید.'
+        : message)
     } finally {
       setBusy(false)
     }
@@ -728,8 +719,23 @@ export default function AdminComplianceStudio() {
             <div className="rounded-2xl border border-dashed border-zinc-700 bg-[#141615] p-16 text-center text-zinc-500">برای ادامه یک نسخه را انتخاب کنید.</div>
           ) : (
             <>
+              <nav className="sticky top-[4.5rem] z-10 flex gap-2 overflow-x-auto rounded-xl border border-zinc-800 bg-[#101211]/95 p-2 shadow-lg backdrop-blur" aria-label="بخش‌های ویرایش تعهد">
+                {mode === 'EDIT' && <SectionLink target="basic-definition" label="۱. اطلاعات و زمان‌بندی" />}
+                <SectionLink target="eligibility-section" label="۲. مشمولیت" />
+                <SectionLink target="workflow-section" label="۳. مراحل" />
+                <SectionLink target="transitions-section" label="۴. مسیرها" />
+              </nav>
+
+              {selectedCatalogItem && mode === 'EDIT' && selectedVersion.status === 'DRAFT' && (
+                <BasicDefinitionForm
+                  key={selectedVersion.id}
+                  item={selectedCatalogItem}
+                  version={selectedVersion}
+                  onSaved={async () => { await loadCatalog(); await loadDefinition() }}
+                />
+              )}
+
               <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
-                {selectedCatalogItem && <div className="mb-6 rounded-xl border border-zinc-800 bg-[#1b1e1c] p-4"><Label htmlFor="obligation-title">نام تعهد</Label><div className="mt-2 flex flex-col gap-2 sm:flex-row"><Input id="obligation-title" value={obligationTitle} readOnly={mode !== 'EDIT'} onChange={(event) => { setObligationTitle(event.target.value); setTitleDirty(event.target.value !== selectedCatalogItem.obligation.title) }} className="flex-1" />{mode === 'EDIT' && <Button disabled={!titleDirty} onClick={() => void saveObligationTitle()} className="bg-emerald-700 hover:bg-emerald-600">ذخیره نام تعهد</Button>}</div></div>}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="flex items-center gap-2">
@@ -782,7 +788,7 @@ export default function AdminComplianceStudio() {
                   <Metric icon={Scale} label="قواعد تشخیص" value={`${rules.length} قاعده قانونی`} />
                   <Metric icon={ListChecks} label="مراحل فرایند" value={`${steps.length} گام اجرایی`} />
                   <Metric icon={ShieldAlert} label="نوع جریمه" value={penaltyLabel(selectedVersion.penalty_rule)} />
-                  <Metric icon={Clock3} label="مهلت و دوره" value="سالانه · چهار ماه پس از سال مالی" />
+                  <Metric icon={Clock3} label="مهلت و دوره" value={studioDeadlineLabel(selectedVersion)} />
                 </div>
 
                 {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && (
@@ -802,7 +808,7 @@ export default function AdminComplianceStudio() {
               </div>
 
               <div className="grid gap-6 lg:grid-cols-2">
-                <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
+                <div id="eligibility-section" className="scroll-mt-36 rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
                   <div className="flex items-center justify-between">
                     <h3 className="flex items-center gap-2 font-bold"><Scale className="h-4 w-4 text-amber-400" />تشخیص مشمولیت ({rules.length} قاعده)</h3>
                     {rules.length === 0 && (
@@ -841,7 +847,7 @@ export default function AdminComplianceStudio() {
                   {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && <div id="eligibility-rule-editor"><EligibilityRuleForm versionId={selectedVersion.id} nextPriority={rules.length + 1} onSaved={loadDefinition} /></div>}
                 </div>
 
-                <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
+                <div id="workflow-section" className="scroll-mt-36 rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
                   <div className="flex items-center justify-between">
                     <h3 className="flex items-center gap-2 font-bold"><GitBranch className="h-4 w-4 text-amber-400" />مراحل فرایند ({steps.length} مرحله)</h3>
                     {steps.length === 0 && (
@@ -874,7 +880,7 @@ export default function AdminComplianceStudio() {
                   {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && <div id="workflow-step-editor"><WorkflowStepForm version={selectedVersion} nextSequence={steps.length + 1} onSaved={loadDefinition} /></div>}
                 </div>
               </div>
-              <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
+              <div id="transitions-section" className="scroll-mt-36 rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
                 <div className="flex items-center justify-between gap-3"><div><h3 className="flex items-center gap-2 font-bold"><GitBranch className="h-4 w-4 text-violet-400" />مسیرها و خروجی‌های فرایند ({transitions.length})</h3><p className="mt-1 text-xs text-zinc-500">هر مسیر، نتیجه یک مرحله را به مرحله بعدی، حلقه بازگشتی یا وضعیت پایانی متصل می‌کند.</p></div></div>
                 <div className="mt-5 grid gap-3 md:grid-cols-2">{transitions.map((transition) => <div key={transition.id} className="rounded-xl border border-zinc-700/80 bg-[#1b1e1c] p-4"><div className="flex items-center justify-between gap-3"><p className="font-bold">{transition.title}</p><span className={`rounded-full border px-2.5 py-1 text-[11px] ${transition.trigger_type === 'TIMEOUT' ? 'border-orange-800 bg-orange-950/50 text-orange-300' : transition.trigger_type === 'SYSTEM_EVENT' ? 'border-violet-800 bg-violet-950/50 text-violet-300' : 'border-sky-800 bg-sky-950/50 text-sky-300'}`}>{transitionTriggerLabel(transition.trigger_type)}</span></div><p className="mt-2 text-xs text-zinc-500">خروجی: {transition.outcome_code} · {transition.to_step_id ? 'انتقال به یک مرحله' : `پایان: ${transition.terminal_status}`}</p></div>)}</div>
                 {!transitionSchemaReady && <p className="mt-4 text-xs text-zinc-500">تا زمان فعال‌شدن مسیرهای شاخه‌ای، فرایند با ترتیب فعلی مراحل ادامه پیدا می‌کند.</p>}
@@ -896,6 +902,128 @@ export default function AdminComplianceStudio() {
   )
 }
 
+interface BasicDefinitionState {
+  title: string
+  summary: string
+  authorityName: string
+  actionUrl: string
+  legalReference: string
+  sourceUrl: string
+  effectiveFrom: string
+  effectiveTo: string
+  audienceSummary: string
+  primaryType: string
+  relatedTypes: string[]
+  isShared: boolean
+  sharedActionKey: string
+  recurrence: string
+  baseEvent: string
+  timeGapValue: string
+  timeGapUnit: string
+  responsibleParty: string
+  phaseGroup: string
+  sequenceOrder: string
+  objectionTemplateId: string
+  isActive: boolean
+}
+
+function BasicDefinitionForm({ item, version, onSaved }: { item: CatalogItem; version: Version; onSaved: () => Promise<void> }) {
+  const recurrenceRule = jsonRecord(version.recurrence_rule)
+  const deadlineRule = jsonRecord(version.deadline_rule)
+  const initialTypes = stringArray(recurrenceRule['obligation_types'])
+  const [form, setForm] = useState<BasicDefinitionState>({
+    title: item.obligation.title ?? '', summary: item.obligation.summary ?? '', authorityName: item.obligation.authority_name ?? '',
+    actionUrl: item.obligation.official_action_url ?? '', legalReference: version.legal_reference ?? '', sourceUrl: version.source_url ?? '',
+    effectiveFrom: version.effective_from ?? '', effectiveTo: version.effective_to ?? '', audienceSummary: version.audience_summary ?? '',
+    primaryType: stringValue(recurrenceRule['obligation_type'], 'TAX_CORPORATE'),
+    relatedTypes: initialTypes.length ? initialTypes : [stringValue(recurrenceRule['obligation_type'], 'TAX_CORPORATE')],
+    isShared: Boolean(recurrenceRule['is_shared']), sharedActionKey: stringValue(recurrenceRule['shared_action_key']),
+    recurrence: stringValue(recurrenceRule['recurrence']), baseEvent: stringValue(deadlineRule['base_event']),
+    timeGapValue: numberString(deadlineRule['time_gap_value']), timeGapUnit: stringValue(deadlineRule['time_gap_unit']),
+    responsibleParty: stringValue(recurrenceRule['responsible_party']), phaseGroup: stringValue(recurrenceRule['phase_group']),
+    sequenceOrder: numberString(recurrenceRule['sequence_order'], '1'), objectionTemplateId: stringValue(recurrenceRule['objection_template_id']),
+    isActive: item.obligation.is_active ?? true,
+  })
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const update = <K extends keyof BasicDefinitionState>(key: K, value: BasicDefinitionState[K]) => {
+    setForm((current) => ({ ...current, [key]: value })); setDirty(true)
+  }
+  const toggleRelatedType = (type: string) => {
+    if (type === form.primaryType) return
+    const next = form.relatedTypes.includes(type) ? form.relatedTypes.filter((item) => item !== type) : [...form.relatedTypes, type]
+    update('relatedTypes', Array.from(new Set([form.primaryType, ...next])))
+  }
+
+  const save = async () => {
+    if (!form.title.trim() || !form.recurrence || !form.baseEvent || !form.responsibleParty) return toast.error('عنوان، دوره تناوب، رویداد پایه و مسئول اجرا الزامی هستند.')
+    if ((form.sourceUrl && !form.sourceUrl.startsWith('https://')) || (form.actionUrl && !form.actionUrl.startsWith('https://'))) return toast.error('نشانی‌های اینترنتی باید با https:// شروع شوند.')
+    setSaving(true)
+    const obligationPatch = { title: form.title.trim(), summary: form.summary.trim() || null, authority_name: form.authorityName.trim() || null, official_action_url: form.actionUrl.trim() || null, is_active: form.isActive }
+    const relatedTypes = Array.from(new Set([form.primaryType, ...form.relatedTypes]))
+    const recurrencePatch: Json = { ...recurrenceRule, obligation_type: form.primaryType, obligation_types: relatedTypes, is_shared: form.isShared || relatedTypes.length > 1, shared_action_key: form.isShared ? form.sharedActionKey.trim() || null : null, recurrence: form.recurrence, responsible_party: form.responsibleParty, phase_group: form.phaseGroup || null, sequence_order: Number(form.sequenceOrder) || 1, objection_template_id: form.objectionTemplateId || null }
+    const deadlinePatch: Json = { ...deadlineRule, base_event: form.baseEvent, time_gap_value: form.timeGapValue ? Number(form.timeGapValue) : null, time_gap_unit: form.timeGapUnit || null }
+    const versionPatch = { legal_reference: form.legalReference.trim() || null, source_url: form.sourceUrl.trim() || null, effective_from: form.effectiveFrom || null, effective_to: form.effectiveTo || null, audience_summary: form.audienceSummary.trim() || null, recurrence_rule: recurrencePatch, deadline_rule: deadlinePatch }
+    try {
+      if (isSupabaseConfigured) {
+        const [obligationResult, versionResult] = await Promise.all([
+          supabase.from('obligations').update(obligationPatch).eq('id', item.obligation.id),
+          supabase.from('obligation_versions').update(versionPatch).eq('id', version.id).eq('status', 'DRAFT'),
+        ])
+        if (obligationResult.error) throw obligationResult.error
+        if (versionResult.error) throw versionResult.error
+      } else {
+        const mockObligation = mockStudioDb.getObligations().find((row) => row.id === item.obligation.id)
+        const mockVersion = mockStudioDb.getVersions().find((row) => row.id === version.id)
+        if (!mockObligation || !mockVersion) throw new Error('تعهد یا نسخه مورد نظر پیدا نشد.')
+        Object.assign(mockObligation, obligationPatch, { updated_at: new Date().toISOString() })
+        Object.assign(mockVersion, versionPatch, { updated_at: new Date().toISOString() })
+      }
+      setDirty(false); toast.success('اطلاعات پایه و زمان‌بندی تعهد ذخیره شد.'); await onSaved()
+    } catch (error) {
+      toast.error(errorMessage(error, 'ذخیره اطلاعات تعهد انجام نشد.'))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <section id="basic-definition" data-studio-dirty={dirty ? 'true' : undefined} className="scroll-mt-36 space-y-5 rounded-2xl border border-amber-900/50 bg-[#101211] p-5 shadow-xl shadow-black/10 sm:p-6">
+      <SectionHeading number="۱" title="اطلاعات پایه و زمان‌بندی" description="مشخصات هویتی، دسته‌بندی، تناوب و مهلت تعهد را یک‌جا مدیریت کنید." />
+      <div className="grid gap-5 xl:grid-cols-2">
+        <FormGroup title="هویت و مستندات" description="نام، مرجع قانونی و نشانی‌های رسمی تعهد">
+          <div className="sm:col-span-2"><Field label="عنوان تعهد *"><Input value={form.title} onChange={(e) => update('title', e.target.value)} /></Field></div>
+          <Field label="مرجع مسئول"><Input value={form.authorityName} onChange={(e) => update('authorityName', e.target.value)} placeholder="سازمان امور مالیاتی کشور" /></Field>
+          <Field label="ماده / مرجع قانونی"><Input value={form.legalReference} onChange={(e) => update('legalReference', e.target.value)} /></Field>
+          <div className="sm:col-span-2"><Field label="شرح کوتاه"><textarea value={form.summary} onChange={(e) => update('summary', e.target.value)} rows={3} className="w-full rounded-md border border-zinc-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-amber-500" /></Field></div>
+          <Field label="لینک منبع رسمی"><Input dir="ltr" value={form.sourceUrl} onChange={(e) => update('sourceUrl', e.target.value)} placeholder="https://tax.gov.ir/..." /></Field>
+          <Field label="لینک انجام کار"><Input dir="ltr" value={form.actionUrl} onChange={(e) => update('actionUrl', e.target.value)} placeholder="https://my.tax.gov.ir" /></Field>
+        </FormGroup>
+        <FormGroup title="طبقه‌بندی و مسئولیت" description="سرفصل اصلی، سرفصل‌های مرتبط و مسئول اجرا">
+          <Field label="سرفصل اصلی *"><Select value={form.primaryType} onValueChange={(value) => { update('primaryType', value); update('relatedTypes', Array.from(new Set([value, ...form.relatedTypes]))) }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{OBLIGATION_TYPE_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
+          <Field label="مسئول اجرا *"><Select value={form.responsibleParty} onValueChange={(value) => update('responsibleParty', value)}><SelectTrigger><SelectValue placeholder="انتخاب مسئول" /></SelectTrigger><SelectContent><SelectItem value="مودی">مودی</SelectItem><SelectItem value="سازمان امور مالیاتی">سازمان امور مالیاتی</SelectItem></SelectContent></Select></Field>
+          <div className="sm:col-span-2 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">تعهد مشترک بین سرفصل‌ها</p><p className="mt-1 text-xs text-zinc-500">برای تعهدی که در چند حوزه یکسان اجرا می‌شود.</p></div><Switch checked={form.isShared} onCheckedChange={(value) => { update('isShared', value); if (!value) update('relatedTypes', [form.primaryType]) }} /></div>{form.isShared && <div className="mt-3 grid gap-2 sm:grid-cols-2">{OBLIGATION_TYPE_OPTIONS.map(([value, label]) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-800 p-2 text-xs"><input type="checkbox" checked={form.relatedTypes.includes(value)} disabled={value === form.primaryType} onChange={() => toggleRelatedType(value)} className="accent-amber-500" />{label}</label>)}</div>}</div>
+          {form.isShared && <div className="sm:col-span-2"><Field label="کلید مشترک"><Input dir="ltr" value={form.sharedActionKey} onChange={(e) => update('sharedActionKey', e.target.value.toUpperCase())} placeholder="CORPORATE_TAX_SHARED" /></Field></div>}
+          <Field label="فاز / گروه اجرایی"><Select value={form.phaseGroup} onValueChange={(value) => update('phaseGroup', value)}><SelectTrigger><SelectValue placeholder="انتخاب فاز" /></SelectTrigger><SelectContent>{PHASE_GROUP_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+          <Field label="ترتیب نمایش"><Input type="number" min="1" dir="ltr" value={form.sequenceOrder} onChange={(e) => update('sequenceOrder', e.target.value)} /></Field>
+        </FormGroup>
+        <FormGroup title="تناوب و مهلت" description="مبنای محاسبه موعد قانونی و تکرار تعهد">
+          <Field label="دوره تناوب *"><Select value={form.recurrence} onValueChange={(value) => update('recurrence', value)}><SelectTrigger><SelectValue placeholder="انتخاب دوره" /></SelectTrigger><SelectContent>{RECURRENCE_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+          <Field label="رویداد پایه *"><Select value={form.baseEvent} onValueChange={(value) => update('baseEvent', value)}><SelectTrigger><SelectValue placeholder="انتخاب رویداد" /></SelectTrigger><SelectContent>{BASE_EVENT_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+          <Field label="فاصله زمانی"><Input type="number" min="0" dir="ltr" value={form.timeGapValue} onChange={(e) => update('timeGapValue', e.target.value)} /></Field>
+          <Field label="واحد فاصله"><Select value={form.timeGapUnit} onValueChange={(value) => update('timeGapUnit', value)}><SelectTrigger><SelectValue placeholder="انتخاب واحد" /></SelectTrigger><SelectContent><SelectItem value="روز">روز</SelectItem><SelectItem value="ماه">ماه</SelectItem><SelectItem value="سال">سال</SelectItem></SelectContent></Select></Field>
+          <Field label="شروع اعتبار"><Input type="date" value={form.effectiveFrom} onChange={(e) => update('effectiveFrom', e.target.value)} /></Field>
+          <Field label="پایان اعتبار"><Input type="date" min={form.effectiveFrom || undefined} value={form.effectiveTo} onChange={(e) => update('effectiveTo', e.target.value)} /></Field>
+        </FormGroup>
+        <FormGroup title="دامنه و وضعیت" description="خلاصه مخاطبان، اتصال اعتراض و فعال بودن تعهد">
+          <div className="sm:col-span-2"><Field label="خلاصه مخاطبان مشمول"><textarea value={form.audienceSummary} onChange={(e) => update('audienceSummary', e.target.value)} rows={3} className="w-full rounded-md border border-zinc-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-amber-500" /></Field></div>
+          <div className="sm:col-span-2"><Field label="شناسه الگوی اعتراض (اختیاری)"><Input dir="ltr" value={form.objectionTemplateId} onChange={(e) => update('objectionTemplateId', e.target.value)} placeholder="UUID الگوی اعتراض" /></Field></div>
+          <div className="sm:col-span-2 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"><div><p className="text-sm font-semibold">تعهد فعال است</p><p className="mt-1 text-xs text-zinc-500">تعهد غیرفعال در ارزیابی‌های جدید استفاده نمی‌شود.</p></div><Switch checked={form.isActive} onCheckedChange={(value) => update('isActive', value)} /></div>
+        </FormGroup>
+      </div>
+      <div className="sticky bottom-3 flex items-center justify-end gap-3 rounded-xl border border-zinc-700 bg-[#181a19]/95 p-3 shadow-2xl backdrop-blur"><span className="ml-auto text-xs text-zinc-500">{dirty ? 'تغییرات ذخیره نشده است.' : 'اطلاعات ذخیره شده است.'}</span><Button type="button" disabled={!dirty || saving} onClick={() => void save()} className="min-w-36 bg-emerald-700 hover:bg-emerald-600">{saving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : null}ذخیره اطلاعات پایه</Button></div>
+    </section>
+  )
+}
+
 function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { version: Version; steps: WorkflowStep[]; nextPriority: number; onSaved: () => Promise<void> }) {
   const [open, setOpen] = useState(false)
   const [fromStepId, setFromStepId] = useState('')
@@ -909,6 +1037,7 @@ function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { ver
 
   const save = async () => {
     if (!fromStepId || !title.trim() || !code.trim() || !outcomeCode.trim()) return toast.error('مرحله مبدأ، عنوان، کد مسیر و کد خروجی الزامی است.')
+    if (!isValidCode(normalizeCode(code), 80)) return toast.error('کد مسیر باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
     if (triggerType === 'TIMEOUT' && (!Number.isFinite(Number(timeoutDays)) || Number(timeoutDays) <= 0)) return toast.error('مهلت زمانی باید بیشتر از صفر روز باشد.')
     if (triggerType === 'SYSTEM_EVENT' && !eventCode.trim()) return toast.error('کد رویداد سیستمی الزامی است.')
     if (!isSupabaseConfigured) return toast.error('تعریف مسیر پایدار فقط در حالت اتصال به Supabase در دسترس است.')
@@ -920,8 +1049,8 @@ function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { ver
       from_step_id: fromStepId,
       to_step_id: terminal ? null : destination,
       terminal_status: terminal ? destination : null,
-      code: code.trim().toUpperCase(), title: title.trim(), outcome_code: outcomeCode.trim().toUpperCase(),
-      trigger_type: triggerType, event_code: triggerType === 'SYSTEM_EVENT' ? eventCode.trim().toUpperCase() : null,
+      code: normalizeCode(code), title: title.trim(), outcome_code: normalizeCode(outcomeCode),
+      trigger_type: triggerType, event_code: triggerType === 'SYSTEM_EVENT' ? normalizeCode(eventCode) : null,
       timeout_interval: triggerType === 'TIMEOUT' ? `${Number(timeoutDays)} days` : null,
       priority: nextPriority,
     })
@@ -932,7 +1061,7 @@ function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { ver
   }
 
   if (!open) return <Button variant="outline" className="mt-5 w-full border-violet-800 text-violet-300" onClick={() => setOpen(true)}><Plus className="ml-2 h-4 w-4" />افزودن مسیر / خروجی</Button>
-  return <div data-studio-dirty="true" className="mt-5 rounded-xl border border-violet-900/60 bg-violet-950/10 p-4"><div className="grid gap-4 md:grid-cols-3"><Field label="مرحله مبدأ"><Select value={fromStepId} onValueChange={setFromStepId}><SelectTrigger><SelectValue placeholder="انتخاب مرحله" /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>{step.sequence}. {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}</SelectContent></Select></Field><Field label="نوع فعال‌سازی"><Select value={triggerType} onValueChange={setTriggerType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="USER_ACTION">اقدام کاربر</SelectItem><SelectItem value="SYSTEM_EVENT">رویداد سیستمی</SelectItem><SelectItem value="TIMEOUT">انقضای خودکار مهلت</SelectItem></SelectContent></Select></Field><Field label="مقصد"><Select value={destination} onValueChange={setDestination}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>مرحله {step.sequence}: {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}<SelectItem value="COMPLETED">پایان موفق پرونده</SelectItem><SelectItem value="CANCELLED">لغو پرونده</SelectItem></SelectContent></Select></Field><Field label="عنوان مسیر"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field><Field label="کد انگلیسی مسیر"><Input dir="ltr" value={code} onChange={(event) => setCode(event.target.value)} placeholder="ASSESSMENT_ISSUED" /></Field><Field label="کد خروجی"><Input dir="ltr" value={outcomeCode} onChange={(event) => setOutcomeCode(event.target.value)} placeholder="DISPUTE_OPENED" /></Field>{triggerType === 'SYSTEM_EVENT' && <Field label="کد رویداد"><Input dir="ltr" value={eventCode} onChange={(event) => setEventCode(event.target.value)} /></Field>}{triggerType === 'TIMEOUT' && <Field label="مهلت (روز)"><Input type="number" min="1" value={timeoutDays} onChange={(event) => setTimeoutDays(event.target.value)} /></Field>}<div className="flex items-end gap-2"><Button className="flex-1 bg-violet-700 hover:bg-violet-600" onClick={() => void save()}>ذخیره مسیر</Button><Button variant="ghost" onClick={() => { if (window.confirm('تغییرات مسیر ذخیره نشده است. خارج می‌شوید؟')) setOpen(false) }}>انصراف</Button></div></div></div>
+  return <div data-studio-dirty="true" className="mt-5 rounded-xl border border-violet-900/60 bg-violet-950/10 p-4"><div className="grid gap-4 md:grid-cols-3"><Field label="مرحله مبدأ"><Select value={fromStepId} onValueChange={setFromStepId}><SelectTrigger><SelectValue placeholder="انتخاب مرحله" /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>{step.sequence}. {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}</SelectContent></Select></Field><Field label="نوع فعال‌سازی"><Select value={triggerType} onValueChange={setTriggerType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="USER_ACTION">اقدام کاربر</SelectItem><SelectItem value="SYSTEM_EVENT">رویداد سیستمی</SelectItem><SelectItem value="TIMEOUT">انقضای خودکار مهلت</SelectItem></SelectContent></Select></Field><Field label="مقصد"><Select value={destination} onValueChange={setDestination}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>مرحله {step.sequence}: {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}<SelectItem value="COMPLETED">پایان موفق پرونده</SelectItem><SelectItem value="CANCELLED">لغو پرونده</SelectItem></SelectContent></Select></Field><Field label="عنوان مسیر"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field><Field label="کد انگلیسی مسیر"><Input dir="ltr" value={code} onChange={(event) => setCode(normalizeCode(event.target.value))} maxLength={80} placeholder="ASSESSMENT_ISSUED" /></Field><Field label="کد خروجی"><Input dir="ltr" value={outcomeCode} onChange={(event) => setOutcomeCode(normalizeCode(event.target.value))} placeholder="DISPUTE_OPENED" /></Field>{triggerType === 'SYSTEM_EVENT' && <Field label="کد رویداد"><Input dir="ltr" value={eventCode} onChange={(event) => setEventCode(normalizeCode(event.target.value))} /></Field>}{triggerType === 'TIMEOUT' && <Field label="مهلت (روز)"><Input type="number" min="1" value={timeoutDays} onChange={(event) => setTimeoutDays(event.target.value)} /></Field>}<div className="flex items-end gap-2"><Button className="flex-1 bg-violet-700 hover:bg-violet-600" onClick={() => void save()}>ذخیره مسیر</Button><Button variant="ghost" onClick={() => { if (window.confirm('تغییرات مسیر ذخیره نشده است. خارج می‌شوید؟')) setOpen(false) }}>انصراف</Button></div></div></div>
 }
 
 function PenaltyForm({ version, multiPenaltyTableReady, onSaved }: { version: Version; multiPenaltyTableReady: boolean; onSaved: () => Promise<void> }) {
@@ -995,29 +1124,68 @@ function FamilyForm({ onSaved, onDirtyChange }: { onSaved: () => Promise<void>; 
   const [code, setCode] = useState('')
   const [title, setTitle] = useState('')
   const [domain, setDomain] = useState('TAX')
+  const [saving, setSaving] = useState(false)
   useEffect(() => onDirtyChange(Boolean(code || title || domain !== 'TAX')), [code, title, domain, onDirtyChange])
   const save = async () => {
-    if (!code.trim() || !title.trim()) {
+    const normalizedCode = normalizeCode(code)
+    if (!normalizedCode || !title.trim()) {
       toast.error('کد و عنوان گروه الزامی است.')
       return
     }
-    if (!isSupabaseConfigured) {
-      mockStudioDb.createFamily({ code: code.trim().toUpperCase(), title: title.trim(), domain })
-      toast.success('گروه ثبت شد.')
-      await onSaved()
+    if (!isValidCode(normalizedCode, 50)) {
+      toast.error('کد گروه باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
       return
     }
-    const { error } = await supabase.from('obligation_families').insert({ code: code.trim().toUpperCase(), title: title.trim(), domain })
-    if (error) {
-      mockStudioDb.createFamily({ code: code.trim().toUpperCase(), title: title.trim(), domain })
+    setSaving(true)
+    try {
+      const family = { code: normalizedCode, title: title.trim(), domain }
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from('obligation_families').insert(family)
+        if (error) throw error
+      } else {
+        mockStudioDb.createFamily(family)
+      }
       toast.success('گروه ثبت شد.')
       await onSaved()
-    } else {
-      toast.success('گروه ثبت شد.')
-      await onSaved()
+    } catch (error) {
+      const message = typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+        ? error.message
+        : 'ثبت گروه انجام نشد.'
+      toast.error(studioMutationError(error, message))
+    } finally {
+      setSaving(false)
     }
   }
-  return <Editor title="گروه جدید"><Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(e.target.value)} dir="ltr" placeholder="DIRECT_TAX" /></Field><Field label="عنوان"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مالیات‌های مستقیم" /></Field><Field label="حوزه"><Select value={domain} onValueChange={setDomain}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TAX">مالیات</SelectItem><SelectItem value="INSURANCE">بیمه</SelectItem></SelectContent></Select></Field><SaveButton onClick={save} /></Editor>
+  return (
+    <Editor title="گروه جدید">
+      <Field label="کد انگلیسی">
+        <Input
+          value={code}
+          onChange={(event) => setCode(normalizeCode(event.target.value))}
+          dir="ltr"
+          maxLength={50}
+          placeholder="DIRECT_TAX"
+        />
+      </Field>
+      <Field label="عنوان">
+        <Input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="مالیات‌های مستقیم"
+        />
+      </Field>
+      <Field label="حوزه">
+        <Select value={domain} onValueChange={setDomain}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="TAX">مالیات</SelectItem>
+            <SelectItem value="INSURANCE">بیمه</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+      <SaveButton onClick={save} disabled={saving} />
+    </Editor>
+  )
 }
 
 function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; onSaved: (versionId: string) => Promise<void>; onDirtyChange: (dirty: boolean) => void }) {
@@ -1028,10 +1196,16 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
   const [sourceUrl, setSourceUrl] = useState('')
   const [actionUrl, setActionUrl] = useState('')
   const [effectiveFrom, setEffectiveFrom] = useState('')
+  const [primaryType, setPrimaryType] = useState('TAX_CORPORATE')
+  const [recurrence, setRecurrence] = useState('')
+  const [baseEvent, setBaseEvent] = useState('')
+  const [timeGapValue, setTimeGapValue] = useState('')
+  const [timeGapUnit, setTimeGapUnit] = useState('')
+  const [responsibleParty, setResponsibleParty] = useState('')
   const [penaltyTypeValue, setPenaltyTypeValue] = useState('NONE')
   const [penaltyValue, setPenaltyValue] = useState('')
 
-  useEffect(() => onDirtyChange(Boolean(code || title || legalReference || sourceUrl || actionUrl || effectiveFrom || penaltyValue || penaltyTypeValue !== 'NONE')), [actionUrl, code, effectiveFrom, legalReference, onDirtyChange, penaltyTypeValue, penaltyValue, sourceUrl, title])
+  useEffect(() => onDirtyChange(Boolean(code || title || legalReference || sourceUrl || actionUrl || effectiveFrom || recurrence || baseEvent || responsibleParty || penaltyValue || penaltyTypeValue !== 'NONE')), [actionUrl, baseEvent, code, effectiveFrom, legalReference, onDirtyChange, penaltyTypeValue, penaltyValue, recurrence, responsibleParty, sourceUrl, title])
 
   useEffect(() => {
     if (!familyId && families.length > 0) {
@@ -1040,8 +1214,13 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
   }, [families, familyId])
 
   const save = async () => {
-    if (!familyId || !code.trim() || !title.trim() || !legalReference.trim() || !sourceUrl.trim() || !effectiveFrom) {
-      toast.error('گروه، کد، عنوان، مرجع قانونی، منبع رسمی و تاریخ شروع اعتبار الزامی است.')
+    const normalizedCode = normalizeCode(code)
+    if (!familyId || !normalizedCode || !title.trim() || !legalReference.trim() || !sourceUrl.trim() || !effectiveFrom || !recurrence || !baseEvent || !responsibleParty) {
+      toast.error('گروه، کد، عنوان، مستند قانونی، تاریخ اعتبار، تناوب، رویداد پایه و مسئول اجرا الزامی است.')
+      return
+    }
+    if (!isValidCode(normalizedCode, 80)) {
+      toast.error('کد تعهد باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
       return
     }
     const numberValue = penaltyValue ? Number(penaltyValue) : 0
@@ -1054,18 +1233,20 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
       : penaltyTypeValue === 'PERCENTAGE' || penaltyTypeValue === 'DAILY_PERCENTAGE'
         ? { type: penaltyTypeValue, rate_percent: numberValue }
         : { type: 'NONE' }
+    const recurrenceRule: Json = { obligation_type: primaryType, obligation_types: [primaryType], is_shared: false, recurrence, responsible_party: responsibleParty, sequence_order: 1 }
+    const deadlineRule: Json = { base_event: baseEvent, time_gap_value: timeGapValue ? Number(timeGapValue) : null, time_gap_unit: timeGapUnit || null }
 
     if (!isSupabaseConfigured) {
       const { version } = mockStudioDb.createDraft({
         requested_family_id: familyId,
-        requested_code: code.trim().toUpperCase(),
+        requested_code: normalizedCode,
         requested_title: title.trim(),
         requested_official_action_url: actionUrl.trim() || undefined,
         requested_legal_reference: legalReference.trim() || undefined,
         requested_source_url: sourceUrl.trim() || undefined,
         requested_effective_from: effectiveFrom || undefined,
-        requested_recurrence_rule: { frequency: 'YEARLY' },
-        requested_deadline_rule: { base: 'FISCAL_YEAR_END', gap_months: 4 },
+        requested_recurrence_rule: recurrenceRule,
+        requested_deadline_rule: deadlineRule,
         requested_penalty_rule: penaltyRule,
       })
       toast.success('پیش‌نویس تعهد ثبت شد.')
@@ -1076,7 +1257,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
     try {
       const { data, error } = await supabase.rpc('create_obligation_draft', {
         requested_family_id: familyId,
-        requested_code: code.trim().toUpperCase(),
+        requested_code: normalizedCode,
         requested_title: title.trim(),
         requested_summary: undefined,
         requested_authority_name: undefined,
@@ -1084,40 +1265,15 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
         requested_legal_reference: legalReference.trim() || undefined,
         requested_source_url: sourceUrl.trim() || undefined,
         requested_effective_from: effectiveFrom || undefined,
-        requested_recurrence_rule: {},
-        requested_deadline_rule: {},
+        requested_recurrence_rule: recurrenceRule,
+        requested_deadline_rule: deadlineRule,
         requested_penalty_rule: penaltyRule,
       })
-      if (error) {
-        const { version } = mockStudioDb.createDraft({
-          requested_family_id: familyId,
-          requested_code: code.trim().toUpperCase(),
-          requested_title: title.trim(),
-          requested_official_action_url: actionUrl.trim() || undefined,
-          requested_legal_reference: legalReference.trim() || undefined,
-          requested_source_url: sourceUrl.trim() || undefined,
-          requested_effective_from: effectiveFrom || undefined,
-          requested_penalty_rule: penaltyRule,
-        })
-        toast.success('پیش‌نویس تعهد ثبت شد.')
-        await onSaved(version.id)
-      } else {
-        toast.success('پیش‌نویس تعهد ثبت شد.')
-        await onSaved(data.id)
-      }
-    } catch {
-      const { version } = mockStudioDb.createDraft({
-        requested_family_id: familyId,
-        requested_code: code.trim().toUpperCase(),
-        requested_title: title.trim(),
-        requested_official_action_url: actionUrl.trim() || undefined,
-        requested_legal_reference: legalReference.trim() || undefined,
-        requested_source_url: sourceUrl.trim() || undefined,
-        requested_effective_from: effectiveFrom || undefined,
-        requested_penalty_rule: penaltyRule,
-      })
+      if (error) throw error
       toast.success('پیش‌نویس تعهد ثبت شد.')
-      await onSaved(version.id)
+      await onSaved(data.id)
+    } catch (error) {
+      toast.error(studioMutationError(error, 'ثبت پیش‌نویس تعهد انجام نشد.'))
     }
   }
   return (
@@ -1128,12 +1284,18 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
           <SelectContent>{families.map((family) => <SelectItem key={family.id} value={family.id}>{family.title}</SelectItem>)}</SelectContent>
         </Select>
       </Field>
-      <Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(e.target.value)} dir="ltr" placeholder="CORP_INCOME_TAX" /></Field>
+      <Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={80} placeholder="CORP_INCOME_TAX" /></Field>
       <Field label="عنوان تعهد"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="اظهارنامه مالیات عملکرد اشخاص حقوقی" /></Field>
       <Field label="ماده / مرجع قانونی"><Input value={legalReference} onChange={(e) => setLegalReference(e.target.value)} placeholder="ماده ۱۱۰ قانون مالیات‌های مستقیم" /></Field>
       <Field label="لینک منبع رسمی"><Input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} dir="ltr" placeholder="https://tax.gov.ir/..." /></Field>
       <Field label="لینک انجام کار"><Input value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} dir="ltr" placeholder="https://my.tax.gov.ir" /></Field>
       <Field label="تاریخ شروع اعتبار"><Input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} /></Field>
+      <Field label="سرفصل اصلی"><Select value={primaryType} onValueChange={setPrimaryType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{OBLIGATION_TYPE_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
+      <Field label="دوره تناوب"><Select value={recurrence} onValueChange={setRecurrence}><SelectTrigger><SelectValue placeholder="انتخاب دوره" /></SelectTrigger><SelectContent>{RECURRENCE_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+      <Field label="رویداد پایه"><Select value={baseEvent} onValueChange={setBaseEvent}><SelectTrigger><SelectValue placeholder="انتخاب رویداد" /></SelectTrigger><SelectContent>{BASE_EVENT_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+      <Field label="مسئول اجرا"><Select value={responsibleParty} onValueChange={setResponsibleParty}><SelectTrigger><SelectValue placeholder="انتخاب مسئول" /></SelectTrigger><SelectContent><SelectItem value="مودی">مودی</SelectItem><SelectItem value="سازمان امور مالیاتی">سازمان امور مالیاتی</SelectItem></SelectContent></Select></Field>
+      <Field label="فاصله زمانی"><Input type="number" min="0" dir="ltr" value={timeGapValue} onChange={(e) => setTimeGapValue(e.target.value)} /></Field>
+      <Field label="واحد فاصله"><Select value={timeGapUnit} onValueChange={setTimeGapUnit}><SelectTrigger><SelectValue placeholder="انتخاب واحد" /></SelectTrigger><SelectContent><SelectItem value="روز">روز</SelectItem><SelectItem value="ماه">ماه</SelectItem><SelectItem value="سال">سال</SelectItem></SelectContent></Select></Field>
       <Field label="نوع جریمه">
         <Select value={penaltyTypeValue} onValueChange={setPenaltyTypeValue}>
           <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1307,6 +1469,10 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
       toast.error('عنوان و کد مرحله الزامی است.')
       return
     }
+    if (!isValidCode(normalizeCode(code), 80)) {
+      toast.error('کد مرحله باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
+      return
+    }
 
     const fields: Json[] = fieldLabel.trim() ? [{ key: fieldKey.trim() || 'custom_field', label: fieldLabel.trim(), type: fieldType, required: true }] : []
 
@@ -1314,7 +1480,7 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
       mockStudioDb.addWorkflowStep({
         obligation_version_id: version.id,
         sequence: nextSequence,
-        code: code.trim().toUpperCase(),
+        code: normalizeCode(code),
         title: title.trim(),
         actor,
         form_schema: { fields },
@@ -1334,13 +1500,13 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
         }
       }
       if (template) {
-        const result = await supabase.from('workflow_steps').insert({ workflow_template_id: template.id, sequence: nextSequence, code: code.trim().toUpperCase(), title: title.trim(), actor, form_schema: { fields } })
+        const result = await supabase.from('workflow_steps').insert({ workflow_template_id: template.id, sequence: nextSequence, code: normalizeCode(code), title: title.trim(), actor, form_schema: { fields } })
         if (result.error) throw result.error
       } else {
         mockStudioDb.addWorkflowStep({
           obligation_version_id: version.id,
           sequence: nextSequence,
-          code: code.trim().toUpperCase(),
+          code: normalizeCode(code),
           title: title.trim(),
           actor,
           form_schema: { fields },
@@ -1353,7 +1519,7 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
       mockStudioDb.addWorkflowStep({
         obligation_version_id: version.id,
         sequence: nextSequence,
-        code: code.trim().toUpperCase(),
+        code: normalizeCode(code),
         title: title.trim(),
         actor,
         form_schema: { fields },
@@ -1368,7 +1534,7 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
   return (
     <div data-studio-dirty="true" className="mt-4 space-y-3 rounded-xl border border-zinc-800 p-4">
       <Field label="عنوان مرحله"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="۱. بارگذاری اظهارنامه" /></Field>
-      <Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(e.target.value)} dir="ltr" placeholder="SUBMIT_RETURN" /></Field>
+      <Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={80} placeholder="SUBMIT_RETURN" /></Field>
       <Field label="مسئول انجام">
         <Select value={actor} onValueChange={setActor}>
           <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1405,9 +1571,12 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
 function Editor({ title, children }: { title: string; children: React.ReactNode }) {
   return <section className="mb-6 rounded-2xl border border-zinc-800 bg-[#141615] p-5"><h3 className="mb-4 font-bold">{title}</h3><div className="grid gap-4 md:grid-cols-3">{children}</div></section>
 }
+function SectionLink({ target, label }: { target: string; label: string }) { return <Button type="button" size="sm" variant="ghost" className="shrink-0 text-xs text-zinc-300" onClick={() => document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{label}</Button> }
+function SectionHeading({ number, title, description }: { number: string; title: string; description: string }) { return <div className="flex items-start gap-3 border-b border-zinc-800 pb-4"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 font-black text-zinc-950">{number}</span><div><h3 className="font-black text-zinc-100">{title}</h3><p className="mt-1 text-xs leading-5 text-zinc-500">{description}</p></div></div> }
+function FormGroup({ title, description, children }: { title: string; description: string; children: React.ReactNode }) { return <fieldset className="rounded-xl border border-zinc-800 bg-[#171918] p-4"><legend className="px-2 text-sm font-bold text-amber-300">{title}</legend><p className="mb-4 text-xs text-zinc-500">{description}</p><div className="grid gap-4 sm:grid-cols-2">{children}</div></fieldset> }
 function StudioFullScreen({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) { return <div className="fixed inset-0 z-[90] overflow-y-auto bg-[#0b0d0c] p-4 text-zinc-100 sm:p-6"><div className="mx-auto max-w-6xl"><div className="sticky top-0 z-20 mb-5 flex items-center justify-between rounded-xl border border-zinc-800 bg-[#101211]/95 p-3 backdrop-blur"><Button variant="ghost" className="gap-2" onClick={onBack}><ArrowRight className="h-4 w-4" />بازگشت</Button><h2 className="font-black">{title}</h2></div>{children}</div></div> }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-2"><Label>{label}</Label>{children}</div> }
-function SaveButton({ onClick, disabled = false }: { onClick: () => Promise<void>; disabled?: boolean }) { return <div className="flex items-end"><Button disabled={disabled} onClick={() => void onClick()} className="w-full bg-emerald-700 hover:bg-emerald-600">ذخیره</Button></div> }
+function SaveButton({ onClick, disabled = false }: { onClick: () => Promise<void>; disabled?: boolean }) { return <div className="flex items-end"><Button type="button" disabled={disabled} onClick={() => void onClick()} className="w-full bg-emerald-700 hover:bg-emerald-600">ذخیره</Button></div> }
 function Metric({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string | number }) { return <div className="rounded-xl border border-zinc-800 bg-[#1b1e1c] p-4 shadow-sm"><div className="flex items-center gap-2 text-xs text-zinc-500"><Icon className="h-4 w-4 text-amber-400" />{label}</div><p className="mt-2 text-base font-black leading-6 text-zinc-100">{value}</p></div> }
 function DefinitionRow({ title, meta }: { title: string; meta: string }) { return <div className="rounded-lg border border-zinc-800 p-3"><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs text-zinc-500">{meta}</p></div> }
 function versionStatusLabel(status: string) { return ({ DRAFT: 'پیش‌نویس', REVIEW: 'در بازبینی', TESTING: 'در آزمایش', PUBLISHED: 'منتشرشده', RETIRED: 'منسوخ' } as Record<string, string>)[status] ?? status }
@@ -1415,6 +1584,21 @@ function penaltyType(value: Json) { if (!value || Array.isArray(value) || typeof
 function actorLabel(actor: string) { return ({ USER: 'کاربر شرکت', PLATFORM_ADMIN: 'مدیر پلتفرم', AUTHORITY: 'مرجع قانونی / مدیر' } as Record<string, string>)[actor] ?? actor }
 function actorClass(actor: string) { return ({ USER: 'border-sky-800 bg-sky-950/60 text-sky-300', PLATFORM_ADMIN: 'border-amber-800 bg-amber-950/60 text-amber-300', AUTHORITY: 'border-violet-800 bg-violet-950/60 text-violet-300' } as Record<string, string>)[actor] ?? 'border-zinc-700 bg-zinc-900 text-zinc-300' }
 function transitionTriggerLabel(trigger: string) { return ({ USER_ACTION: 'اقدام کاربر', SYSTEM_EVENT: 'رویداد سیستمی', TIMEOUT: 'انقضای خودکار' } as Record<string, string>)[trigger] ?? trigger }
+function jsonRecord(value: Json): Record<string, Json | undefined> { return value && !Array.isArray(value) && typeof value === 'object' ? value as Record<string, Json | undefined> : {} }
+function stringValue(value: Json | undefined, fallback = '') { return typeof value === 'string' ? value : fallback }
+function stringArray(value: Json | undefined) { return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [] }
+function numberString(value: Json | undefined, fallback = '') { return typeof value === 'number' || typeof value === 'string' ? String(value) : fallback }
+function errorMessage(error: unknown, fallback: string) { return typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string' ? error.message : fallback }
+function normalizeCode(value: string) { return value.toUpperCase().trimStart().replace(/[\s-]+/g, '_').replace(/[^A-Z0-9_]/g, '').replace(/_+/g, '_') }
+function isValidCode(value: string, maxLength: number) { return value.length <= maxLength && /^[A-Z][A-Z0-9_]{1,}$/.test(value) }
+function studioMutationError(error: unknown, fallback: string) {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
+  const message = errorMessage(error, fallback)
+  if (code === '23505' || message.includes('duplicate key')) return 'این کد قبلاً ثبت شده است؛ یک کد یکتا انتخاب کنید.'
+  if (code === '23514' || message.includes('_code_check')) return 'کد باید با حرف انگلیسی آغاز شود و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.'
+  return message
+}
+function studioDeadlineLabel(version: Version) { const recurrence = jsonRecord(version.recurrence_rule); const deadline = jsonRecord(version.deadline_rule); const frequency = stringValue(recurrence['recurrence'], 'بدون تناوب'); const amount = deadline['time_gap_value']; const unit = stringValue(deadline['time_gap_unit']); return amount != null && unit ? `${frequency} · ${amount} ${unit} پس از رویداد پایه` : frequency }
 function isMissingSchemaObject(error: { code?: string; message?: string } | null) { return Boolean(error && (error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('schema cache'))) }
 function penaltyItems(value: Json): Array<{ id: string; title: string; type: string; value: string }> { if (!value || Array.isArray(value) || typeof value !== 'object') return []; if (value['type'] === 'MULTIPLE' && Array.isArray(value['items'])) return value['items'].flatMap((item, index) => { if (!item || Array.isArray(item) || typeof item !== 'object') return []; const type = String(item['type'] ?? 'PERCENTAGE'); const amount = type === 'FIXED' ? item['amount'] : item['rate_percent']; return [{ id: String(item['id'] ?? `penalty-${index}`), title: String(item['title'] ?? ''), type, value: amount == null ? '' : String(amount) }] }); const type = String(value['type'] ?? 'NONE'); if (type === 'NONE') return []; return [{ id: 'legacy-penalty', title: 'جریمه قانونی', type, value: String(type === 'FIXED' ? value['amount'] ?? '' : value['rate_percent'] ?? '') }] }
 function penaltyLabel(value: Json) { const items = penaltyItems(value); if (items.length > 1) return `${items.length.toLocaleString('fa-IR')} جریمه تعریف‌شده`; if (items.length === 1) { const item = items[0]; return item.type === 'FIXED' ? `${Number(item.value).toLocaleString('fa-IR')} ریال` : `${Number(item.value).toLocaleString('fa-IR')} درصد${item.type === 'DAILY_PERCENTAGE' ? ' روزانه' : ''}` } return 'بدون جریمه' }

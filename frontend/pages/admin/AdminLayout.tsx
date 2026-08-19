@@ -7,7 +7,6 @@ import { TooltipProvider } from '../../lib/shadcn/tooltip'
 import AdminSidebar from './AdminSidebar'
 import { useAuth } from '../../context/AuthContext'
 import ThemeToggle from '../../components/ThemeToggle'
-import AdminComplianceStudioV4 from './AdminComplianceStudioV4'
 
 interface Props {
   children: React.ReactNode
@@ -88,7 +87,6 @@ export default function AdminLayout({ children }: Props) {
               <ChevronLeft className="h-3.5 w-3.5 rtl:rotate-180" />
               <span className="font-semibold text-zinc-800 dark:text-zinc-200">{currentLabel}</span>
             </nav>
-            {location.pathname === '/admin/studio' ? <AdminComplianceStudioV4 /> : children}
             {children}
           </main>
         </div>
