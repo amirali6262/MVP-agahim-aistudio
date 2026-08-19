@@ -1209,11 +1209,9 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
       return
     }
     if (!isValidCode(normalizedCode, 80)) {
-      toast.error('کد تعهد باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
-    if (!familyId || !code.trim() || !title.trim() || !legalReference.trim() || !sourceUrl.trim() || !effectiveFrom || !recurrence || !baseEvent || !responsibleParty) {
-      toast.error('گروه، کد، عنوان، مستند قانونی، تاریخ اعتبار، تناوب، رویداد پایه و مسئول اجرا الزامی است.')
-      return
-    }
+  toast.error('کد تعهد باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
+  return
+}
     const numberValue = penaltyValue ? Number(penaltyValue) : 0
     if (penaltyTypeValue !== 'NONE' && (!penaltyValue || !Number.isFinite(numberValue) || numberValue < 0)) {
       toast.error('مقدار جریمه باید عددی و غیرمنفی باشد.')
