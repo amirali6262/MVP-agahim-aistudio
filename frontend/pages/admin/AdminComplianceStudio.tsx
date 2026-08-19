@@ -1,4 +1,3 @@
+import AdminComplianceStudioV4 from './AdminComplianceStudioV4'
 
-import AdminComplianceStudioV3 from './AdminComplianceStudioV3'
-
-export const ComplianceStudioRoute = AdminComplianceStudioV3
+export const ComplianceStudioRoute = AdminComplianceStudioV4
