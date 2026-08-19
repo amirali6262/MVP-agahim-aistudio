@@ -1139,6 +1139,9 @@ function FamilyForm({ onSaved, onDirtyChange }: { onSaved: () => Promise<void>; 
     setSaving(true)
     try {
       const family = { code: normalizedCode, title: title.trim(), domain }
+    setSaving(true)
+    try {
+      const family = { code: code.trim().toUpperCase(), title: title.trim(), domain }
       if (isSupabaseConfigured) {
         const { error } = await supabase.from('obligation_families').insert(family)
         if (error) throw error
@@ -1152,11 +1155,13 @@ function FamilyForm({ onSaved, onDirtyChange }: { onSaved: () => Promise<void>; 
         ? error.message
         : 'ثبت گروه انجام نشد.'
       toast.error(studioMutationError(error, message))
+      toast.error(message)
     } finally {
       setSaving(false)
     }
   }
   return <Editor title="گروه جدید"><Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={50} placeholder="DIRECT_TAX" /></Field><Field label="عنوان"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مالیات‌های مستقیم" /></Field><Field label="حوزه"><Select value={domain} onValueChange={setDomain}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TAX">مالیات</SelectItem><SelectItem value="INSURANCE">بیمه</SelectItem></SelectContent></Select></Field><SaveButton onClick={save} disabled={saving} /></Editor>
+  return <Editor title="گروه جدید"><Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(e.target.value)} dir="ltr" placeholder="DIRECT_TAX" /></Field><Field label="عنوان"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مالیات‌های مستقیم" /></Field><Field label="حوزه"><Select value={domain} onValueChange={setDomain}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TAX">مالیات</SelectItem><SelectItem value="INSURANCE">بیمه</SelectItem></SelectContent></Select></Field><SaveButton onClick={save} disabled={saving} /></Editor>
 }
 
 function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; onSaved: (versionId: string) => Promise<void>; onDirtyChange: (dirty: boolean) => void }) {
@@ -1192,6 +1197,8 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
     }
     if (!isValidCode(normalizedCode, 80)) {
       toast.error('کد تعهد باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
+    if (!familyId || !code.trim() || !title.trim() || !legalReference.trim() || !sourceUrl.trim() || !effectiveFrom || !recurrence || !baseEvent || !responsibleParty) {
+      toast.error('گروه، کد، عنوان، مستند قانونی، تاریخ اعتبار، تناوب، رویداد پایه و مسئول اجرا الزامی است.')
       return
     }
     const numberValue = penaltyValue ? Number(penaltyValue) : 0
@@ -1245,6 +1252,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
       await onSaved(data.id)
     } catch (error) {
       toast.error(studioMutationError(error, 'ثبت پیش‌نویس تعهد انجام نشد.'))
+      toast.error(errorMessage(error, 'ثبت پیش‌نویس تعهد انجام نشد.'))
     }
   }
   return (
