@@ -1127,71 +1127,55 @@ function FamilyForm({ onSaved, onDirtyChange }: { onSaved: () => Promise<void>; 
   const [saving, setSaving] = useState(false)
   useEffect(() => onDirtyChange(Boolean(code || title || domain !== 'TAX')), [code, title, domain, onDirtyChange])
   const save = async () => {
-    const normalizedCode = normalizeCode(code)
-    if (!normalizedCode || !title.trim()) {
-      toast.error('کد و عنوان گروه الزامی است.')
-      return
+  const normalizedCode = normalizeCode(code)
+
+  if (!normalizedCode || !title.trim()) {
+    toast.error('کد و عنوان گروه الزامی است.')
+    return
+  }
+
+  if (!isValidCode(normalizedCode, 50)) {
+    toast.error('کد گروه باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
+    return
+  }
+
+  setSaving(true)
+
+  try {
+    const family = {
+      code: normalizedCode,
+      title: title.trim(),
+      domain,
     }
-    if (!isValidCode(normalizedCode, 50)) {
-      toast.error('کد گروه باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
-      return
+
+    if (isSupabaseConfigured) {
+      const { error } = await supabase
+        .from('obligation_families')
+        .insert(family)
+
+      if (error) throw error
+    } else {
+      mockStudioDb.createFamily(family)
     }
-    setSaving(true)
-    try {
-      const family = { code: normalizedCode, title: title.trim(), domain }
-    setSaving(true)
-    try {
-      const family = { code: code.trim().toUpperCase(), title: title.trim(), domain }
-      if (isSupabaseConfigured) {
-        const { error } = await supabase.from('obligation_families').insert(family)
-        if (error) throw error
-      } else {
-        mockStudioDb.createFamily(family)
-      }
-      toast.success('گروه ثبت شد.')
-      await onSaved()
-    } catch (error) {
-      const message = typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+
+    toast.success('گروه ثبت شد.')
+    await onSaved()
+  } catch (error) {
+    const message =
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof error.message === 'string'
         ? error.message
         : 'ثبت گروه انجام نشد.'
-      toast.error(studioMutationError(error, message))
-      toast.error(message)
-    } finally {
-      setSaving(false)
-    }
+
+    toast.error(studioMutationError(error, message))
+  } finally {
+    setSaving(false)
   }
-  return (
-    <Editor title="گروه جدید">
-      <Field label="کد انگلیسی">
-        <Input
-          value={code}
-          onChange={(event) => setCode(normalizeCode(event.target.value))}
-          dir="ltr"
-          maxLength={50}
-          placeholder="DIRECT_TAX"
-        />
-      </Field>
-      <Field label="عنوان">
-        <Input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="مالیات‌های مستقیم"
-        />
-      </Field>
-      <Field label="حوزه">
-        <Select value={domain} onValueChange={setDomain}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="TAX">مالیات</SelectItem>
-            <SelectItem value="INSURANCE">بیمه</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
-      <SaveButton onClick={save} disabled={saving} />
-    </Editor>
-  )
-  return <Editor title="گروه جدید"><Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(e.target.value)} dir="ltr" placeholder="DIRECT_TAX" /></Field><Field label="عنوان"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مالیات‌های مستقیم" /></Field><Field label="حوزه"><Select value={domain} onValueChange={setDomain}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TAX">مالیات</SelectItem><SelectItem value="INSURANCE">بیمه</SelectItem></SelectContent></Select></Field><SaveButton onClick={save} disabled={saving} /></Editor>
 }
+  return <Editor title="گروه جدید"><Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={50} placeholder="DIRECT_TAX" /></Field><Field label="عنوان"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مالیات‌های مستقیم" /></Field><Field label="حوزه"><Select value={domain} onValueChange={setDomain}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TAX">مالیات</SelectItem><SelectItem value="INSURANCE">بیمه</SelectItem></SelectContent></Select></Field><SaveButton onClick={save} disabled={saving} /></Editor>
+  }
 
 function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; onSaved: (versionId: string) => Promise<void>; onDirtyChange: (dirty: boolean) => void }) {
   const [familyId, setFamilyId] = useState(families[0]?.id ?? '')
@@ -1225,11 +1209,9 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
       return
     }
     if (!isValidCode(normalizedCode, 80)) {
-      toast.error('کد تعهد باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
-    if (!familyId || !code.trim() || !title.trim() || !legalReference.trim() || !sourceUrl.trim() || !effectiveFrom || !recurrence || !baseEvent || !responsibleParty) {
-      toast.error('گروه، کد، عنوان، مستند قانونی، تاریخ اعتبار، تناوب، رویداد پایه و مسئول اجرا الزامی است.')
-      return
-    }
+  toast.error('کد تعهد باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
+  return
+}
     const numberValue = penaltyValue ? Number(penaltyValue) : 0
     if (penaltyTypeValue !== 'NONE' && (!penaltyValue || !Number.isFinite(numberValue) || numberValue < 0)) {
       toast.error('مقدار جریمه باید عددی و غیرمنفی باشد.')
