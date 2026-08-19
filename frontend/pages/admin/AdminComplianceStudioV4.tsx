@@ -160,7 +160,10 @@ export default function AdminComplianceStudio() {
       toast.success('تعهد حذف شد.')
       await loadCatalog()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'حذف تعهد انجام نشد.')
+      const message = errorMessage(error, 'حذف تعهد انجام نشد.')
+      toast.error(message.includes('published obligation versions are immutable')
+        ? 'نسخه منتشرشده قابل حذف نیست؛ برای توقف استفاده، تعهد را در فرم ویرایش غیرفعال کنید.'
+        : message)
     } finally {
       setBusy(false)
     }
@@ -1034,6 +1037,7 @@ function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { ver
 
   const save = async () => {
     if (!fromStepId || !title.trim() || !code.trim() || !outcomeCode.trim()) return toast.error('مرحله مبدأ، عنوان، کد مسیر و کد خروجی الزامی است.')
+    if (!isValidCode(normalizeCode(code), 80)) return toast.error('کد مسیر باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
     if (triggerType === 'TIMEOUT' && (!Number.isFinite(Number(timeoutDays)) || Number(timeoutDays) <= 0)) return toast.error('مهلت زمانی باید بیشتر از صفر روز باشد.')
     if (triggerType === 'SYSTEM_EVENT' && !eventCode.trim()) return toast.error('کد رویداد سیستمی الزامی است.')
     if (!isSupabaseConfigured) return toast.error('تعریف مسیر پایدار فقط در حالت اتصال به Supabase در دسترس است.')
@@ -1045,8 +1049,8 @@ function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { ver
       from_step_id: fromStepId,
       to_step_id: terminal ? null : destination,
       terminal_status: terminal ? destination : null,
-      code: code.trim().toUpperCase(), title: title.trim(), outcome_code: outcomeCode.trim().toUpperCase(),
-      trigger_type: triggerType, event_code: triggerType === 'SYSTEM_EVENT' ? eventCode.trim().toUpperCase() : null,
+      code: normalizeCode(code), title: title.trim(), outcome_code: normalizeCode(outcomeCode),
+      trigger_type: triggerType, event_code: triggerType === 'SYSTEM_EVENT' ? normalizeCode(eventCode) : null,
       timeout_interval: triggerType === 'TIMEOUT' ? `${Number(timeoutDays)} days` : null,
       priority: nextPriority,
     })
@@ -1057,7 +1061,7 @@ function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { ver
   }
 
   if (!open) return <Button variant="outline" className="mt-5 w-full border-violet-800 text-violet-300" onClick={() => setOpen(true)}><Plus className="ml-2 h-4 w-4" />افزودن مسیر / خروجی</Button>
-  return <div data-studio-dirty="true" className="mt-5 rounded-xl border border-violet-900/60 bg-violet-950/10 p-4"><div className="grid gap-4 md:grid-cols-3"><Field label="مرحله مبدأ"><Select value={fromStepId} onValueChange={setFromStepId}><SelectTrigger><SelectValue placeholder="انتخاب مرحله" /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>{step.sequence}. {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}</SelectContent></Select></Field><Field label="نوع فعال‌سازی"><Select value={triggerType} onValueChange={setTriggerType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="USER_ACTION">اقدام کاربر</SelectItem><SelectItem value="SYSTEM_EVENT">رویداد سیستمی</SelectItem><SelectItem value="TIMEOUT">انقضای خودکار مهلت</SelectItem></SelectContent></Select></Field><Field label="مقصد"><Select value={destination} onValueChange={setDestination}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>مرحله {step.sequence}: {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}<SelectItem value="COMPLETED">پایان موفق پرونده</SelectItem><SelectItem value="CANCELLED">لغو پرونده</SelectItem></SelectContent></Select></Field><Field label="عنوان مسیر"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field><Field label="کد انگلیسی مسیر"><Input dir="ltr" value={code} onChange={(event) => setCode(event.target.value)} placeholder="ASSESSMENT_ISSUED" /></Field><Field label="کد خروجی"><Input dir="ltr" value={outcomeCode} onChange={(event) => setOutcomeCode(event.target.value)} placeholder="DISPUTE_OPENED" /></Field>{triggerType === 'SYSTEM_EVENT' && <Field label="کد رویداد"><Input dir="ltr" value={eventCode} onChange={(event) => setEventCode(event.target.value)} /></Field>}{triggerType === 'TIMEOUT' && <Field label="مهلت (روز)"><Input type="number" min="1" value={timeoutDays} onChange={(event) => setTimeoutDays(event.target.value)} /></Field>}<div className="flex items-end gap-2"><Button className="flex-1 bg-violet-700 hover:bg-violet-600" onClick={() => void save()}>ذخیره مسیر</Button><Button variant="ghost" onClick={() => { if (window.confirm('تغییرات مسیر ذخیره نشده است. خارج می‌شوید؟')) setOpen(false) }}>انصراف</Button></div></div></div>
+  return <div data-studio-dirty="true" className="mt-5 rounded-xl border border-violet-900/60 bg-violet-950/10 p-4"><div className="grid gap-4 md:grid-cols-3"><Field label="مرحله مبدأ"><Select value={fromStepId} onValueChange={setFromStepId}><SelectTrigger><SelectValue placeholder="انتخاب مرحله" /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>{step.sequence}. {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}</SelectContent></Select></Field><Field label="نوع فعال‌سازی"><Select value={triggerType} onValueChange={setTriggerType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="USER_ACTION">اقدام کاربر</SelectItem><SelectItem value="SYSTEM_EVENT">رویداد سیستمی</SelectItem><SelectItem value="TIMEOUT">انقضای خودکار مهلت</SelectItem></SelectContent></Select></Field><Field label="مقصد"><Select value={destination} onValueChange={setDestination}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>مرحله {step.sequence}: {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}<SelectItem value="COMPLETED">پایان موفق پرونده</SelectItem><SelectItem value="CANCELLED">لغو پرونده</SelectItem></SelectContent></Select></Field><Field label="عنوان مسیر"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field><Field label="کد انگلیسی مسیر"><Input dir="ltr" value={code} onChange={(event) => setCode(normalizeCode(event.target.value))} maxLength={80} placeholder="ASSESSMENT_ISSUED" /></Field><Field label="کد خروجی"><Input dir="ltr" value={outcomeCode} onChange={(event) => setOutcomeCode(normalizeCode(event.target.value))} placeholder="DISPUTE_OPENED" /></Field>{triggerType === 'SYSTEM_EVENT' && <Field label="کد رویداد"><Input dir="ltr" value={eventCode} onChange={(event) => setEventCode(normalizeCode(event.target.value))} /></Field>}{triggerType === 'TIMEOUT' && <Field label="مهلت (روز)"><Input type="number" min="1" value={timeoutDays} onChange={(event) => setTimeoutDays(event.target.value)} /></Field>}<div className="flex items-end gap-2"><Button className="flex-1 bg-violet-700 hover:bg-violet-600" onClick={() => void save()}>ذخیره مسیر</Button><Button variant="ghost" onClick={() => { if (window.confirm('تغییرات مسیر ذخیره نشده است. خارج می‌شوید؟')) setOpen(false) }}>انصراف</Button></div></div></div>
 }
 
 function PenaltyForm({ version, multiPenaltyTableReady, onSaved }: { version: Version; multiPenaltyTableReady: boolean; onSaved: () => Promise<void> }) {
@@ -1123,32 +1127,55 @@ function FamilyForm({ onSaved, onDirtyChange }: { onSaved: () => Promise<void>; 
   const [saving, setSaving] = useState(false)
   useEffect(() => onDirtyChange(Boolean(code || title || domain !== 'TAX')), [code, title, domain, onDirtyChange])
   const save = async () => {
-    if (!code.trim() || !title.trim()) {
-      toast.error('کد و عنوان گروه الزامی است.')
-      return
+  const normalizedCode = normalizeCode(code)
+
+  if (!normalizedCode || !title.trim()) {
+    toast.error('کد و عنوان گروه الزامی است.')
+    return
+  }
+
+  if (!isValidCode(normalizedCode, 50)) {
+    toast.error('کد گروه باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
+    return
+  }
+
+  setSaving(true)
+
+  try {
+    const family = {
+      code: normalizedCode,
+      title: title.trim(),
+      domain,
     }
-    setSaving(true)
-    try {
-      const family = { code: code.trim().toUpperCase(), title: title.trim(), domain }
-      if (isSupabaseConfigured) {
-        const { error } = await supabase.from('obligation_families').insert(family)
-        if (error) throw error
-      } else {
-        mockStudioDb.createFamily(family)
-      }
-      toast.success('گروه ثبت شد.')
-      await onSaved()
-    } catch (error) {
-      const message = typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+
+    if (isSupabaseConfigured) {
+      const { error } = await supabase
+        .from('obligation_families')
+        .insert(family)
+
+      if (error) throw error
+    } else {
+      mockStudioDb.createFamily(family)
+    }
+
+    toast.success('گروه ثبت شد.')
+    await onSaved()
+  } catch (error) {
+    const message =
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof error.message === 'string'
         ? error.message
         : 'ثبت گروه انجام نشد.'
-      toast.error(message)
-    } finally {
-      setSaving(false)
-    }
+
+    toast.error(studioMutationError(error, message))
+  } finally {
+    setSaving(false)
   }
-  return <Editor title="گروه جدید"><Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(e.target.value)} dir="ltr" placeholder="DIRECT_TAX" /></Field><Field label="عنوان"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مالیات‌های مستقیم" /></Field><Field label="حوزه"><Select value={domain} onValueChange={setDomain}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TAX">مالیات</SelectItem><SelectItem value="INSURANCE">بیمه</SelectItem></SelectContent></Select></Field><SaveButton onClick={save} disabled={saving} /></Editor>
 }
+  return <Editor title="گروه جدید"><Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={50} placeholder="DIRECT_TAX" /></Field><Field label="عنوان"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مالیات‌های مستقیم" /></Field><Field label="حوزه"><Select value={domain} onValueChange={setDomain}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TAX">مالیات</SelectItem><SelectItem value="INSURANCE">بیمه</SelectItem></SelectContent></Select></Field><SaveButton onClick={save} disabled={saving} /></Editor>
+  }
 
 function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; onSaved: (versionId: string) => Promise<void>; onDirtyChange: (dirty: boolean) => void }) {
   const [familyId, setFamilyId] = useState(families[0]?.id ?? '')
@@ -1176,10 +1203,15 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
   }, [families, familyId])
 
   const save = async () => {
-    if (!familyId || !code.trim() || !title.trim() || !legalReference.trim() || !sourceUrl.trim() || !effectiveFrom || !recurrence || !baseEvent || !responsibleParty) {
+    const normalizedCode = normalizeCode(code)
+    if (!familyId || !normalizedCode || !title.trim() || !legalReference.trim() || !sourceUrl.trim() || !effectiveFrom || !recurrence || !baseEvent || !responsibleParty) {
       toast.error('گروه، کد، عنوان، مستند قانونی، تاریخ اعتبار، تناوب، رویداد پایه و مسئول اجرا الزامی است.')
       return
     }
+    if (!isValidCode(normalizedCode, 80)) {
+  toast.error('کد تعهد باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
+  return
+}
     const numberValue = penaltyValue ? Number(penaltyValue) : 0
     if (penaltyTypeValue !== 'NONE' && (!penaltyValue || !Number.isFinite(numberValue) || numberValue < 0)) {
       toast.error('مقدار جریمه باید عددی و غیرمنفی باشد.')
@@ -1196,7 +1228,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
     if (!isSupabaseConfigured) {
       const { version } = mockStudioDb.createDraft({
         requested_family_id: familyId,
-        requested_code: code.trim().toUpperCase(),
+        requested_code: normalizedCode,
         requested_title: title.trim(),
         requested_official_action_url: actionUrl.trim() || undefined,
         requested_legal_reference: legalReference.trim() || undefined,
@@ -1214,7 +1246,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
     try {
       const { data, error } = await supabase.rpc('create_obligation_draft', {
         requested_family_id: familyId,
-        requested_code: code.trim().toUpperCase(),
+        requested_code: normalizedCode,
         requested_title: title.trim(),
         requested_summary: undefined,
         requested_authority_name: undefined,
@@ -1230,6 +1262,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
       toast.success('پیش‌نویس تعهد ثبت شد.')
       await onSaved(data.id)
     } catch (error) {
+      toast.error(studioMutationError(error, 'ثبت پیش‌نویس تعهد انجام نشد.'))
       toast.error(errorMessage(error, 'ثبت پیش‌نویس تعهد انجام نشد.'))
     }
   }
@@ -1241,7 +1274,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
           <SelectContent>{families.map((family) => <SelectItem key={family.id} value={family.id}>{family.title}</SelectItem>)}</SelectContent>
         </Select>
       </Field>
-      <Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(e.target.value)} dir="ltr" placeholder="CORP_INCOME_TAX" /></Field>
+      <Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={80} placeholder="CORP_INCOME_TAX" /></Field>
       <Field label="عنوان تعهد"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="اظهارنامه مالیات عملکرد اشخاص حقوقی" /></Field>
       <Field label="ماده / مرجع قانونی"><Input value={legalReference} onChange={(e) => setLegalReference(e.target.value)} placeholder="ماده ۱۱۰ قانون مالیات‌های مستقیم" /></Field>
       <Field label="لینک منبع رسمی"><Input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} dir="ltr" placeholder="https://tax.gov.ir/..." /></Field>
@@ -1426,6 +1459,10 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
       toast.error('عنوان و کد مرحله الزامی است.')
       return
     }
+    if (!isValidCode(normalizeCode(code), 80)) {
+      toast.error('کد مرحله باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
+      return
+    }
 
     const fields: Json[] = fieldLabel.trim() ? [{ key: fieldKey.trim() || 'custom_field', label: fieldLabel.trim(), type: fieldType, required: true }] : []
 
@@ -1433,7 +1470,7 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
       mockStudioDb.addWorkflowStep({
         obligation_version_id: version.id,
         sequence: nextSequence,
-        code: code.trim().toUpperCase(),
+        code: normalizeCode(code),
         title: title.trim(),
         actor,
         form_schema: { fields },
@@ -1453,13 +1490,13 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
         }
       }
       if (template) {
-        const result = await supabase.from('workflow_steps').insert({ workflow_template_id: template.id, sequence: nextSequence, code: code.trim().toUpperCase(), title: title.trim(), actor, form_schema: { fields } })
+        const result = await supabase.from('workflow_steps').insert({ workflow_template_id: template.id, sequence: nextSequence, code: normalizeCode(code), title: title.trim(), actor, form_schema: { fields } })
         if (result.error) throw result.error
       } else {
         mockStudioDb.addWorkflowStep({
           obligation_version_id: version.id,
           sequence: nextSequence,
-          code: code.trim().toUpperCase(),
+          code: normalizeCode(code),
           title: title.trim(),
           actor,
           form_schema: { fields },
@@ -1472,7 +1509,7 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
       mockStudioDb.addWorkflowStep({
         obligation_version_id: version.id,
         sequence: nextSequence,
-        code: code.trim().toUpperCase(),
+        code: normalizeCode(code),
         title: title.trim(),
         actor,
         form_schema: { fields },
@@ -1487,7 +1524,7 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
   return (
     <div data-studio-dirty="true" className="mt-4 space-y-3 rounded-xl border border-zinc-800 p-4">
       <Field label="عنوان مرحله"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="۱. بارگذاری اظهارنامه" /></Field>
-      <Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(e.target.value)} dir="ltr" placeholder="SUBMIT_RETURN" /></Field>
+      <Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={80} placeholder="SUBMIT_RETURN" /></Field>
       <Field label="مسئول انجام">
         <Select value={actor} onValueChange={setActor}>
           <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1542,6 +1579,15 @@ function stringValue(value: Json | undefined, fallback = '') { return typeof val
 function stringArray(value: Json | undefined) { return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [] }
 function numberString(value: Json | undefined, fallback = '') { return typeof value === 'number' || typeof value === 'string' ? String(value) : fallback }
 function errorMessage(error: unknown, fallback: string) { return typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string' ? error.message : fallback }
+function normalizeCode(value: string) { return value.toUpperCase().trimStart().replace(/[\s-]+/g, '_').replace(/[^A-Z0-9_]/g, '').replace(/_+/g, '_') }
+function isValidCode(value: string, maxLength: number) { return value.length <= maxLength && /^[A-Z][A-Z0-9_]{1,}$/.test(value) }
+function studioMutationError(error: unknown, fallback: string) {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
+  const message = errorMessage(error, fallback)
+  if (code === '23505' || message.includes('duplicate key')) return 'این کد قبلاً ثبت شده است؛ یک کد یکتا انتخاب کنید.'
+  if (code === '23514' || message.includes('_code_check')) return 'کد باید با حرف انگلیسی آغاز شود و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.'
+  return message
+}
 function studioDeadlineLabel(version: Version) { const recurrence = jsonRecord(version.recurrence_rule); const deadline = jsonRecord(version.deadline_rule); const frequency = stringValue(recurrence['recurrence'], 'بدون تناوب'); const amount = deadline['time_gap_value']; const unit = stringValue(deadline['time_gap_unit']); return amount != null && unit ? `${frequency} · ${amount} ${unit} پس از رویداد پایه` : frequency }
 function isMissingSchemaObject(error: { code?: string; message?: string } | null) { return Boolean(error && (error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('schema cache'))) }
 function penaltyItems(value: Json): Array<{ id: string; title: string; type: string; value: string }> { if (!value || Array.isArray(value) || typeof value !== 'object') return []; if (value['type'] === 'MULTIPLE' && Array.isArray(value['items'])) return value['items'].flatMap((item, index) => { if (!item || Array.isArray(item) || typeof item !== 'object') return []; const type = String(item['type'] ?? 'PERCENTAGE'); const amount = type === 'FIXED' ? item['amount'] : item['rate_percent']; return [{ id: String(item['id'] ?? `penalty-${index}`), title: String(item['title'] ?? ''), type, value: amount == null ? '' : String(amount) }] }); const type = String(value['type'] ?? 'NONE'); if (type === 'NONE') return []; return [{ id: 'legacy-penalty', title: 'جریمه قانونی', type, value: String(type === 'FIXED' ? value['amount'] ?? '' : value['rate_percent'] ?? '') }] }
