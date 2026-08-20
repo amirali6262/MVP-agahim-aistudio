@@ -16,6 +16,15 @@ import {
   ShieldAlert,
   Trash2,
   ArrowRight,
+  FolderTree,
+  FolderPlus,
+  Search,
+  Check,
+  X,
+  Target,
+  Rocket,
+  Layers,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
@@ -25,8 +34,10 @@ import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
 import { Switch } from '../../lib/shadcn/switch'
+import { Badge } from '../../lib/shadcn/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../lib/shadcn/table'
+import DeleteGuardModal from '../../components/DeleteGuardModal'
 
 type Family = Tables<'obligation_families'> | any
 type Obligation = Tables<'obligations'> | any
@@ -116,6 +127,39 @@ export default function AdminComplianceStudio() {
   const [penaltySchemaReady, setPenaltySchemaReady] = useState(true)
   const [familyDirty, setFamilyDirty] = useState(false)
   const [draftDirty, setDraftDirty] = useState(false)
+  const [editingRule, setEditingRule] = useState<RuleSet | null>(null)
+  const [editingStep, setEditingStep] = useState<WorkflowStep | null>(null)
+  const [activeSubModule, setActiveSubModule] = useState<
+    | 'CLASSIFICATION'
+    | 'RECURRENCE'
+    | 'SCOPE'
+    | 'PUBLISH_READINESS'
+    | 'ELIGIBILITY'
+    | 'WORKFLOW_STEPS'
+    | 'TRANSITIONS'
+    | null
+  >(null)
+  const [ruleConditions, setRuleConditions] = useState<Record<string, any[]>>({})
+  const [deleteRuleGuard, setDeleteRuleGuard] = useState<{
+    isOpen: boolean
+    rule: RuleSet | null
+    isDeleting: boolean
+  }>({
+    isOpen: false,
+    rule: null,
+    isDeleting: false,
+  })
+  const [deleteStepGuard, setDeleteStepGuard] = useState<{
+    isOpen: boolean
+    step: WorkflowStep | null
+    dependencies: Array<{ formName: string; details: string; iconType?: 'extension' | 'penalty' | 'workflow' | 'template' | 'obligation' }>
+    isDeleting: boolean
+  }>({
+    isOpen: false,
+    step: null,
+    dependencies: [],
+    isDeleting: false,
+  })
 
   const selectedVersion = useMemo(
     () => catalog.flatMap((item) => item.versions).find((version) => version.id === selectedVersionId) ?? null,
@@ -250,6 +294,7 @@ export default function AdminComplianceStudio() {
       setSteps([])
       setRules([])
       setTransitions([])
+      setRuleConditions({})
       return
     }
 
@@ -266,6 +311,11 @@ export default function AdminComplianceStudio() {
       setSteps(st)
       setRules(rl)
       setTransitions([])
+      const condMap: Record<string, any[]> = {}
+      rl.forEach((r: any) => {
+        condMap[r.id] = mockStudioDb.getConditions(r.id)
+      })
+      setRuleConditions(condMap)
       return
     }
 
@@ -290,6 +340,11 @@ export default function AdminComplianceStudio() {
         setSteps(st)
         setRules(rl)
         setTransitions([])
+        const condMap: Record<string, any[]> = {}
+        rl.forEach((r: any) => {
+          condMap[r.id] = mockStudioDb.getConditions(r.id)
+        })
+        setRuleConditions(condMap)
         return
       }
 
@@ -322,10 +377,32 @@ export default function AdminComplianceStudio() {
         setSteps(st)
         setRules(rl)
         setTransitions([])
+        const condMap: Record<string, any[]> = {}
+        rl.forEach((r: any) => {
+          condMap[r.id] = mockStudioDb.getConditions(r.id)
+        })
+        setRuleConditions(condMap)
       } else {
         setSteps(fetchedSteps)
         setRules(fetchedRules)
         setTransitions(fetchedTransitions)
+
+        const condMap: Record<string, any[]> = {}
+        if (fetchedRules.length > 0) {
+          const ruleIds = fetchedRules.map((r: any) => r.id)
+          const { data: condRows } = await supabase
+            .from('eligibility_conditions')
+            .select('*')
+            .in('rule_set_id', ruleIds)
+            .order('sequence')
+          if (condRows) {
+            condRows.forEach((c) => {
+              if (!condMap[c.rule_set_id]) condMap[c.rule_set_id] = []
+              condMap[c.rule_set_id].push(c)
+            })
+          }
+        }
+        setRuleConditions(condMap)
       }
     } catch {
       const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
@@ -339,8 +416,57 @@ export default function AdminComplianceStudio() {
       setSteps(st)
       setRules(rl)
       setTransitions([])
+      const condMap: Record<string, any[]> = {}
+      rl.forEach((r: any) => {
+        condMap[r.id] = mockStudioDb.getConditions(r.id)
+      })
+      setRuleConditions(condMap)
     }
   }, [selectedVersionId])
+
+  const confirmDeleteRule = async () => {
+    const rule = deleteRuleGuard.rule
+    if (!rule) return
+    setDeleteRuleGuard((prev) => ({ ...prev, isDeleting: true }))
+    try {
+      if (isSupabaseConfigured) {
+        await supabase.from('eligibility_conditions').delete().eq('rule_set_id', rule.id)
+        const { error } = await supabase.from('eligibility_rule_sets').delete().eq('id', rule.id)
+        if (error) throw error
+      } else {
+        mockStudioDb.deleteRuleSet(rule.id)
+      }
+      toast.success(`قاعده «${rule.title}» با موفقیت حذف شد.`)
+      if (editingRule?.id === rule.id) setEditingRule(null)
+      setDeleteRuleGuard({ isOpen: false, rule: null, isDeleting: false })
+      await loadDefinition()
+    } catch (err) {
+      toast.error(errorMessage(err, 'حذف قاعده انجام نشد.'))
+      setDeleteRuleGuard((prev) => ({ ...prev, isDeleting: false }))
+    }
+  }
+
+  const confirmDeleteStep = async () => {
+    const step = deleteStepGuard.step
+    if (!step) return
+    setDeleteStepGuard((prev) => ({ ...prev, isDeleting: true }))
+    try {
+      if (isSupabaseConfigured) {
+        await supabase.from('workflow_transitions').delete().or(`from_step_id.eq.${step.id},to_step_id.eq.${step.id}`)
+        const { error } = await supabase.from('workflow_steps').delete().eq('id', step.id)
+        if (error) throw error
+      } else {
+        mockStudioDb.deleteWorkflowStep(step.id)
+      }
+      toast.success(`مرحله «${step.title}» با موفقیت حذف شد.`)
+      if (editingStep?.id === step.id) setEditingStep(null)
+      setDeleteStepGuard({ isOpen: false, step: null, dependencies: [], isDeleting: false })
+      await loadDefinition()
+    } catch (err) {
+      toast.error(errorMessage(err, 'حذف مرحله انجام نشد.'))
+      setDeleteStepGuard((prev) => ({ ...prev, isDeleting: false }))
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -664,7 +790,7 @@ export default function AdminComplianceStudio() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="border-zinc-700 gap-2" onClick={() => void loadCatalog()}><RefreshCw className="h-4 w-4" />به‌روزرسانی</Button>
-          <Button variant="outline" className="border-zinc-700 gap-2" onClick={() => setShowFamilyForm((value) => !value)}><Plus className="h-4 w-4" />گروه جدید</Button>
+          <Button variant="outline" className="border-zinc-700 gap-2" onClick={() => setShowFamilyForm((value) => !value)}><FolderTree className="h-4 w-4 text-amber-400" />مدیریت و تعریف گروه‌ها</Button>
           <Button variant="outline" className="border-amber-700 text-amber-300 hover:bg-amber-950/40 gap-2" onClick={() => setShowDraftForm((value) => !value)}><FilePlus2 className="h-4 w-4" />تعهد جدید</Button>
         </div>
       </div>
@@ -674,7 +800,26 @@ export default function AdminComplianceStudio() {
         هیچ متن حقوقی به‌صورت خودکار منتشر نمی‌شود. انتشار فقط پس از ثبت منبع رسمی، قاعده تشخیص و حداقل یک مرحله ممکن است.
       </div>
 
-      {showFamilyForm && <StudioFullScreen title="تعریف گروه جدید" onBack={() => { if (!familyDirty || window.confirm('تغییرات ذخیره نشده است. بدون ذخیره خارج می‌شوید؟')) { setShowFamilyForm(false); setFamilyDirty(false) } }}><FamilyForm onDirtyChange={setFamilyDirty} onSaved={async () => { setShowFamilyForm(false); setFamilyDirty(false); await loadCatalog() }} /></StudioFullScreen>}
+      {showFamilyForm && (
+        <StudioFullScreen
+          title="مدیریت و تعریف گروه‌ها (دسته‌بندی تکالیف)"
+          onBack={() => {
+            if (!familyDirty || window.confirm('تغییرات ذخیره نشده است. بدون ذخیره خارج می‌شوید؟')) {
+              setShowFamilyForm(false)
+              setFamilyDirty(false)
+            }
+          }}
+        >
+          <FamilyManager
+            families={families}
+            catalog={catalog}
+            onDirtyChange={setFamilyDirty}
+            onSaved={async () => {
+              await loadCatalog()
+            }}
+          />
+        </StudioFullScreen>
+      )}
       {showDraftForm && <StudioFullScreen title="تعریف تعهد جدید" onBack={() => { if (!draftDirty || window.confirm('تغییرات ذخیره نشده است. بدون ذخیره خارج می‌شوید؟')) { setShowDraftForm(false); setDraftDirty(false) } }}><DraftForm families={families} onDirtyChange={setDraftDirty} onSaved={async (versionId) => { setShowDraftForm(false); setDraftDirty(false); await loadCatalog(); setSelectedVersionId(versionId); setMode('EDIT') }} /></StudioFullScreen>}
 
       {mode === 'LIST' ? (
@@ -712,197 +857,266 @@ export default function AdminComplianceStudio() {
             </Table>
           )}
         </section>
-      ) : (
+      ) : !selectedVersion || !selectedCatalogItem ? (
         <StudioFullScreen title={mode === 'EDIT' ? 'ویرایش تعهد' : 'مشاهده تعهد'} onBack={closeDetails}>
-          <div className="mx-auto max-w-7xl space-y-5">
-          {!selectedVersion ? (
-            <div className="rounded-2xl border border-dashed border-zinc-700 bg-[#141615] p-16 text-center text-zinc-500">برای ادامه یک نسخه را انتخاب کنید.</div>
-          ) : (
-            <>
-              <nav className="sticky top-[4.5rem] z-10 flex gap-2 overflow-x-auto rounded-xl border border-zinc-800 bg-[#101211]/95 p-2 shadow-lg backdrop-blur" aria-label="بخش‌های ویرایش تعهد">
-                {mode === 'EDIT' && <SectionLink target="basic-definition" label="۱. اطلاعات و زمان‌بندی" />}
-                <SectionLink target="eligibility-section" label="۲. مشمولیت" />
-                <SectionLink target="workflow-section" label="۳. مراحل" />
-                <SectionLink target="transitions-section" label="۴. مسیرها" />
-              </nav>
-
-              {selectedCatalogItem && mode === 'EDIT' && selectedVersion.status === 'DRAFT' && (
-                <BasicDefinitionForm
-                  key={selectedVersion.id}
-                  item={selectedCatalogItem}
-                  version={selectedVersion}
-                  onSaved={async () => { await loadCatalog(); await loadDefinition() }}
-                />
-              )}
-
-              <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-lg">آمادگی انتشار نسخه {selectedVersion.version_number}</h3>
-                      {selectedVersion.status === 'PUBLISHED' ? (
-                        <span className="flex items-center gap-1 rounded-full bg-emerald-950 px-3 py-1 text-xs text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" />منتشرشده و قفل</span>
-                      ) : (
-                        <span className="rounded-full bg-amber-950/80 px-2.5 py-0.5 text-xs text-amber-300">{versionStatusLabel(selectedVersion.status)}</span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-zinc-400">
-                      {selectedVersion.legal_reference || 'ماده ۱۱۰، ۱۹۲، ۱۹۰ و تبصره ۱ ماده ۱۴۶ مکرر قانون مالیات‌های مستقیم مصوب ۱۳۶۶ با آخرین اصلاحات'}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      className="border-amber-700/60 bg-amber-950/30 text-amber-300 hover:bg-amber-900/40 gap-1.5 text-xs"
-                      onClick={() => void seedStandardCorporateTaxData()}
-                      disabled={busy}
-                    >
-                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookOpenCheck className="h-3.5 w-3.5" />}
-                      درج / به‌روزرسانی داده‌های استاندارد عملکرد
-                    </Button>
-                    {selectedVersion.status === 'DRAFT' && (
-                      <Button onClick={() => void transitionStatus('REVIEW', 'نسخه برای بازبینی تخصصی ارسال شد.')} disabled={busy} className="bg-amber-500 text-zinc-950 hover:bg-amber-400">
-                        {busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}ارسال به بازبینی
-                      </Button>
-                    )}
-                    {selectedVersion.status === 'REVIEW' && (
-                      <>
-                        <Button variant="outline" className="border-zinc-700" onClick={() => void transitionStatus('DRAFT', 'نسخه برای اصلاح به پیش‌نویس بازگشت.')} disabled={busy}>بازگشت برای اصلاح</Button>
-                        <Button onClick={() => void transitionStatus('TESTING', 'نسخه وارد مرحله آزمایش شد.')} disabled={busy} className="bg-sky-700 hover:bg-sky-600">
-                          {busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}ارسال به آزمایش
-                        </Button>
-                      </>
-                    )}
-                    {selectedVersion.status === 'TESTING' && (
-                      <>
-                        <Button variant="outline" className="border-zinc-700" onClick={() => void transitionStatus('REVIEW', 'نسخه برای بازبینی دوباره بازگشت.')} disabled={busy}>بازگشت به بازبینی</Button>
-                        <Button onClick={publish} disabled={busy} className="bg-emerald-700 hover:bg-emerald-600">
-                          {busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}انتشار نهایی
-                        </Button>
-                      </>
-                    )}
-                  </div>
+          <div className="rounded-2xl border border-dashed border-zinc-700 bg-[#141615] p-16 text-center text-zinc-500">برای ادامه یک نسخه و تعهد را انتخاب کنید.</div>
+        </StudioFullScreen>
+      ) : activeSubModule === 'CLASSIFICATION' ? (
+        <ClassificationModal
+          item={selectedCatalogItem}
+          version={selectedVersion}
+          mode={mode}
+          onClose={() => setActiveSubModule(null)}
+          onSaved={async () => { await loadCatalog(); await loadDefinition() }}
+        />
+      ) : activeSubModule === 'RECURRENCE' ? (
+        <RecurrenceModal
+          item={selectedCatalogItem}
+          version={selectedVersion}
+          mode={mode}
+          onClose={() => setActiveSubModule(null)}
+          onSaved={async () => { await loadCatalog(); await loadDefinition() }}
+        />
+      ) : activeSubModule === 'SCOPE' ? (
+        <ScopeModal
+          item={selectedCatalogItem}
+          version={selectedVersion}
+          mode={mode}
+          onClose={() => setActiveSubModule(null)}
+          onSaved={async () => { await loadCatalog(); await loadDefinition() }}
+        />
+      ) : activeSubModule === 'PUBLISH_READINESS' ? (
+        <PublishReadinessModal
+          item={selectedCatalogItem}
+          version={selectedVersion}
+          rules={rules}
+          steps={steps}
+          penaltySchemaReady={penaltySchemaReady}
+          busy={busy}
+          mode={mode}
+          onSeed={seedStandardCorporateTaxData}
+          onTransitionStatus={transitionStatus}
+          onPublish={publish}
+          onClose={() => setActiveSubModule(null)}
+          onSaved={async () => { await loadCatalog(); await loadDefinition() }}
+        />
+      ) : activeSubModule === 'ELIGIBILITY' ? (
+        <EligibilityModal
+          item={selectedCatalogItem}
+          version={selectedVersion}
+          rules={rules}
+          ruleConditions={ruleConditions}
+          editingRule={editingRule}
+          setEditingRule={setEditingRule}
+          onDeleteRule={(rule) => setDeleteRuleGuard({ isOpen: true, rule, isDeleting: false })}
+          onSeed={seedStandardCorporateTaxData}
+          busy={busy}
+          mode={mode}
+          onClose={() => { setEditingRule(null); setActiveSubModule(null) }}
+          onSaved={loadDefinition}
+        />
+      ) : activeSubModule === 'WORKFLOW_STEPS' ? (
+        <WorkflowStepsModal
+          item={selectedCatalogItem}
+          version={selectedVersion}
+          steps={steps}
+          transitions={transitions}
+          editingStep={editingStep}
+          setEditingStep={setEditingStep}
+          onDeleteStep={(step, deps) => setDeleteStepGuard({ isOpen: true, step, dependencies: deps, isDeleting: false })}
+          onSeed={seedStandardCorporateTaxData}
+          busy={busy}
+          mode={mode}
+          onClose={() => { setEditingStep(null); setActiveSubModule(null) }}
+          onSaved={loadDefinition}
+        />
+      ) : activeSubModule === 'TRANSITIONS' ? (
+        <WorkflowTransitionsModal
+          item={selectedCatalogItem}
+          version={selectedVersion}
+          steps={steps}
+          transitions={transitions}
+          transitionSchemaReady={transitionSchemaReady}
+          mode={mode}
+          onClose={() => setActiveSubModule(null)}
+          onSaved={loadDefinition}
+        />
+      ) : (
+        <StudioFullScreen
+          title={mode === 'EDIT' ? `ویرایش تعهد: ${selectedCatalogItem?.obligation.title ?? ''}` : `مشاهده تعهد: ${selectedCatalogItem?.obligation.title ?? ''}`}
+          onBack={closeDetails}
+        >
+          <div className="mx-auto max-w-7xl space-y-6">
+            {/* Obligation Top Summary Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-[#121413] p-5 shadow-lg">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-black text-zinc-100">{selectedCatalogItem?.obligation.title}</h2>
+                  <Badge variant="outline" className="border-amber-800/80 bg-amber-950/40 text-amber-300 font-mono text-xs">
+                    {selectedCatalogItem?.obligation.code}
+                  </Badge>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    selectedVersion.status === 'PUBLISHED'
+                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
+                      : 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
+                  }`}>
+                    نسخه {selectedVersion.version_number} ({versionStatusLabel(selectedVersion.status)})
+                  </span>
                 </div>
+                <p className="text-xs text-zinc-400">
+                  خانواده: <span className="font-semibold text-zinc-200">{selectedCatalogItem?.family?.title ?? 'عمومی'}</span> · مرجع: <span className="text-zinc-300">{selectedCatalogItem?.obligation.authority_name || 'سازمان امور مالیاتی'}</span>
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-zinc-700 hover:bg-zinc-800 gap-1.5 text-xs"
+                  onClick={async () => {
+                    await loadCatalog()
+                    await loadDefinition()
+                    toast.success('اطلاعات تعهد به‌روزرسانی شد.')
+                  }}
+                  disabled={busy}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
+                  تازه‌سازی
+                </Button>
+              </div>
+            </div>
 
-                <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <Metric icon={Scale} label="قواعد تشخیص" value={`${rules.length} قاعده قانونی`} />
-                  <Metric icon={ListChecks} label="مراحل فرایند" value={`${steps.length} گام اجرایی`} />
-                  <Metric icon={ShieldAlert} label="نوع جریمه" value={penaltyLabel(selectedVersion.penalty_rule)} />
-                  <Metric icon={Clock3} label="مهلت و دوره" value={studioDeadlineLabel(selectedVersion)} />
+            {/* Section 1: اطلاعات پایه و زمان‌بندی (Visible on entry) */}
+            {selectedCatalogItem && (
+              <BasicIdentityForm
+                key={selectedVersion.id}
+                item={selectedCatalogItem}
+                version={selectedVersion}
+                mode={mode}
+                onSaved={async () => { await loadCatalog(); await loadDefinition() }}
+              />
+            )}
+
+            {/* Section 2: دکمه‌های ناوبری به بخش‌های تخصصی (تک‌دکمه‌ای و بدون کارت) */}
+            <div className="rounded-2xl border border-zinc-800 bg-[#121413] p-5 shadow-lg space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-5 w-5 text-amber-400" />
+                  <h3 className="text-base font-bold text-zinc-100">
+                    بخش‌های تخصصی و پیکربندی تکمیلی
+                  </h3>
                 </div>
-
-                {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && (
-                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                    <Button variant="outline" className="border-emerald-800 text-emerald-300 gap-2" onClick={() => document.getElementById('eligibility-rule-editor')?.scrollIntoView({ behavior: 'smooth' })}><Plus className="h-4 w-4" />افزودن قاعده</Button>
-                    <Button variant="outline" className="border-sky-800 text-sky-300 gap-2" onClick={() => document.getElementById('workflow-step-editor')?.scrollIntoView({ behavior: 'smooth' })}><Plus className="h-4 w-4" />افزودن مرحله</Button>
-                    <PenaltyForm multiPenaltyTableReady={penaltySchemaReady} version={selectedVersion} onSaved={async () => { await loadCatalog(); await loadDefinition() }} />
-                  </div>
-                )}
-
-                {selectedVersion.audience_summary && (
-                  <div className="mt-3 rounded-lg bg-zinc-900/60 p-2.5 text-xs text-zinc-400">
-                    <span className="font-semibold text-zinc-300">مخاطبان مشمول: </span>
-                    {selectedVersion.audience_summary}
-                  </div>
-                )}
+                <p className="text-xs text-zinc-400">
+                  جهت دسترسی به تنظیمات پیشرفته، یکی از دکمه‌های زیر را انتخاب کنید:
+                </p>
               </div>
 
-              <div className="grid gap-6 lg:grid-cols-2">
-                <div id="eligibility-section" className="scroll-mt-36 rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
-                  <div className="flex items-center justify-between">
-                    <h3 className="flex items-center gap-2 font-bold"><Scale className="h-4 w-4 text-amber-400" />تشخیص مشمولیت ({rules.length} قاعده)</h3>
-                    {rules.length === 0 && (
-                      <Button size="sm" variant="ghost" className="text-amber-400 text-xs gap-1" onClick={() => void seedStandardCorporateTaxData()}>
-                        <Plus className="h-3.5 w-3.5" />درج قواعد
-                      </Button>
-                    )}
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    {rules.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-xs text-zinc-500">
-                        هنوز قاعده‌ای ثبت نشده است. روی دکمه «درج / به‌روزرسانی داده‌های استاندارد عملکرد» در بالا کلیک کنید.
-                      </div>
-                    ) : (
-                      rules.map((rule, idx) => (
-                        <div key={rule.id ?? idx} className="rounded-xl border border-zinc-700/80 bg-[#1b1e1c] p-4 space-y-3 shadow-sm">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold text-zinc-100">{rule.title}</p>
-                            <span className="shrink-0 rounded bg-emerald-950 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
-                              {rule.outcome === 'ELIGIBLE' ? 'مشمول قطعی' : rule.outcome} · اولویت {rule.priority}
-                            </span>
-                          </div>
-                          {rule.explanation && (
-                            <p className="text-xs leading-5 text-zinc-400">{rule.explanation}</p>
-                          )}
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            <span className="rounded bg-zinc-800 px-2 py-0.5 text-[11px] text-amber-300">شرط: نوع شخصیت = حقوقی</span>
-                            {rule.priority === 1 && (
-                              <span className="rounded bg-zinc-800 px-2 py-0.5 text-[11px] text-sky-300">وضعیت ثبت مالیاتی: فعال / ثبت‌شده</span>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && <div id="eligibility-rule-editor"><EligibilityRuleForm versionId={selectedVersion.id} nextPriority={rules.length + 1} onSaved={loadDefinition} /></div>}
-                </div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setActiveSubModule('CLASSIFICATION')}
+                  className="border-zinc-700 bg-zinc-900/90 hover:bg-amber-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 h-9 px-3.5 transition-all shadow-sm"
+                >
+                  <SlidersHorizontal className="h-4 w-4 text-amber-400" />
+                  طبقه‌بندی و مسئولیت
+                </Button>
 
-                <div id="workflow-section" className="scroll-mt-36 rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
-                  <div className="flex items-center justify-between">
-                    <h3 className="flex items-center gap-2 font-bold"><GitBranch className="h-4 w-4 text-amber-400" />مراحل فرایند ({steps.length} مرحله)</h3>
-                    {steps.length === 0 && (
-                      <Button size="sm" variant="ghost" className="text-amber-400 text-xs gap-1" onClick={() => void seedStandardCorporateTaxData()}>
-                        <Plus className="h-3.5 w-3.5" />درج مراحل
-                      </Button>
-                    )}
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    {steps.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-xs text-zinc-500">
-                        هنوز مرحله‌ای تعریف نشده است. روی دکمه «درج / به‌روزرسانی داده‌های استاندارد عملکرد» در بالا کلیک کنید.
-                      </div>
-                    ) : (
-                      steps.map((step, idx) => (
-                        <div key={step.id ?? idx} className="rounded-xl border border-zinc-700/80 bg-[#1b1e1c] p-4 space-y-2.5 shadow-sm">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-amber-700/70 bg-amber-950/50 text-xs font-black text-amber-300">{step.sequence}</span><p className="pt-1 text-sm font-semibold text-zinc-100">{step.title.replace(/^\d+\.\s*/, '')}</p></div>
-                            <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${actorClass(step.actor)}`}>
-                              {actorLabel(step.actor)}
-                            </span>
-                          </div>
-                          {step.instructions && (
-                            <p className="text-xs leading-5 text-zinc-400">{step.instructions}</p>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && <div id="workflow-step-editor"><WorkflowStepForm version={selectedVersion} nextSequence={steps.length + 1} onSaved={loadDefinition} /></div>}
-                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setActiveSubModule('RECURRENCE')}
+                  className="border-zinc-700 bg-zinc-900/90 hover:bg-sky-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 h-9 px-3.5 transition-all shadow-sm"
+                >
+                  <Clock3 className="h-4 w-4 text-sky-400" />
+                  تناوب و مهلت قانونی
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setActiveSubModule('SCOPE')}
+                  className="border-zinc-700 bg-zinc-900/90 hover:bg-emerald-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 h-9 px-3.5 transition-all shadow-sm"
+                >
+                  <Target className="h-4 w-4 text-emerald-400" />
+                  دامنه شمول و وضعیت
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setActiveSubModule('PUBLISH_READINESS')}
+                  className="border-zinc-700 bg-zinc-900/90 hover:bg-purple-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 h-9 px-3.5 transition-all shadow-sm"
+                >
+                  <Rocket className="h-4 w-4 text-purple-400" />
+                  آمادگی انتشار و جریمه‌ها
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setActiveSubModule('ELIGIBILITY')}
+                  className="border-zinc-700 bg-zinc-900/90 hover:bg-amber-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 h-9 px-3.5 transition-all shadow-sm"
+                >
+                  <Scale className="h-4 w-4 text-amber-400" />
+                  قواعد تشخیص مشمولیت ({rules.length})
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setActiveSubModule('WORKFLOW_STEPS')}
+                  className="border-zinc-700 bg-zinc-900/90 hover:bg-sky-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 h-9 px-3.5 transition-all shadow-sm"
+                >
+                  <ListChecks className="h-4 w-4 text-sky-400" />
+                  مراحل فرایند اجرایی ({steps.length})
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setActiveSubModule('TRANSITIONS')}
+                  className="border-zinc-700 bg-zinc-900/90 hover:bg-violet-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 h-9 px-3.5 transition-all shadow-sm"
+                >
+                  <GitBranch className="h-4 w-4 text-violet-400" />
+                  مسیرها و خروجی‌ها ({transitions.length})
+                </Button>
               </div>
-              <div id="transitions-section" className="scroll-mt-36 rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl shadow-black/10">
-                <div className="flex items-center justify-between gap-3"><div><h3 className="flex items-center gap-2 font-bold"><GitBranch className="h-4 w-4 text-violet-400" />مسیرها و خروجی‌های فرایند ({transitions.length})</h3><p className="mt-1 text-xs text-zinc-500">هر مسیر، نتیجه یک مرحله را به مرحله بعدی، حلقه بازگشتی یا وضعیت پایانی متصل می‌کند.</p></div></div>
-                <div className="mt-5 grid gap-3 md:grid-cols-2">{transitions.map((transition) => <div key={transition.id} className="rounded-xl border border-zinc-700/80 bg-[#1b1e1c] p-4"><div className="flex items-center justify-between gap-3"><p className="font-bold">{transition.title}</p><span className={`rounded-full border px-2.5 py-1 text-[11px] ${transition.trigger_type === 'TIMEOUT' ? 'border-orange-800 bg-orange-950/50 text-orange-300' : transition.trigger_type === 'SYSTEM_EVENT' ? 'border-violet-800 bg-violet-950/50 text-violet-300' : 'border-sky-800 bg-sky-950/50 text-sky-300'}`}>{transitionTriggerLabel(transition.trigger_type)}</span></div><p className="mt-2 text-xs text-zinc-500">خروجی: {transition.outcome_code} · {transition.to_step_id ? 'انتقال به یک مرحله' : `پایان: ${transition.terminal_status}`}</p></div>)}</div>
-                {!transitionSchemaReady && <p className="mt-4 text-xs text-zinc-500">تا زمان فعال‌شدن مسیرهای شاخه‌ای، فرایند با ترتیب فعلی مراحل ادامه پیدا می‌کند.</p>}
-                {mode === 'EDIT' && selectedVersion.status === 'DRAFT' && transitionSchemaReady && (
-                  <WorkflowTransitionForm
-                    version={selectedVersion}
-                    steps={steps}
-                    nextPriority={transitions.length + 1}
-                    onSaved={loadDefinition}
-                  />
-                )}
-              </div>
-            </>
-          )}
+            </div>
           </div>
         </StudioFullScreen>
       )}
+
+      <DeleteGuardModal
+        isOpen={deleteRuleGuard.isOpen}
+        onClose={() => setDeleteRuleGuard({ isOpen: false, rule: null, isDeleting: false })}
+        onConfirm={confirmDeleteRule}
+        onConfirmDelete={confirmDeleteRule}
+        title={deleteRuleGuard.rule?.title ?? 'قاعده مشمولیت'}
+        entityType="قاعده مشمولیت"
+        description={`آیا از حذف قاعده «${deleteRuleGuard.rule?.title ?? ''}» اطمینان دارید؟ تمامی شروط متصل به این قاعده نیز حذف خواهند شد.`}
+        checkResult={{ hasDependencies: false, dependencies: [] }}
+        isDeleting={deleteRuleGuard.isDeleting}
+      />
+
+      <DeleteGuardModal
+        isOpen={deleteStepGuard.isOpen}
+        onClose={() => setDeleteStepGuard({ isOpen: false, step: null, dependencies: [], isDeleting: false })}
+        onConfirm={confirmDeleteStep}
+        onConfirmDelete={confirmDeleteStep}
+        title={deleteStepGuard.step?.title ?? 'مرحله فرایند'}
+        entityType="مرحله فرایند"
+        description={`آیا از حذف مرحله «${deleteStepGuard.step?.title ?? ''}» اطمینان دارید؟ در صورت وجود مسیرهای انتقال مرتبط، آن‌ها نیز حذف خواهند شد.`}
+        checkResult={{
+          hasDependencies: deleteStepGuard.dependencies.length > 0,
+          dependencies: deleteStepGuard.dependencies as any,
+        }}
+        isDeleting={deleteStepGuard.isDeleting}
+      />
     </main>
   )
 }
 
-interface BasicDefinitionState {
+interface BasicIdentityState {
   title: string
   summary: string
   authorityName: string
@@ -911,64 +1125,113 @@ interface BasicDefinitionState {
   sourceUrl: string
   effectiveFrom: string
   effectiveTo: string
-  audienceSummary: string
-  primaryType: string
-  relatedTypes: string[]
-  isShared: boolean
-  sharedActionKey: string
-  recurrence: string
-  baseEvent: string
-  timeGapValue: string
-  timeGapUnit: string
-  responsibleParty: string
-  phaseGroup: string
-  sequenceOrder: string
-  objectionTemplateId: string
   isActive: boolean
 }
 
-function BasicDefinitionForm({ item, version, onSaved }: { item: CatalogItem; version: Version; onSaved: () => Promise<void> }) {
-  const recurrenceRule = jsonRecord(version.recurrence_rule)
-  const deadlineRule = jsonRecord(version.deadline_rule)
-  const initialTypes = stringArray(recurrenceRule['obligation_types'])
-  const [form, setForm] = useState<BasicDefinitionState>({
-    title: item.obligation.title ?? '', summary: item.obligation.summary ?? '', authorityName: item.obligation.authority_name ?? '',
-    actionUrl: item.obligation.official_action_url ?? '', legalReference: version.legal_reference ?? '', sourceUrl: version.source_url ?? '',
-    effectiveFrom: version.effective_from ?? '', effectiveTo: version.effective_to ?? '', audienceSummary: version.audience_summary ?? '',
-    primaryType: stringValue(recurrenceRule['obligation_type'], 'TAX_CORPORATE'),
-    relatedTypes: initialTypes.length ? initialTypes : [stringValue(recurrenceRule['obligation_type'], 'TAX_CORPORATE')],
-    isShared: Boolean(recurrenceRule['is_shared']), sharedActionKey: stringValue(recurrenceRule['shared_action_key']),
-    recurrence: stringValue(recurrenceRule['recurrence']), baseEvent: stringValue(deadlineRule['base_event']),
-    timeGapValue: numberString(deadlineRule['time_gap_value']), timeGapUnit: stringValue(deadlineRule['time_gap_unit']),
-    responsibleParty: stringValue(recurrenceRule['responsible_party']), phaseGroup: stringValue(recurrenceRule['phase_group']),
-    sequenceOrder: numberString(recurrenceRule['sequence_order'], '1'), objectionTemplateId: stringValue(recurrenceRule['objection_template_id']),
+function SubModuleCard({
+  title,
+  description,
+  icon: Icon,
+  iconColor = 'text-amber-400',
+  metaBadge,
+  actionText,
+  onClick,
+}: {
+  title: string
+  description: string
+  icon: React.ElementType
+  iconColor?: string
+  metaBadge?: string
+  actionText: string
+  onClick: () => void
+}) {
+  return (
+    <div className="group flex flex-col justify-between rounded-2xl border border-zinc-800 bg-[#121413] p-5 shadow-lg transition duration-200 hover:border-zinc-700 hover:bg-[#161817]">
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900/90 shadow-sm group-hover:scale-105 transition-transform">
+            <Icon className={`h-5 w-5 ${iconColor}`} />
+          </div>
+          {metaBadge && (
+            <span className="max-w-[150px] truncate rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-0.5 text-[11px] font-medium text-zinc-300">
+              {metaBadge}
+            </span>
+          )}
+        </div>
+        <div>
+          <h4 className="font-bold text-zinc-100 group-hover:text-amber-300 transition-colors">{title}</h4>
+          <p className="mt-1 text-xs leading-5 text-zinc-400">{description}</p>
+        </div>
+      </div>
+      <div className="mt-5 pt-3 border-t border-zinc-800/60">
+        <Button
+          type="button"
+          onClick={onClick}
+          className="w-full bg-zinc-800/90 hover:bg-amber-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 transition-all shadow-sm"
+        >
+          {actionText}
+          <ArrowRight className="h-3.5 w-3.5 rotate-180" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function BasicIdentityForm({
+  item,
+  version,
+  mode,
+  onSaved,
+}: {
+  item: CatalogItem
+  version: Version
+  mode: StudioMode
+  onSaved: () => Promise<void>
+}) {
+  const [form, setForm] = useState<BasicIdentityState>({
+    title: item.obligation.title ?? '',
+    summary: item.obligation.summary ?? '',
+    authorityName: item.obligation.authority_name ?? '',
+    actionUrl: item.obligation.official_action_url ?? '',
+    legalReference: version.legal_reference ?? '',
+    sourceUrl: version.source_url ?? '',
+    effectiveFrom: version.effective_from ?? '',
+    effectiveTo: version.effective_to ?? '',
     isActive: item.obligation.is_active ?? true,
   })
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
-  const update = <K extends keyof BasicDefinitionState>(key: K, value: BasicDefinitionState[K]) => {
-    setForm((current) => ({ ...current, [key]: value })); setDirty(true)
-  }
-  const toggleRelatedType = (type: string) => {
-    if (type === form.primaryType) return
-    const next = form.relatedTypes.includes(type) ? form.relatedTypes.filter((item) => item !== type) : [...form.relatedTypes, type]
-    update('relatedTypes', Array.from(new Set([form.primaryType, ...next])))
+
+  const update = <K extends keyof BasicIdentityState>(key: K, value: BasicIdentityState[K]) => {
+    setForm((current) => ({ ...current, [key]: value }))
+    setDirty(true)
   }
 
   const save = async () => {
-    if (!form.title.trim() || !form.recurrence || !form.baseEvent || !form.responsibleParty) return toast.error('عنوان، دوره تناوب، رویداد پایه و مسئول اجرا الزامی هستند.')
-    if ((form.sourceUrl && !form.sourceUrl.startsWith('https://')) || (form.actionUrl && !form.actionUrl.startsWith('https://'))) return toast.error('نشانی‌های اینترنتی باید با https:// شروع شوند.')
+    if (!form.title.trim()) return toast.error('عنوان تعهد الزامی است.')
+    if ((form.sourceUrl && !form.sourceUrl.startsWith('https://')) || (form.actionUrl && !form.actionUrl.startsWith('https://'))) {
+      return toast.error('نشانی‌های اینترنتی باید با https:// شروع شوند.')
+    }
     setSaving(true)
-    const obligationPatch = { title: form.title.trim(), summary: form.summary.trim() || null, authority_name: form.authorityName.trim() || null, official_action_url: form.actionUrl.trim() || null, is_active: form.isActive }
-    const relatedTypes = Array.from(new Set([form.primaryType, ...form.relatedTypes]))
-    const recurrencePatch: Json = { ...recurrenceRule, obligation_type: form.primaryType, obligation_types: relatedTypes, is_shared: form.isShared || relatedTypes.length > 1, shared_action_key: form.isShared ? form.sharedActionKey.trim() || null : null, recurrence: form.recurrence, responsible_party: form.responsibleParty, phase_group: form.phaseGroup || null, sequence_order: Number(form.sequenceOrder) || 1, objection_template_id: form.objectionTemplateId || null }
-    const deadlinePatch: Json = { ...deadlineRule, base_event: form.baseEvent, time_gap_value: form.timeGapValue ? Number(form.timeGapValue) : null, time_gap_unit: form.timeGapUnit || null }
-    const versionPatch = { legal_reference: form.legalReference.trim() || null, source_url: form.sourceUrl.trim() || null, effective_from: form.effectiveFrom || null, effective_to: form.effectiveTo || null, audience_summary: form.audienceSummary.trim() || null, recurrence_rule: recurrencePatch, deadline_rule: deadlinePatch }
+    const obligationPatch = {
+      title: form.title.trim(),
+      summary: form.summary.trim() || null,
+      authority_name: form.authorityName.trim() || null,
+      official_action_url: form.actionUrl.trim() || null,
+      is_active: form.isActive,
+    }
+    const versionPatch = {
+      legal_reference: form.legalReference.trim() || null,
+      source_url: form.sourceUrl.trim() || null,
+      effective_from: form.effectiveFrom || null,
+      effective_to: form.effectiveTo || null,
+    }
+
     try {
       if (isSupabaseConfigured) {
         const [obligationResult, versionResult] = await Promise.all([
           supabase.from('obligations').update(obligationPatch).eq('id', item.obligation.id),
-          supabase.from('obligation_versions').update(versionPatch).eq('id', version.id).eq('status', 'DRAFT'),
+          supabase.from('obligation_versions').update(versionPatch).eq('id', version.id),
         ])
         if (obligationResult.error) throw obligationResult.error
         if (versionResult.error) throw versionResult.error
@@ -979,52 +1242,1261 @@ function BasicDefinitionForm({ item, version, onSaved }: { item: CatalogItem; ve
         Object.assign(mockObligation, obligationPatch, { updated_at: new Date().toISOString() })
         Object.assign(mockVersion, versionPatch, { updated_at: new Date().toISOString() })
       }
-      setDirty(false); toast.success('اطلاعات پایه و زمان‌بندی تعهد ذخیره شد.'); await onSaved()
+      setDirty(false)
+      toast.success('اطلاعات پایه و زمان‌بندی تعهد ذخیره شد.')
+      await onSaved()
     } catch (error) {
-      toast.error(errorMessage(error, 'ذخیره اطلاعات تعهد انجام نشد.'))
-    } finally { setSaving(false) }
+      toast.error(errorMessage(error, 'ذخیره اطلاعات پایه انجام نشد.'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
-    <section id="basic-definition" data-studio-dirty={dirty ? 'true' : undefined} className="scroll-mt-36 space-y-5 rounded-2xl border border-amber-900/50 bg-[#101211] p-5 shadow-xl shadow-black/10 sm:p-6">
-      <SectionHeading number="۱" title="اطلاعات پایه و زمان‌بندی" description="مشخصات هویتی، دسته‌بندی، تناوب و مهلت تعهد را یک‌جا مدیریت کنید." />
-      <div className="grid gap-5 xl:grid-cols-2">
-        <FormGroup title="هویت و مستندات" description="نام، مرجع قانونی و نشانی‌های رسمی تعهد">
-          <div className="sm:col-span-2"><Field label="عنوان تعهد *"><Input value={form.title} onChange={(e) => update('title', e.target.value)} /></Field></div>
-          <Field label="مرجع مسئول"><Input value={form.authorityName} onChange={(e) => update('authorityName', e.target.value)} placeholder="سازمان امور مالیاتی کشور" /></Field>
-          <Field label="ماده / مرجع قانونی"><Input value={form.legalReference} onChange={(e) => update('legalReference', e.target.value)} /></Field>
-          <div className="sm:col-span-2"><Field label="شرح کوتاه"><textarea value={form.summary} onChange={(e) => update('summary', e.target.value)} rows={3} className="w-full rounded-md border border-zinc-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-amber-500" /></Field></div>
-          <Field label="لینک منبع رسمی"><Input dir="ltr" value={form.sourceUrl} onChange={(e) => update('sourceUrl', e.target.value)} placeholder="https://tax.gov.ir/..." /></Field>
-          <Field label="لینک انجام کار"><Input dir="ltr" value={form.actionUrl} onChange={(e) => update('actionUrl', e.target.value)} placeholder="https://my.tax.gov.ir" /></Field>
-        </FormGroup>
-        <FormGroup title="طبقه‌بندی و مسئولیت" description="سرفصل اصلی، سرفصل‌های مرتبط و مسئول اجرا">
-          <Field label="سرفصل اصلی *"><Select value={form.primaryType} onValueChange={(value) => { update('primaryType', value); update('relatedTypes', Array.from(new Set([value, ...form.relatedTypes]))) }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{OBLIGATION_TYPE_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
-          <Field label="مسئول اجرا *"><Select value={form.responsibleParty} onValueChange={(value) => update('responsibleParty', value)}><SelectTrigger><SelectValue placeholder="انتخاب مسئول" /></SelectTrigger><SelectContent><SelectItem value="مودی">مودی</SelectItem><SelectItem value="سازمان امور مالیاتی">سازمان امور مالیاتی</SelectItem></SelectContent></Select></Field>
-          <div className="sm:col-span-2 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">تعهد مشترک بین سرفصل‌ها</p><p className="mt-1 text-xs text-zinc-500">برای تعهدی که در چند حوزه یکسان اجرا می‌شود.</p></div><Switch checked={form.isShared} onCheckedChange={(value) => { update('isShared', value); if (!value) update('relatedTypes', [form.primaryType]) }} /></div>{form.isShared && <div className="mt-3 grid gap-2 sm:grid-cols-2">{OBLIGATION_TYPE_OPTIONS.map(([value, label]) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-800 p-2 text-xs"><input type="checkbox" checked={form.relatedTypes.includes(value)} disabled={value === form.primaryType} onChange={() => toggleRelatedType(value)} className="accent-amber-500" />{label}</label>)}</div>}</div>
-          {form.isShared && <div className="sm:col-span-2"><Field label="کلید مشترک"><Input dir="ltr" value={form.sharedActionKey} onChange={(e) => update('sharedActionKey', e.target.value.toUpperCase())} placeholder="CORPORATE_TAX_SHARED" /></Field></div>}
-          <Field label="فاز / گروه اجرایی"><Select value={form.phaseGroup} onValueChange={(value) => update('phaseGroup', value)}><SelectTrigger><SelectValue placeholder="انتخاب فاز" /></SelectTrigger><SelectContent>{PHASE_GROUP_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
-          <Field label="ترتیب نمایش"><Input type="number" min="1" dir="ltr" value={form.sequenceOrder} onChange={(e) => update('sequenceOrder', e.target.value)} /></Field>
-        </FormGroup>
-        <FormGroup title="تناوب و مهلت" description="مبنای محاسبه موعد قانونی و تکرار تعهد">
-          <Field label="دوره تناوب *"><Select value={form.recurrence} onValueChange={(value) => update('recurrence', value)}><SelectTrigger><SelectValue placeholder="انتخاب دوره" /></SelectTrigger><SelectContent>{RECURRENCE_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
-          <Field label="رویداد پایه *"><Select value={form.baseEvent} onValueChange={(value) => update('baseEvent', value)}><SelectTrigger><SelectValue placeholder="انتخاب رویداد" /></SelectTrigger><SelectContent>{BASE_EVENT_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
-          <Field label="فاصله زمانی"><Input type="number" min="0" dir="ltr" value={form.timeGapValue} onChange={(e) => update('timeGapValue', e.target.value)} /></Field>
-          <Field label="واحد فاصله"><Select value={form.timeGapUnit} onValueChange={(value) => update('timeGapUnit', value)}><SelectTrigger><SelectValue placeholder="انتخاب واحد" /></SelectTrigger><SelectContent><SelectItem value="روز">روز</SelectItem><SelectItem value="ماه">ماه</SelectItem><SelectItem value="سال">سال</SelectItem></SelectContent></Select></Field>
-          <Field label="شروع اعتبار"><Input type="date" value={form.effectiveFrom} onChange={(e) => update('effectiveFrom', e.target.value)} /></Field>
-          <Field label="پایان اعتبار"><Input type="date" min={form.effectiveFrom || undefined} value={form.effectiveTo} onChange={(e) => update('effectiveTo', e.target.value)} /></Field>
-        </FormGroup>
-        <FormGroup title="دامنه و وضعیت" description="خلاصه مخاطبان، اتصال اعتراض و فعال بودن تعهد">
-          <div className="sm:col-span-2"><Field label="خلاصه مخاطبان مشمول"><textarea value={form.audienceSummary} onChange={(e) => update('audienceSummary', e.target.value)} rows={3} className="w-full rounded-md border border-zinc-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-amber-500" /></Field></div>
-          <div className="sm:col-span-2"><Field label="شناسه الگوی اعتراض (اختیاری)"><Input dir="ltr" value={form.objectionTemplateId} onChange={(e) => update('objectionTemplateId', e.target.value)} placeholder="UUID الگوی اعتراض" /></Field></div>
-          <div className="sm:col-span-2 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"><div><p className="text-sm font-semibold">تعهد فعال است</p><p className="mt-1 text-xs text-zinc-500">تعهد غیرفعال در ارزیابی‌های جدید استفاده نمی‌شود.</p></div><Switch checked={form.isActive} onCheckedChange={(value) => update('isActive', value)} /></div>
-        </FormGroup>
+    <section id="basic-definition" data-studio-dirty={dirty ? 'true' : undefined} className="space-y-5 rounded-2xl border border-zinc-800 bg-[#101211] p-5 shadow-xl sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-zinc-800/80 pb-4">
+        <div>
+          <h3 className="text-lg font-black text-zinc-100 flex items-center gap-2">
+            <BookOpenCheck className="h-5 w-5 text-amber-400" />
+            اطلاعات پایه و زمان‌بندی
+          </h3>
+          <p className="mt-1 text-xs text-zinc-400">
+            مشخصات هویتی، مرجع حقوقی، نشانی‌های وب و بازه زمانی اعتبار تعهد
+          </p>
+        </div>
+        {dirty && (
+          <span className="self-start rounded-full bg-amber-950/80 px-2.5 py-0.5 text-xs text-amber-300 border border-amber-800/60">
+            تغییرات ذخیره‌نشده
+          </span>
+        )}
       </div>
-      <div className="sticky bottom-3 flex items-center justify-end gap-3 rounded-xl border border-zinc-700 bg-[#181a19]/95 p-3 shadow-2xl backdrop-blur"><span className="ml-auto text-xs text-zinc-500">{dirty ? 'تغییرات ذخیره نشده است.' : 'اطلاعات ذخیره شده است.'}</span><Button type="button" disabled={!dirty || saving} onClick={() => void save()} className="min-w-36 bg-emerald-700 hover:bg-emerald-600">{saving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : null}ذخیره اطلاعات پایه</Button></div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <FormGroup title="هویت و مستندات قانونی" description="عنوان رسمی، نام نهاد ناظر و استناد قانونی">
+          <div className="sm:col-span-2">
+            <Field label="عنوان تعهد *">
+              <Input
+                value={form.title}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => update('title', e.target.value)}
+                placeholder="مثال: تسلیم اظهارنامه عملکرد اشخاص حقوقی"
+              />
+            </Field>
+          </div>
+          <Field label="مرجع صادرکننده / ناظر">
+            <Input
+              value={form.authorityName}
+              disabled={mode === 'VIEW'}
+              onChange={(e) => update('authorityName', e.target.value)}
+              placeholder="سازمان امور مالیاتی کشور"
+            />
+          </Field>
+          <Field label="ماده / مرجع قانونی">
+            <Input
+              value={form.legalReference}
+              disabled={mode === 'VIEW'}
+              onChange={(e) => update('legalReference', e.target.value)}
+              placeholder="ماده ۱۱۰ قانون مالیات‌های مستقیم"
+            />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="شرح و توضیح مختصر">
+              <textarea
+                value={form.summary}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => update('summary', e.target.value)}
+                rows={3}
+                className="w-full rounded-md border border-zinc-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-amber-500 disabled:opacity-60"
+                placeholder="شرحی مختصر از الزام قانونی و تکالیف مودی..."
+              />
+            </Field>
+          </div>
+        </FormGroup>
+
+        <div className="space-y-5">
+          <FormGroup title="بازه زمانی و اعتبار" description="تاریخ شروع و پایان اعتبار قانونی">
+            <Field label="تاریخ شروع اعتبار">
+              <Input
+                type="date"
+                value={form.effectiveFrom}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => update('effectiveFrom', e.target.value)}
+              />
+            </Field>
+            <Field label="تاریخ پایان اعتبار">
+              <Input
+                type="date"
+                min={form.effectiveFrom || undefined}
+                value={form.effectiveTo}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => update('effectiveTo', e.target.value)}
+              />
+            </Field>
+          </FormGroup>
+
+          <FormGroup title="نشانی‌های وب و سامانه" description="پیوند به متن قانون و سامانه اجرای تکلیف">
+            <Field label="نشانی منبع رسمی (URL)">
+              <Input
+                dir="ltr"
+                value={form.sourceUrl}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => update('sourceUrl', e.target.value)}
+                placeholder="https://tax.gov.ir/..."
+              />
+            </Field>
+            <Field label="نشانی سامانه اقدام (URL)">
+              <Input
+                dir="ltr"
+                value={form.actionUrl}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => update('actionUrl', e.target.value)}
+                placeholder="https://my.tax.gov.ir"
+              />
+            </Field>
+          </FormGroup>
+        </div>
+      </div>
+
+      {mode === 'EDIT' && (
+        <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={form.isActive}
+              onCheckedChange={(val) => update('isActive', val)}
+            />
+            <span className="text-xs text-zinc-300">
+              {form.isActive ? 'تعهد در سامانه فعال است' : 'تعهد غیرفعال است'}
+            </span>
+          </div>
+          <Button
+            type="button"
+            disabled={!dirty || saving}
+            onClick={() => void save()}
+            className="min-w-40 bg-emerald-700 hover:bg-emerald-600 font-semibold"
+          >
+            {saving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Check className="ml-2 h-4 w-4" />}
+            ذخیره اطلاعات پایه
+          </Button>
+        </div>
+      )}
     </section>
   )
 }
 
-function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { version: Version; steps: WorkflowStep[]; nextPriority: number; onSaved: () => Promise<void> }) {
+function ClassificationModal({
+  item,
+  version,
+  mode,
+  onClose,
+  onSaved,
+}: {
+  item: CatalogItem
+  version: Version
+  mode: StudioMode
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const recurrenceRule = jsonRecord(version.recurrence_rule)
+  const initialTypes = stringArray(recurrenceRule['obligation_types'])
+
+  const [primaryType, setPrimaryType] = useState(stringValue(recurrenceRule['obligation_type'], 'TAX_CORPORATE'))
+  const [relatedTypes, setRelatedTypes] = useState<string[]>(initialTypes.length ? initialTypes : [stringValue(recurrenceRule['obligation_type'], 'TAX_CORPORATE')])
+  const [isShared, setIsShared] = useState(Boolean(recurrenceRule['is_shared']))
+  const [sharedActionKey, setSharedActionKey] = useState(stringValue(recurrenceRule['shared_action_key']))
+  const [responsibleParty, setResponsibleParty] = useState(stringValue(recurrenceRule['responsible_party'], 'مودی'))
+  const [phaseGroup, setPhaseGroup] = useState(stringValue(recurrenceRule['phase_group']))
+  const [sequenceOrder, setSequenceOrder] = useState(numberString(recurrenceRule['sequence_order'], '1'))
+  const [objectionTemplateId, setObjectionTemplateId] = useState(stringValue(recurrenceRule['objection_template_id']))
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  const toggleRelatedType = (type: string) => {
+    if (type === primaryType) return
+    const next = relatedTypes.includes(type) ? relatedTypes.filter((t) => t !== type) : [...relatedTypes, type]
+    setRelatedTypes(Array.from(new Set([primaryType, ...next])))
+    setDirty(true)
+  }
+
+  const save = async () => {
+    if (!primaryType || !responsibleParty) return toast.error('سرفصل اصلی و مسئول اجرا الزامی هستند.')
+    setSaving(true)
+    const allTypes = Array.from(new Set([primaryType, ...relatedTypes]))
+    const recurrencePatch: Json = {
+      ...recurrenceRule,
+      obligation_type: primaryType,
+      obligation_types: allTypes,
+      is_shared: isShared || allTypes.length > 1,
+      shared_action_key: isShared ? sharedActionKey.trim() || null : null,
+      responsible_party: responsibleParty,
+      phase_group: phaseGroup || null,
+      sequence_order: Number(sequenceOrder) || 1,
+      objection_template_id: objectionTemplateId || null,
+    }
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from('obligation_versions').update({ recurrence_rule: recurrencePatch }).eq('id', version.id)
+        if (error) throw error
+      } else {
+        const mockVersion = mockStudioDb.getVersions().find((row) => row.id === version.id)
+        if (!mockVersion) throw new Error('نسخه پیدا نشد.')
+        mockVersion.recurrence_rule = recurrencePatch
+        mockVersion.updated_at = new Date().toISOString()
+      }
+      toast.success('تنظیمات طبقه‌بندی و مسئولیت ذخیره شد.')
+      setDirty(false)
+      await onSaved()
+      onClose()
+    } catch (error) {
+      toast.error(errorMessage(error, 'ذخیره طبقه‌بندی انجام نشد.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <StudioFullScreen title={`طبقه‌بندی و مسئولیت: ${item.obligation.title}`} onBack={onClose}>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl space-y-6">
+          <SectionHeading
+            number="۱"
+            title="طبقه‌بندی، سرفصل و مسئولیت اجرایی"
+            description="مشخص کنید این تکلیف متعلق به چه حوزه‌ای است و چه شخص یا نهادی متولی انجام آن است."
+          />
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="سرفصل اصلی تکلیف *">
+              <Select
+                value={primaryType}
+                disabled={mode === 'VIEW'}
+                onValueChange={(value) => {
+                  setPrimaryType(value)
+                  setRelatedTypes(Array.from(new Set([value, ...relatedTypes])))
+                  setDirty(true)
+                }}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {OBLIGATION_TYPE_OPTIONS.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="مسئول اجرا *">
+              <Select
+                value={responsibleParty}
+                disabled={mode === 'VIEW'}
+                onValueChange={(value) => { setResponsibleParty(value); setDirty(true) }}
+              >
+                <SelectTrigger><SelectValue placeholder="انتخاب مسئول" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="مودی">مودی</SelectItem>
+                  <SelectItem value="سازمان امور مالیاتی">سازمان امور مالیاتی</SelectItem>
+                  <SelectItem value="حسابرس / کارشناس رسمی">حسابرس / کارشناس رسمی</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="فاز / گروه اجرایی">
+              <Select
+                value={phaseGroup}
+                disabled={mode === 'VIEW'}
+                onValueChange={(value) => { setPhaseGroup(value); setDirty(true) }}
+              >
+                <SelectTrigger><SelectValue placeholder="انتخاب فاز" /></SelectTrigger>
+                <SelectContent>
+                  {PHASE_GROUP_OPTIONS.map((value) => (
+                    <SelectItem key={value} value={value}>{value}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="ترتیب نمایش در تقویم">
+              <Input
+                type="number"
+                min="1"
+                dir="ltr"
+                value={sequenceOrder}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => { setSequenceOrder(e.target.value); setDirty(true) }}
+              />
+            </Field>
+
+            <div className="sm:col-span-2 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-zinc-100">تکلیف مشترک بین چند سرفصل</p>
+                  <p className="mt-1 text-xs text-zinc-400">
+                    اگر این تکلیف در چند سرفصل (مثلاً عملکرد و ارزش افزوده) رفتار مشترک دارد فعال کنید.
+                  </p>
+                </div>
+                <Switch
+                  checked={isShared}
+                  disabled={mode === 'VIEW'}
+                  onCheckedChange={(val) => {
+                    setIsShared(val)
+                    if (!val) setRelatedTypes([primaryType])
+                    setDirty(true)
+                  }}
+                />
+              </div>
+
+              {isShared && (
+                <div className="pt-2 border-t border-zinc-800 space-y-3">
+                  <p className="text-xs font-semibold text-zinc-300">انتخاب سرفصل‌های مرتبط:</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {OBLIGATION_TYPE_OPTIONS.map(([val, label]) => (
+                      <label key={val} className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-800 p-2.5 text-xs hover:border-zinc-700 bg-zinc-900/40">
+                        <input
+                          type="checkbox"
+                          checked={relatedTypes.includes(val)}
+                          disabled={val === primaryType || mode === 'VIEW'}
+                          onChange={() => toggleRelatedType(val)}
+                          className="accent-amber-500"
+                        />
+                        <span className={val === primaryType ? 'font-bold text-amber-300' : 'text-zinc-300'}>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <Field label="کلید یکتای اقدام مشترک (Shared Action Key)">
+                    <Input
+                      dir="ltr"
+                      value={sharedActionKey}
+                      disabled={mode === 'VIEW'}
+                      onChange={(e) => { setSharedActionKey(e.target.value.toUpperCase()); setDirty(true) }}
+                      placeholder="CORPORATE_TAX_SHARED"
+                    />
+                  </Field>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
+            <Button variant="ghost" onClick={onClose}>
+              انصراف و بازگشت
+            </Button>
+            {mode === 'EDIT' && (
+              <Button
+                disabled={!dirty || saving}
+                onClick={() => void save()}
+                className="bg-emerald-700 hover:bg-emerald-600 min-w-36 font-semibold"
+              >
+                {saving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Check className="ml-2 h-4 w-4" />}
+                ذخیره تغییرات
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </StudioFullScreen>
+  )
+}
+
+function RecurrenceModal({
+  item,
+  version,
+  mode,
+  onClose,
+  onSaved,
+}: {
+  item: CatalogItem
+  version: Version
+  mode: StudioMode
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const recurrenceRule = jsonRecord(version.recurrence_rule)
+  const deadlineRule = jsonRecord(version.deadline_rule)
+
+  const [recurrence, setRecurrence] = useState(stringValue(recurrenceRule['recurrence']))
+  const [baseEvent, setBaseEvent] = useState(stringValue(deadlineRule['base_event']))
+  const [timeGapValue, setTimeGapValue] = useState(numberString(deadlineRule['time_gap_value']))
+  const [timeGapUnit, setTimeGapUnit] = useState(stringValue(deadlineRule['time_gap_unit'], 'ماه'))
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  const save = async () => {
+    if (!recurrence || !baseEvent) return toast.error('دوره تناوب و رویداد پایه الزامی هستند.')
+    setSaving(true)
+    const recurrencePatch: Json = {
+      ...recurrenceRule,
+      recurrence,
+    }
+    const deadlinePatch: Json = {
+      ...deadlineRule,
+      base_event: baseEvent,
+      time_gap_value: timeGapValue ? Number(timeGapValue) : null,
+      time_gap_unit: timeGapUnit || null,
+    }
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from('obligation_versions').update({
+          recurrence_rule: recurrencePatch,
+          deadline_rule: deadlinePatch,
+        }).eq('id', version.id)
+        if (error) throw error
+      } else {
+        const mockVersion = mockStudioDb.getVersions().find((row) => row.id === version.id)
+        if (!mockVersion) throw new Error('نسخه پیدا نشد.')
+        mockVersion.recurrence_rule = recurrencePatch
+        mockVersion.deadline_rule = deadlinePatch
+        mockVersion.updated_at = new Date().toISOString()
+      }
+      toast.success('تنظیمات تناوب و مهلت قانونی ذخیره شد.')
+      setDirty(false)
+      await onSaved()
+      onClose()
+    } catch (error) {
+      toast.error(errorMessage(error, 'ذخیره تناوب انجام نشد.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <StudioFullScreen title={`تناوب و مهلت قانونی: ${item.obligation.title}`} onBack={onClose}>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl space-y-6">
+          <SectionHeading
+            number="۲"
+            title="تناوب و مهلت قانونی"
+            description="مبنای محاسبه موعد قانونی، تکرار دوره‌ای و فواصل زمانی انقضای مهلت تکلیف را پیکربندی کنید."
+          />
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="دوره تناوب تکرار تکلیف *">
+              <Select
+                value={recurrence}
+                disabled={mode === 'VIEW'}
+                onValueChange={(val) => { setRecurrence(val); setDirty(true) }}
+              >
+                <SelectTrigger><SelectValue placeholder="انتخاب دوره تناوب" /></SelectTrigger>
+                <SelectContent>
+                  {RECURRENCE_OPTIONS.map((val) => (
+                    <SelectItem key={val} value={val}>{val}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="رویداد پایه محاسباتی *">
+              <Select
+                value={baseEvent}
+                disabled={mode === 'VIEW'}
+                onValueChange={(val) => { setBaseEvent(val); setDirty(true) }}
+              >
+                <SelectTrigger><SelectValue placeholder="انتخاب رویداد پایه" /></SelectTrigger>
+                <SelectContent>
+                  {BASE_EVENT_OPTIONS.map((val) => (
+                    <SelectItem key={val} value={val}>{val}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="فاصله زمانی تا موعد قانونی">
+              <Input
+                type="number"
+                min="0"
+                dir="ltr"
+                value={timeGapValue}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => { setTimeGapValue(e.target.value); setDirty(true) }}
+                placeholder="مثال: ۴"
+              />
+            </Field>
+
+            <Field label="واحد فاصله زمانی">
+              <Select
+                value={timeGapUnit}
+                disabled={mode === 'VIEW'}
+                onValueChange={(val) => { setTimeGapUnit(val); setDirty(true) }}
+              >
+                <SelectTrigger><SelectValue placeholder="انتخاب واحد" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="روز">روز</SelectItem>
+                  <SelectItem value="ماه">ماه</SelectItem>
+                  <SelectItem value="سال">سال</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+
+          <div className="rounded-xl border border-sky-900/50 bg-sky-950/20 p-4">
+            <p className="text-xs font-bold text-sky-300 mb-1">پیش‌نمایش فرمول موعد:</p>
+            <p className="text-sm text-zinc-200">
+              {timeGapValue && timeGapUnit && baseEvent
+                ? `موعد سررسید: ${timeGapValue} ${timeGapUnit} پس از «${baseEvent}» (${recurrence || 'بدون تناوب'})`
+                : 'لطفاً فیلدهای رویداد پایه و فاصله زمانی را تکمیل نمایید.'}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
+            <Button variant="ghost" onClick={onClose}>
+              انصراف و بازگشت
+            </Button>
+            {mode === 'EDIT' && (
+              <Button
+                disabled={!dirty || saving}
+                onClick={() => void save()}
+                className="bg-emerald-700 hover:bg-emerald-600 min-w-36 font-semibold"
+              >
+                {saving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Check className="ml-2 h-4 w-4" />}
+                ذخیره تغییرات
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </StudioFullScreen>
+  )
+}
+
+function ScopeModal({
+  item,
+  version,
+  mode,
+  onClose,
+  onSaved,
+}: {
+  item: CatalogItem
+  version: Version
+  mode: StudioMode
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const recurrenceRule = jsonRecord(version.recurrence_rule)
+  const [audienceSummary, setAudienceSummary] = useState(version.audience_summary ?? '')
+  const [objectionTemplateId, setObjectionTemplateId] = useState(stringValue(recurrenceRule['objection_template_id']))
+  const [isActive, setIsActive] = useState(item.obligation.is_active ?? true)
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    const recurrencePatch: Json = {
+      ...recurrenceRule,
+      objection_template_id: objectionTemplateId.trim() || null,
+    }
+    try {
+      if (isSupabaseConfigured) {
+        const [obRes, verRes] = await Promise.all([
+          supabase.from('obligations').update({ is_active: isActive }).eq('id', item.obligation.id),
+          supabase.from('obligation_versions').update({
+            audience_summary: audienceSummary.trim() || null,
+            recurrence_rule: recurrencePatch,
+          }).eq('id', version.id),
+        ])
+        if (obRes.error) throw obRes.error
+        if (verRes.error) throw verRes.error
+      } else {
+        const mockObligation = mockStudioDb.getObligations().find((row) => row.id === item.obligation.id)
+        const mockVersion = mockStudioDb.getVersions().find((row) => row.id === version.id)
+        if (!mockObligation || !mockVersion) throw new Error('تعهد پیدا نشد.')
+        mockObligation.is_active = isActive
+        mockObligation.updated_at = new Date().toISOString()
+        mockVersion.audience_summary = audienceSummary.trim() || undefined
+        mockVersion.recurrence_rule = recurrencePatch
+        mockVersion.updated_at = new Date().toISOString()
+      }
+      toast.success('دامنه و وضعیت تعهد ذخیره شد.')
+      setDirty(false)
+      await onSaved()
+      onClose()
+    } catch (error) {
+      toast.error(errorMessage(error, 'ذخیره دامنه و وضعیت انجام نشد.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <StudioFullScreen title={`دامنه و وضعیت: ${item.obligation.title}`} onBack={onClose}>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl space-y-6">
+          <SectionHeading
+            number="۳"
+            title="دامنه شمول، وضعیت و الگوی اعتراض"
+            description="توضیح متنی مخاطبان مشمول، الگوی مرتبط جهت اعتراض یا دادرسی، و وضعیت کلی فعالیت را تعیین کنید."
+          />
+
+          <div className="space-y-5">
+            <Field label="خلاصه مخاطبان مشمول (توضیح برای مودیان)">
+              <textarea
+                value={audienceSummary}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => { setAudienceSummary(e.target.value); setDirty(true) }}
+                rows={4}
+                className="w-full rounded-md border border-zinc-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-amber-500 disabled:opacity-60"
+                placeholder="مثال: تمامی اشخاص حقوقی و شرکت‌های تجاری ثبت‌شده در ایران که در دوره مالی دارای فعالیت اقتصادی بوده‌اند..."
+              />
+            </Field>
+
+            <Field label="شناسه الگوی اعتراض / دادرسی (اختیاری)">
+              <Input
+                dir="ltr"
+                value={objectionTemplateId}
+                disabled={mode === 'VIEW'}
+                onChange={(e) => { setObjectionTemplateId(e.target.value); setDirty(true) }}
+                placeholder="مثال: TAX_OBJECTION_TEMPLATE_V1"
+              />
+            </Field>
+
+            <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+              <div>
+                <p className="text-sm font-bold text-zinc-100">فعال بودن تعهد در پلتفرم</p>
+                <p className="mt-1 text-xs text-zinc-400">
+                  در صورت غیرفعال بودن، این تعهد در ارزیابی‌ها و تقویم جدید کاربران محاسبه نمی‌شود.
+                </p>
+              </div>
+              <Switch
+                checked={isActive}
+                disabled={mode === 'VIEW'}
+                onCheckedChange={(val) => { setIsActive(val); setDirty(true) }}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
+            <Button variant="ghost" onClick={onClose}>
+              انصراف و بازگشت
+            </Button>
+            {mode === 'EDIT' && (
+              <Button
+                disabled={!dirty || saving}
+                onClick={() => void save()}
+                className="bg-emerald-700 hover:bg-emerald-600 min-w-36 font-semibold"
+              >
+                {saving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Check className="ml-2 h-4 w-4" />}
+                ذخیره تغییرات
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </StudioFullScreen>
+  )
+}
+
+function PublishReadinessModal({
+  item,
+  version,
+  rules,
+  steps,
+  penaltySchemaReady,
+  busy,
+  mode,
+  onSeed,
+  onTransitionStatus,
+  onPublish,
+  onClose,
+  onSaved,
+}: {
+  item: CatalogItem
+  version: Version
+  rules: RuleSet[]
+  steps: WorkflowStep[]
+  penaltySchemaReady: boolean
+  busy: boolean
+  mode: StudioMode
+  onSeed: () => Promise<void>
+  onTransitionStatus: (status: 'DRAFT' | 'REVIEW' | 'TESTING', note: string) => Promise<void>
+  onPublish: () => Promise<void>
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  return (
+    <StudioFullScreen title={`آمادگی انتشار نسخه ${version.version_number}: ${item.obligation.title}`} onBack={onClose}>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl space-y-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b border-zinc-800/80 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-xl text-zinc-100">چرخه انتشار نسخه {version.version_number}</h3>
+                {version.status === 'PUBLISHED' ? (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-950 px-3 py-1 text-xs text-emerald-300 border border-emerald-800/60">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    منتشرشده و قفل
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-amber-950/80 px-2.5 py-0.5 text-xs text-amber-300 border border-amber-800/60">
+                    {versionStatusLabel(version.status)}
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-xs leading-5 text-zinc-400">
+                {version.legal_reference || 'ماده ۱۱۰، ۱۹۲، ۱۹۰ و تبصره ۱ ماده ۱۴۶ مکرر قانون مالیات‌های مستقیم'}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                className="border-amber-700/60 bg-amber-950/30 text-amber-300 hover:bg-amber-900/40 gap-1.5 text-xs"
+                onClick={() => void onSeed()}
+                disabled={busy}
+              >
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookOpenCheck className="h-3.5 w-3.5" />}
+                درج / به‌روزرسانی داده‌های استاندارد
+              </Button>
+              {version.status === 'DRAFT' && mode === 'EDIT' && (
+                <Button
+                  onClick={() => void onTransitionStatus('REVIEW', 'نسخه برای بازبینی تخصصی ارسال شد.')}
+                  disabled={busy}
+                  className="bg-amber-500 text-zinc-950 hover:bg-amber-400 font-semibold"
+                >
+                  {busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+                  ارسال به بازبینی
+                </Button>
+              )}
+              {version.status === 'REVIEW' && mode === 'EDIT' && (
+                <>
+                  <Button variant="outline" className="border-zinc-700" onClick={() => void onTransitionStatus('DRAFT', 'نسخه برای اصلاح به پیش‌نویس بازگشت.')} disabled={busy}>
+                    بازگشت به پیش‌نویس
+                  </Button>
+                  <Button onClick={() => void onTransitionStatus('TESTING', 'نسخه وارد مرحله آزمایش شد.')} disabled={busy} className="bg-sky-700 hover:bg-sky-600 font-semibold">
+                    {busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+                    ارسال به آزمایش
+                  </Button>
+                </>
+              )}
+              {version.status === 'TESTING' && mode === 'EDIT' && (
+                <>
+                  <Button variant="outline" className="border-zinc-700" onClick={() => void onTransitionStatus('REVIEW', 'نسخه برای بازبینی دوباره بازگشت.')} disabled={busy}>
+                    بازگشت به بازبینی
+                  </Button>
+                  <Button onClick={onPublish} disabled={busy} className="bg-emerald-700 hover:bg-emerald-600 font-semibold">
+                    {busy && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+                    انتشار نهایی نسخه
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Metric icon={Scale} label="قواعد تشخیص" value={`${rules.length} قاعده قانونی`} />
+            <Metric icon={ListChecks} label="مراحل فرایند" value={`${steps.length} گام اجرایی`} />
+            <Metric icon={ShieldAlert} label="نوع جریمه" value={penaltyLabel(version.penalty_rule)} />
+            <Metric icon={Clock3} label="مهلت و دوره" value={studioDeadlineLabel(version)} />
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-[#161817] p-5 space-y-4">
+            <h4 className="font-bold text-zinc-100 flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-red-400" />
+              تنظیمات جرایم عدم انجام تکلیف
+            </h4>
+            <PenaltyForm
+              multiPenaltyTableReady={penaltySchemaReady}
+              version={version}
+              onSaved={async () => { await onSaved() }}
+            />
+          </div>
+
+          <div className="flex justify-end pt-3 border-t border-zinc-800">
+            <Button variant="outline" onClick={onClose}>
+              بستن و بازگشت به صفحه تعهد
+            </Button>
+          </div>
+        </div>
+      </div>
+    </StudioFullScreen>
+  )
+}
+
+function EligibilityModal({
+  item,
+  version,
+  rules,
+  ruleConditions,
+  editingRule,
+  setEditingRule,
+  onDeleteRule,
+  onSeed,
+  busy,
+  mode,
+  onClose,
+  onSaved,
+}: {
+  item: CatalogItem
+  version: Version
+  rules: RuleSet[]
+  ruleConditions: Record<string, any[]>
+  editingRule: RuleSet | null
+  setEditingRule: (r: RuleSet | null) => void
+  onDeleteRule: (r: RuleSet) => void
+  onSeed: () => Promise<void>
+  busy: boolean
+  mode: StudioMode
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  return (
+    <StudioFullScreen title={`قواعد تشخیص مشمولیت: ${item.obligation.title}`} onBack={onClose}>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl space-y-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-zinc-800/80 pb-4">
+            <div>
+              <h3 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+                <Scale className="h-5 w-5 text-amber-400" />
+                مدیریت قواعد تشخیص مشمولیت ({rules.length} قاعده)
+              </h3>
+              <p className="mt-1 text-xs text-zinc-400">
+                قواعد قانونی، ارزیابی شروط کسب‌وکار و تصمیم‌گیری خودکار مشمولیت مودی
+              </p>
+            </div>
+            {rules.length === 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-700/60 text-amber-300 hover:bg-amber-950/40 text-xs gap-1"
+                onClick={() => void onSeed()}
+                disabled={busy}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                درج قواعد استاندارد عملکرد
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {rules.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
+                هنوز قاعده‌ای برای این نسخه تعریف نشده است. با استفاده از فرم زیر قاعده جدید اضافه کنید.
+              </div>
+            ) : (
+              rules.map((rule, idx) => {
+                const conds = ruleConditions[rule.id] || []
+                return (
+                  <div key={rule.id ?? idx} className="rounded-xl border border-zinc-700/80 bg-[#1b1e1c] p-4 space-y-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-100">{rule.title}</p>
+                        <span className="mt-1 inline-block shrink-0 rounded bg-emerald-950 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
+                          {rule.outcome === 'ELIGIBLE' ? 'مشمول قطعی' : rule.outcome === 'NOT_ELIGIBLE' ? 'غیرمشمول' : 'نیازمند بررسی'} · اولویت {rule.priority}
+                        </span>
+                      </div>
+                      {mode === 'EDIT' && version.status === 'DRAFT' && (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-zinc-400 hover:text-amber-300"
+                            title="ویرایش قاعده"
+                            onClick={() => {
+                              setEditingRule(rule)
+                              document.getElementById('eligibility-rule-editor')?.scrollIntoView({ behavior: 'smooth' })
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-zinc-400 hover:text-red-400"
+                            title="حذف قاعده"
+                            onClick={() => onDeleteRule(rule)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    {rule.explanation && (
+                      <p className="text-xs leading-5 text-zinc-400">{rule.explanation}</p>
+                    )}
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {conds.length > 0 ? (
+                        conds.map((c: any, cIdx: number) => {
+                          const factEntry = FACTS.find(([k]) => k === c.fact_key)
+                          const factTitle = factEntry ? factEntry[1] : c.fact_key
+                          const opEntry = OPERATORS.find(([k]) => k === c.operator)
+                          const opTitle = opEntry ? opEntry[1] : c.operator
+                          const val = Array.isArray(c.expected_value)
+                            ? c.expected_value.join('، ')
+                            : c.expected_value !== null && c.expected_value !== undefined
+                              ? String(c.expected_value)
+                              : ''
+                          return (
+                            <span key={c.id ?? cIdx} className="rounded bg-zinc-800 px-2 py-0.5 text-[11px] text-amber-300">
+                              شرط: {factTitle} {opTitle} {val}
+                            </span>
+                          )
+                        })
+                      ) : (
+                        <span className="rounded bg-zinc-800 px-2 py-0.5 text-[11px] text-amber-300">شرط: نوع شخصیت = حقوقی</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {mode === 'EDIT' && version.status === 'DRAFT' && (
+            <div id="eligibility-rule-editor" className="pt-4 border-t border-zinc-800">
+              <EligibilityRuleForm
+                versionId={version.id}
+                nextPriority={rules.length + 1}
+                editingRule={editingRule}
+                editingConditions={editingRule ? ruleConditions[editingRule.id] : undefined}
+                onCancelEdit={() => setEditingRule(null)}
+                onSaved={async () => {
+                  setEditingRule(null)
+                  await onSaved()
+                }}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end pt-3 border-t border-zinc-800">
+            <Button variant="outline" onClick={onClose}>
+              بستن و بازگشت به صفحه تعهد
+            </Button>
+          </div>
+        </div>
+      </div>
+    </StudioFullScreen>
+  )
+}
+
+function WorkflowStepsModal({
+  item,
+  version,
+  steps,
+  transitions,
+  editingStep,
+  setEditingStep,
+  onDeleteStep,
+  onSeed,
+  busy,
+  mode,
+  onClose,
+  onSaved,
+}: {
+  item: CatalogItem
+  version: Version
+  steps: WorkflowStep[]
+  transitions: WorkflowTransition[]
+  editingStep: WorkflowStep | null
+  setEditingStep: (s: WorkflowStep | null) => void
+  onDeleteStep: (step: WorkflowStep, deps: Array<{ formName: string; details: string; iconType?: any }>) => void
+  onSeed: () => Promise<void>
+  busy: boolean
+  mode: StudioMode
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  return (
+    <StudioFullScreen title={`مراحل فرایند اجرایی: ${item.obligation.title}`} onBack={onClose}>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl space-y-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-zinc-800/80 pb-4">
+            <div>
+              <h3 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+                <ListChecks className="h-5 w-5 text-sky-400" />
+                مدیریت مراحل فرایند اجرایی ({steps.length} مرحله)
+              </h3>
+              <p className="mt-1 text-xs text-zinc-400">
+                گام‌های متوالی، مسئولین هر اقدام، مستندات راهنما و فیلدهای اطلاعاتی ورودی
+              </p>
+            </div>
+            {steps.length === 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-sky-700/60 text-sky-300 hover:bg-sky-950/40 text-xs gap-1"
+                onClick={() => void onSeed()}
+                disabled={busy}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                درج مراحل استاندارد عملکرد
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {steps.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
+                هنوز مرحله‌ای تعریف نشده است. با استفاده از فرم زیر گام اول را اضافه کنید.
+              </div>
+            ) : (
+              steps.map((step, idx) => (
+                <div key={step.id ?? idx} className="rounded-xl border border-zinc-700/80 bg-[#1b1e1c] p-4 space-y-2.5 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-amber-700/70 bg-amber-950/50 text-xs font-black text-amber-300">
+                        {step.sequence}
+                      </span>
+                      <div>
+                        <p className="pt-1 text-sm font-semibold text-zinc-100">{step.title.replace(/^\d+\.\s*/, '')}</p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="font-mono text-[10px] text-zinc-500">{step.code}</span>
+                          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${actorClass(step.actor)}`}>
+                            {actorLabel(step.actor)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    {mode === 'EDIT' && version.status === 'DRAFT' && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-zinc-400 hover:text-sky-300"
+                          title="ویرایش مرحله"
+                          onClick={() => {
+                            setEditingStep(step)
+                            document.getElementById('workflow-step-editor')?.scrollIntoView({ behavior: 'smooth' })
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-zinc-400 hover:text-red-400"
+                          title="حذف مرحله"
+                          onClick={() => {
+                            const relatedTransitions = transitions.filter((t) => t.from_step_id === step.id || t.to_step_id === step.id)
+                            const deps = relatedTransitions.map((t) => ({
+                              formName: t.title || 'مسیر انتقال',
+                              details: `اتصال خروجی ${t.outcome_code}`,
+                              iconType: 'workflow' as const,
+                            }))
+                            onDeleteStep(step, deps)
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  {step.instructions && (
+                    <p className="text-xs leading-5 text-zinc-400">{step.instructions}</p>
+                  )}
+                  {step.form_schema?.fields && step.form_schema.fields.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {step.form_schema.fields.map((f: any, fIdx: number) => (
+                        <span key={f.key ?? fIdx} className="rounded border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-300">
+                          فیلد: {f.label || f.key} ({f.type || 'text'})
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {mode === 'EDIT' && version.status === 'DRAFT' && (
+            <div id="workflow-step-editor" className="pt-4 border-t border-zinc-800">
+              <WorkflowStepForm
+                version={version}
+                nextSequence={steps.length + 1}
+                editingStep={editingStep}
+                onCancelEdit={() => setEditingStep(null)}
+                onSaved={async () => {
+                  setEditingStep(null)
+                  await onSaved()
+                }}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end pt-3 border-t border-zinc-800">
+            <Button variant="outline" onClick={onClose}>
+              بستن و بازگشت به صفحه تعهد
+            </Button>
+          </div>
+        </div>
+      </div>
+    </StudioFullScreen>
+  )
+}
+
+function WorkflowTransitionsModal({
+  item,
+  version,
+  steps,
+  transitions,
+  transitionSchemaReady,
+  mode,
+  onClose,
+  onSaved,
+}: {
+  item: CatalogItem
+  version: Version
+  steps: WorkflowStep[]
+  transitions: WorkflowTransition[]
+  transitionSchemaReady: boolean
+  mode: StudioMode
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [editingTransition, setEditingTransition] = useState<WorkflowTransition | null>(null)
+  const [deleteGuard, setDeleteGuard] = useState<{
+    isOpen: boolean
+    transition: WorkflowTransition | null
+    isDeleting: boolean
+  }>({
+    isOpen: false,
+    transition: null,
+    isDeleting: false,
+  })
+
+  const confirmDeleteTransition = async () => {
+    const tr = deleteGuard.transition
+    if (!tr) return
+    setDeleteGuard((prev) => ({ ...prev, isDeleting: true }))
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from('workflow_transitions').delete().eq('id', tr.id)
+        if (error) throw error
+      }
+      toast.success(`مسیر «${tr.title}» با موفقیت حذف شد.`)
+      if (editingTransition?.id === tr.id) setEditingTransition(null)
+      setDeleteGuard({ isOpen: false, transition: null, isDeleting: false })
+      await onSaved()
+    } catch (err) {
+      toast.error(errorMessage(err, 'حذف مسیر با خطا مواجه شد.'))
+      setDeleteGuard((prev) => ({ ...prev, isDeleting: false }))
+    }
+  }
+
+  return (
+    <StudioFullScreen title={`مسیرها و خروجی‌های فرایند: ${item.obligation.title}`} onBack={onClose}>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="rounded-2xl border border-zinc-800 bg-[#101211] p-6 shadow-xl space-y-6">
+          <div className="border-b border-zinc-800/80 pb-4">
+            <h3 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+              <GitBranch className="h-5 w-5 text-violet-400" />
+              مسیرها و خروجی‌های فرایند ({transitions.length} مسیر)
+            </h3>
+            <p className="mt-1 text-xs text-zinc-400">
+              هر مسیر، نتیجه یک مرحله را به مرحله بعدی، انقضا، رویداد سیستمی یا وضعیت پایانی پرونده متصل می‌کند.
+            </p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {transitions.length === 0 ? (
+              <div className="col-span-2 rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
+                هنوز مسیری ثبت نشده است. در صورت نیاز با فرم زیر مسیر شاخه‌ای جدید ایجاد کنید.
+              </div>
+            ) : (
+              transitions.map((transition) => (
+                <div key={transition.id} className="rounded-xl border border-zinc-700/80 bg-[#1b1e1c] p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-bold text-zinc-100">{transition.title}</p>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`rounded-full border px-2.5 py-0.5 text-[11px] ${
+                        transition.trigger_type === 'TIMEOUT'
+                          ? 'border-orange-800 bg-orange-950/50 text-orange-300'
+                          : transition.trigger_type === 'SYSTEM_EVENT'
+                            ? 'border-violet-800 bg-violet-950/50 text-violet-300'
+                            : 'border-sky-800 bg-sky-950/50 text-sky-300'
+                      }`}>
+                        {transitionTriggerLabel(transition.trigger_type)}
+                      </span>
+                      {mode === 'EDIT' && version.status === 'DRAFT' && (
+                        <div className="flex items-center gap-1 mr-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-zinc-400 hover:text-violet-300"
+                            title="ویرایش مسیر"
+                            onClick={() => {
+                              setEditingTransition(transition)
+                              document.getElementById('transition-form-container')?.scrollIntoView({ behavior: 'smooth' })
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-zinc-400 hover:text-red-400"
+                            title="حذف مسیر"
+                            onClick={() => setDeleteGuard({ isOpen: true, transition, isDeleting: false })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-zinc-400">
+                    خروجی: <span className="font-mono text-zinc-300">{transition.outcome_code}</span> · {transition.to_step_id ? 'انتقال به گام بعدی' : `پایان: ${transition.terminal_status}`}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+
+          {!transitionSchemaReady && (
+            <p className="text-xs text-zinc-500">
+              تا زمان فعال‌شدن مسیرهای شاخه‌ای، فرایند با ترتیب طبیعی مراحل ادامه می‌یابد.
+            </p>
+          )}
+
+          {mode === 'EDIT' && version.status === 'DRAFT' && transitionSchemaReady && (
+            <div id="transition-form-container" className="pt-4 border-t border-zinc-800">
+              <WorkflowTransitionForm
+                version={version}
+                steps={steps}
+                nextPriority={transitions.length + 1}
+                editingTransition={editingTransition}
+                onCancelEdit={() => setEditingTransition(null)}
+                onSaved={async () => {
+                  setEditingTransition(null)
+                  await onSaved()
+                }}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end pt-3 border-t border-zinc-800">
+            <Button variant="outline" onClick={onClose}>
+              بستن و بازگشت به صفحه تعهد
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <DeleteGuardModal
+        isOpen={deleteGuard.isOpen}
+        onClose={() => setDeleteGuard({ isOpen: false, transition: null, isDeleting: false })}
+        title={deleteGuard.transition?.title ?? 'مسیر فرایند'}
+        entityType="مسیر فرایند"
+        description={`آیا از حذف مسیر «${deleteGuard.transition?.title ?? ''}» اطمینان دارید؟`}
+        checkResult={{ hasDependencies: false, dependencies: [] }}
+        isDeleting={deleteGuard.isDeleting}
+        onConfirmDelete={confirmDeleteTransition}
+        onConfirm={confirmDeleteTransition}
+      />
+    </StudioFullScreen>
+  )
+}
+
+function WorkflowTransitionForm({
+  version,
+  steps,
+  nextPriority,
+  editingTransition,
+  onCancelEdit,
+  onSaved,
+}: {
+  version: Version
+  steps: WorkflowStep[]
+  nextPriority: number
+  editingTransition?: WorkflowTransition | null
+  onCancelEdit?: () => void
+  onSaved: () => Promise<void>
+}) {
   const [open, setOpen] = useState(false)
   const [fromStepId, setFromStepId] = useState('')
   const [destination, setDestination] = useState('COMPLETED')
@@ -1035,6 +2507,33 @@ function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { ver
   const [eventCode, setEventCode] = useState('')
   const [timeoutDays, setTimeoutDays] = useState('')
 
+  useEffect(() => {
+    if (editingTransition) {
+      setOpen(true)
+      setFromStepId(editingTransition.from_step_id || '')
+      setDestination(editingTransition.to_step_id || editingTransition.terminal_status || 'COMPLETED')
+      setTitle(editingTransition.title || '')
+      setCode(editingTransition.code || '')
+      setOutcomeCode(editingTransition.outcome_code || '')
+      setTriggerType(editingTransition.trigger_type || 'USER_ACTION')
+      setEventCode(editingTransition.event_code || '')
+      const timeoutMatch = editingTransition.timeout_interval?.match(/\d+/)
+      setTimeoutDays(timeoutMatch ? timeoutMatch[0] : '')
+    }
+  }, [editingTransition])
+
+  const handleCancel = () => {
+    if (window.confirm('تغییرات مسیر ذخیره نشده است. خارج می‌شوید؟')) {
+      setOpen(false)
+      setTitle('')
+      setCode('')
+      setOutcomeCode('')
+      setEventCode('')
+      setTimeoutDays('')
+      onCancelEdit?.()
+    }
+  }
+
   const save = async () => {
     if (!fromStepId || !title.trim() || !code.trim() || !outcomeCode.trim()) return toast.error('مرحله مبدأ، عنوان، کد مسیر و کد خروجی الزامی است.')
     if (!isValidCode(normalizeCode(code), 80)) return toast.error('کد مسیر باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
@@ -1044,24 +2543,107 @@ function WorkflowTransitionForm({ version, steps, nextPriority, onSaved }: { ver
     const templateId = steps.find((step) => step.id === fromStepId)?.workflow_template_id
     if (!templateId) return toast.error('قالب فرایند پیدا نشد.')
     const terminal = destination === 'COMPLETED' || destination === 'CANCELLED'
-    const { error } = await supabase.from('workflow_transitions').insert({
+
+    const payload = {
       workflow_template_id: templateId,
       from_step_id: fromStepId,
       to_step_id: terminal ? null : destination,
       terminal_status: terminal ? destination : null,
-      code: normalizeCode(code), title: title.trim(), outcome_code: normalizeCode(outcomeCode),
-      trigger_type: triggerType, event_code: triggerType === 'SYSTEM_EVENT' ? normalizeCode(eventCode) : null,
+      code: normalizeCode(code),
+      title: title.trim(),
+      outcome_code: normalizeCode(outcomeCode),
+      trigger_type: triggerType,
+      event_code: triggerType === 'SYSTEM_EVENT' ? normalizeCode(eventCode) : null,
       timeout_interval: triggerType === 'TIMEOUT' ? `${Number(timeoutDays)} days` : null,
-      priority: nextPriority,
-    })
-    if (error) return toast.error(error.message)
-    toast.success(`مسیر جدید برای نسخه ${version.version_number} ثبت شد.`)
+      priority: editingTransition ? editingTransition.priority : nextPriority,
+    }
+
+    if (editingTransition) {
+      const { error } = await supabase.from('workflow_transitions').update(payload).eq('id', editingTransition.id)
+      if (error) return toast.error(error.message)
+      toast.success(`مسیر «${title.trim()}» با موفقیت ویرایش شد.`)
+    } else {
+      const { error } = await supabase.from('workflow_transitions').insert(payload)
+      if (error) return toast.error(error.message)
+      toast.success(`مسیر جدید برای نسخه ${version.version_number} ثبت شد.`)
+    }
+
     setOpen(false)
+    setTitle('')
+    setCode('')
+    setOutcomeCode('')
+    setEventCode('')
+    setTimeoutDays('')
+    onCancelEdit?.()
     await onSaved()
   }
 
-  if (!open) return <Button variant="outline" className="mt-5 w-full border-violet-800 text-violet-300" onClick={() => setOpen(true)}><Plus className="ml-2 h-4 w-4" />افزودن مسیر / خروجی</Button>
-  return <div data-studio-dirty="true" className="mt-5 rounded-xl border border-violet-900/60 bg-violet-950/10 p-4"><div className="grid gap-4 md:grid-cols-3"><Field label="مرحله مبدأ"><Select value={fromStepId} onValueChange={setFromStepId}><SelectTrigger><SelectValue placeholder="انتخاب مرحله" /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>{step.sequence}. {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}</SelectContent></Select></Field><Field label="نوع فعال‌سازی"><Select value={triggerType} onValueChange={setTriggerType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="USER_ACTION">اقدام کاربر</SelectItem><SelectItem value="SYSTEM_EVENT">رویداد سیستمی</SelectItem><SelectItem value="TIMEOUT">انقضای خودکار مهلت</SelectItem></SelectContent></Select></Field><Field label="مقصد"><Select value={destination} onValueChange={setDestination}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>مرحله {step.sequence}: {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}<SelectItem value="COMPLETED">پایان موفق پرونده</SelectItem><SelectItem value="CANCELLED">لغو پرونده</SelectItem></SelectContent></Select></Field><Field label="عنوان مسیر"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field><Field label="کد انگلیسی مسیر"><Input dir="ltr" value={code} onChange={(event) => setCode(normalizeCode(event.target.value))} maxLength={80} placeholder="ASSESSMENT_ISSUED" /></Field><Field label="کد خروجی"><Input dir="ltr" value={outcomeCode} onChange={(event) => setOutcomeCode(normalizeCode(event.target.value))} placeholder="DISPUTE_OPENED" /></Field>{triggerType === 'SYSTEM_EVENT' && <Field label="کد رویداد"><Input dir="ltr" value={eventCode} onChange={(event) => setEventCode(normalizeCode(event.target.value))} /></Field>}{triggerType === 'TIMEOUT' && <Field label="مهلت (روز)"><Input type="number" min="1" value={timeoutDays} onChange={(event) => setTimeoutDays(event.target.value)} /></Field>}<div className="flex items-end gap-2"><Button className="flex-1 bg-violet-700 hover:bg-violet-600" onClick={() => void save()}>ذخیره مسیر</Button><Button variant="ghost" onClick={() => { if (window.confirm('تغییرات مسیر ذخیره نشده است. خارج می‌شوید؟')) setOpen(false) }}>انصراف</Button></div></div></div>
+  if (!open && !editingTransition) return <Button variant="outline" className="mt-5 w-full border-violet-800 text-violet-300" onClick={() => setOpen(true)}><Plus className="ml-2 h-4 w-4" />افزودن مسیر / خروجی</Button>
+  return (
+    <div data-studio-dirty="true" className="mt-5 rounded-xl border border-violet-900/60 bg-violet-950/10 p-4">
+      <div className="flex items-center justify-between border-b border-violet-900/40 pb-2 mb-4">
+        <p className="text-sm font-bold text-violet-300">
+          {editingTransition ? `ویرایش مسیر «${editingTransition.title}»` : 'افزودن مسیر / خروجی جدید'}
+        </p>
+        {editingTransition && (
+          <span className="rounded bg-violet-950 px-2 py-0.5 text-xs text-violet-300 border border-violet-800">حالت ویرایش</span>
+        )}
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Field label="مرحله مبدأ">
+          <Select value={fromStepId} onValueChange={setFromStepId}>
+            <SelectTrigger><SelectValue placeholder="انتخاب مرحله" /></SelectTrigger>
+            <SelectContent>{steps.map((step) => <SelectItem key={step.id} value={step.id}>{step.sequence}. {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}</SelectContent>
+          </Select>
+        </Field>
+        <Field label="نوع فعال‌سازی">
+          <Select value={triggerType} onValueChange={setTriggerType}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="USER_ACTION">اقدام کاربر</SelectItem>
+              <SelectItem value="SYSTEM_EVENT">رویداد سیستمی</SelectItem>
+              <SelectItem value="TIMEOUT">انقضای خودکار مهلت</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="مقصد">
+          <Select value={destination} onValueChange={setDestination}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {steps.map((step) => <SelectItem key={step.id} value={step.id}>مرحله {step.sequence}: {step.title.replace(/^\d+\.\s*/, '')}</SelectItem>)}
+              <SelectItem value="COMPLETED">پایان موفق پرونده</SelectItem>
+              <SelectItem value="CANCELLED">لغو پرونده</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="عنوان مسیر">
+          <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مثال: صدور برگه تشخیص" />
+        </Field>
+        <Field label="کد انگلیسی مسیر">
+          <Input dir="ltr" value={code} onChange={(event) => setCode(normalizeCode(event.target.value))} maxLength={80} placeholder="ASSESSMENT_ISSUED" />
+        </Field>
+        <Field label="کد خروجی">
+          <Input dir="ltr" value={outcomeCode} onChange={(event) => setOutcomeCode(normalizeCode(event.target.value))} placeholder="DISPUTE_OPENED" />
+        </Field>
+        {triggerType === 'SYSTEM_EVENT' && (
+          <Field label="کد رویداد">
+            <Input dir="ltr" value={eventCode} onChange={(event) => setEventCode(normalizeCode(event.target.value))} />
+          </Field>
+        )}
+        {triggerType === 'TIMEOUT' && (
+          <Field label="مهلت (روز)">
+            <Input type="number" min="1" value={timeoutDays} onChange={(event) => setTimeoutDays(event.target.value)} />
+          </Field>
+        )}
+        <div className="flex items-end gap-2 md:col-span-3">
+          <Button className="bg-violet-700 hover:bg-violet-600 font-semibold" onClick={() => void save()}>
+            {editingTransition ? 'ذخیره ویرایش مسیر' : 'ذخیره مسیر جدید'}
+          </Button>
+          <Button variant="ghost" onClick={handleCancel}>انصراف</Button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function PenaltyForm({ version, multiPenaltyTableReady, onSaved }: { version: Version; multiPenaltyTableReady: boolean; onSaved: () => Promise<void> }) {
@@ -1120,62 +2702,638 @@ function PenaltyForm({ version, multiPenaltyTableReady, onSaved }: { version: Ve
   )
 }
 
-function FamilyForm({ onSaved, onDirtyChange }: { onSaved: () => Promise<void>; onDirtyChange: (dirty: boolean) => void }) {
+function FamilyManager({
+  families,
+  catalog,
+  onSaved,
+  onDirtyChange,
+}: {
+  families: Family[]
+  catalog: CatalogItem[]
+  onSaved: () => Promise<void>
+  onDirtyChange: (dirty: boolean) => void
+}) {
+  const [editingFamily, setEditingFamily] = useState<Family | null>(null)
   const [code, setCode] = useState('')
   const [title, setTitle] = useState('')
   const [domain, setDomain] = useState('TAX')
+  const [description, setDescription] = useState('')
+  const [isActive, setIsActive] = useState(true)
   const [saving, setSaving] = useState(false)
-  useEffect(() => onDirtyChange(Boolean(code || title || domain !== 'TAX')), [code, title, domain, onDirtyChange])
-  const save = async () => {
-  const normalizedCode = normalizeCode(code)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [domainFilter, setDomainFilter] = useState<'ALL' | 'TAX' | 'INSURANCE'>('ALL')
 
-  if (!normalizedCode || !title.trim()) {
-    toast.error('کد و عنوان گروه الزامی است.')
-    return
-  }
+  // Delete modal state
+  const [deleteGuard, setDeleteGuard] = useState<{
+    isOpen: boolean
+    family: Family | null
+    dependencies: Array<{ formName: string; details: string; iconType?: 'extension' | 'penalty' | 'workflow' | 'template' | 'obligation' }>
+    isDeleting: boolean
+  }>({
+    isOpen: false,
+    family: null,
+    dependencies: [],
+    isDeleting: false,
+  })
 
-  if (!isValidCode(normalizedCode, 50)) {
-    toast.error('کد گروه باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
-    return
-  }
-
-  setSaving(true)
-
-  try {
-    const family = {
-      code: normalizedCode,
-      title: title.trim(),
-      domain,
-    }
-
-    if (isSupabaseConfigured) {
-      const { error } = await supabase
-        .from('obligation_families')
-        .insert(family)
-
-      if (error) throw error
+  // Dirty check tracking
+  useEffect(() => {
+    if (editingFamily) {
+      const isModified =
+        code !== (editingFamily.code || '') ||
+        title !== (editingFamily.title || '') ||
+        domain !== (editingFamily.domain || 'TAX') ||
+        description !== (editingFamily.description || '') ||
+        isActive !== (editingFamily.is_active ?? true)
+      onDirtyChange(isModified)
     } else {
-      mockStudioDb.createFamily(family)
+      const isFilled = Boolean(code || title || domain !== 'TAX' || description || !isActive)
+      onDirtyChange(isFilled)
+    }
+  }, [code, title, domain, description, isActive, editingFamily, onDirtyChange])
+
+  const handleStartEdit = (family: Family) => {
+    setEditingFamily(family)
+    setCode(family.code || '')
+    setTitle(family.title || '')
+    setDomain(family.domain || 'TAX')
+    setDescription(family.description || '')
+    setIsActive(family.is_active ?? true)
+    document.getElementById('family-form-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingFamily(null)
+    setCode('')
+    setTitle('')
+    setDomain('TAX')
+    setDescription('')
+    setIsActive(true)
+    onDirtyChange(false)
+  }
+
+  const handleClearForm = () => {
+    setCode('')
+    setTitle('')
+    setDomain('TAX')
+    setDescription('')
+    setIsActive(true)
+    onDirtyChange(false)
+  }
+
+  const handleSave = async () => {
+    const normalizedCode = normalizeCode(code)
+
+    if (!normalizedCode || !title.trim()) {
+      toast.error('کد و عنوان گروه الزامی است.')
+      return
     }
 
-    toast.success('گروه ثبت شد.')
-    await onSaved()
-  } catch (error) {
-    const message =
-      typeof error === 'object' &&
-      error !== null &&
-      'message' in error &&
-      typeof error.message === 'string'
-        ? error.message
-        : 'ثبت گروه انجام نشد.'
+    if (!isValidCode(normalizedCode, 50)) {
+      toast.error('کد گروه باید حداقل ۲ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.')
+      return
+    }
 
-    toast.error(studioMutationError(error, message))
-  } finally {
-    setSaving(false)
+    setSaving(true)
+
+    try {
+      if (editingFamily) {
+        // Updating existing family
+        const updatePayload = {
+          code: normalizedCode,
+          title: title.trim(),
+          domain,
+          description: description.trim() || null,
+          is_active: isActive,
+        }
+
+        if (isSupabaseConfigured) {
+          const { error } = await supabase
+            .from('obligation_families')
+            .update(updatePayload)
+            .eq('id', editingFamily.id)
+
+          if (error) throw error
+        } else {
+          mockStudioDb.updateFamily(editingFamily.id, updatePayload)
+        }
+
+        toast.success(`گروه «${title.trim()}» با موفقیت به‌روزرسانی شد.`)
+        handleCancelEdit()
+        await onSaved()
+      } else {
+        // Creating new family
+        const newPayload = {
+          code: normalizedCode,
+          title: title.trim(),
+          domain,
+          description: description.trim() || null,
+          is_active: isActive,
+        }
+
+        if (isSupabaseConfigured) {
+          const { error } = await supabase
+            .from('obligation_families')
+            .insert(newPayload)
+
+          if (error) throw error
+        } else {
+          mockStudioDb.createFamily(newPayload)
+        }
+
+        toast.success(`گروه جدید «${title.trim()}» با موفقیت ثبت شد.`)
+        handleClearForm()
+        await onSaved()
+      }
+    } catch (error) {
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'message' in error &&
+        typeof error.message === 'string'
+          ? error.message
+          : editingFamily
+            ? 'به‌روزرسانی گروه انجام نشد.'
+            : 'ثبت گروه انجام نشد.'
+
+      toast.error(studioMutationError(error, message))
+    } finally {
+      setSaving(false)
+    }
   }
+
+  const handleDeleteClick = (family: Family) => {
+    const dependentObligations = catalog.filter((item) => item.obligation.family_id === family.id)
+    const dependencies = dependentObligations.map((item) => ({
+      formName: 'تکلیف قانونی در کاتالوگ',
+      details: `${item.obligation.title} (کد: ${item.obligation.code})`,
+      iconType: 'obligation' as const,
+    }))
+
+    setDeleteGuard({
+      isOpen: true,
+      family,
+      dependencies,
+      isDeleting: false,
+    })
+  }
+
+  const handleConfirmDelete = async () => {
+    const family = deleteGuard.family
+    if (!family) return
+
+    setDeleteGuard((prev) => ({ ...prev, isDeleting: true }))
+
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase
+          .from('obligation_families')
+          .delete()
+          .eq('id', family.id)
+
+        if (error) throw error
+      } else {
+        const result = mockStudioDb.deleteFamily(family.id)
+        if (!result.success) {
+          throw new Error(result.error || 'حذف گروه انجام نشد.')
+        }
+      }
+
+      toast.success(`گروه «${family.title}» با موفقیت حذف شد.`)
+      if (editingFamily?.id === family.id) {
+        handleCancelEdit()
+      }
+      setDeleteGuard({ isOpen: false, family: null, dependencies: [], isDeleting: false })
+      await onSaved()
+    } catch (error) {
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'message' in error &&
+        typeof error.message === 'string'
+          ? error.message
+          : 'حذف گروه انجام نشد.'
+
+      toast.error(studioMutationError(error, message))
+      setDeleteGuard((prev) => ({ ...prev, isDeleting: false }))
+    }
+  }
+
+  // Filtered families list
+  const filteredFamilies = useMemo(() => {
+    return families.filter((f) => {
+      const matchesDomain = domainFilter === 'ALL' || f.domain === domainFilter
+      const query = searchQuery.trim().toLowerCase()
+      if (!query) return matchesDomain
+
+      const titleMatch = (f.title || '').toLowerCase().includes(query)
+      const codeMatch = (f.code || '').toLowerCase().includes(query)
+      const descMatch = (f.description || '').toLowerCase().includes(query)
+      return matchesDomain && (titleMatch || codeMatch || descMatch)
+    })
+  }, [families, domainFilter, searchQuery])
+
+  // Summary counts
+  const taxCount = families.filter((f) => f.domain === 'TAX').length
+  const insuranceCount = families.filter((f) => f.domain === 'INSURANCE').length
+
+  return (
+    <div className="space-y-8 pb-12" dir="rtl">
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-xl border border-zinc-800 bg-[#141615] p-4">
+          <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <FolderTree className="h-4 w-4 text-amber-400" />
+            مجموع گروه‌ها
+          </div>
+          <p className="mt-2 text-xl font-black text-zinc-100">{families.length.toLocaleString('fa-IR')}</p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-[#141615] p-4">
+          <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <Scale className="h-4 w-4 text-emerald-400" />
+            حوزه مالیات
+          </div>
+          <p className="mt-2 text-xl font-black text-emerald-400">{taxCount.toLocaleString('fa-IR')}</p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-[#141615] p-4">
+          <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <ShieldAlert className="h-4 w-4 text-sky-400" />
+            حوزه بیمه
+          </div>
+          <p className="mt-2 text-xl font-black text-sky-400">{insuranceCount.toLocaleString('fa-IR')}</p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-[#141615] p-4">
+          <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <BookOpenCheck className="h-4 w-4 text-amber-400" />
+            کل تکالیف تعریف‌شده
+          </div>
+          <p className="mt-2 text-xl font-black text-amber-400">{catalog.length.toLocaleString('fa-IR')}</p>
+        </div>
+      </div>
+
+      {/* Main Two-Column Layout */}
+      <div className="grid gap-6 lg:grid-cols-12">
+        {/* Right Form Card */}
+        <div id="family-form-container" className="lg:col-span-5">
+          <div className={`rounded-2xl border ${editingFamily ? 'border-amber-600/80 bg-[#171612]' : 'border-zinc-800 bg-[#141615]'} p-5 shadow-xl transition-all`}>
+            <div className="mb-5 flex items-center justify-between border-b border-zinc-800/80 pb-4">
+              <div className="flex items-center gap-2.5">
+                {editingFamily ? (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-950/80 border border-amber-800/80 text-amber-400">
+                    <Pencil className="h-4 w-4" />
+                  </div>
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-950/80 border border-emerald-800/80 text-emerald-400">
+                    <FolderPlus className="h-4 w-4" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="font-bold text-zinc-100">
+                    {editingFamily ? 'ویرایش مشخصات گروه' : 'تعریف گروه جدید'}
+                  </h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    {editingFamily ? `در حال ویرایش گروه: «${editingFamily.title}»` : 'ایجاد سرفصل تازه برای تکالیف و تعهدات'}
+                  </p>
+                </div>
+              </div>
+              <Badge variant={editingFamily ? 'outline' : 'default'} className={editingFamily ? 'border-amber-700 text-amber-400 bg-amber-950/50' : 'bg-emerald-950 text-emerald-300 border-emerald-800'}>
+                {editingFamily ? 'حالت ویرایش' : 'گروه جدید'}
+              </Badge>
+            </div>
+
+            <div className="space-y-4">
+              <Field label="کد شناسه انگلیسی (Code)">
+                <Input
+                  value={code}
+                  onChange={(e) => setCode(normalizeCode(e.target.value))}
+                  dir="ltr"
+                  maxLength={50}
+                  placeholder="DIRECT_TAX"
+                  className="font-mono text-left bg-zinc-950/70 border-zinc-800 focus:border-amber-500"
+                />
+                <p className="text-[11px] text-zinc-500 mt-1">حداقل ۲ حرف بزرگ انگلیسی، عدد یا زیرخط (بدون فاصله).</p>
+              </Field>
+
+              <Field label="عنوان فارسی گروه">
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="مثال: مالیات‌های مستقیم (قانون مالیات‌های مستقیم)"
+                  className="bg-zinc-950/70 border-zinc-800 focus:border-amber-500"
+                />
+              </Field>
+
+              <Field label="حوزه تکالیف">
+                <Select value={domain} onValueChange={setDomain}>
+                  <SelectTrigger className="bg-zinc-950/70 border-zinc-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TAX">مالیات (سازمان امور مالیاتی)</SelectItem>
+                    <SelectItem value="INSURANCE">بیمه (سازمان تأمین اجتماعی)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <Field label="توضیحات تکمیلی (اختیاری)">
+                <Input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="شرح و دامنه شمول این گروه از تکالیف..."
+                  className="bg-zinc-950/70 border-zinc-800 focus:border-amber-500"
+                />
+              </Field>
+
+              <div className="flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-3.5 mt-2">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-bold text-zinc-200 cursor-pointer" htmlFor="is-active-switch">
+                    وضعیت فعال بودن گروه
+                  </Label>
+                  <p className="text-[11px] text-zinc-500">
+                    گروه‌های فعال در زمان ثبت تعهد جدید قابل انتخاب خواهند بود.
+                  </p>
+                </div>
+                <Switch
+                  id="is-active-switch"
+                  checked={isActive}
+                  onCheckedChange={setIsActive}
+                />
+              </div>
+
+              <div className="pt-3 flex items-center gap-2">
+                <Button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void handleSave()}
+                  className={`flex-1 font-bold text-xs h-10 gap-1.5 shadow-lg ${
+                    editingFamily
+                      ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : editingFamily ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      ذخیره تغییرات گروه
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      ثبت و ایجاد گروه جدید
+                    </>
+                  )}
+                </Button>
+
+                {editingFamily ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCancelEdit}
+                    disabled={saving}
+                    className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-xs h-10 px-4 gap-1.5"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    انصراف
+                  </Button>
+                ) : (
+                  (code || title || description || domain !== 'TAX' || !isActive) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={handleClearForm}
+                      disabled={saving}
+                      className="text-zinc-400 hover:text-zinc-200 text-xs h-10 px-3"
+                    >
+                      پاک‌کردن
+                    </Button>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Left List Card */}
+        <div className="lg:col-span-7">
+          <div className="rounded-2xl border border-zinc-800 bg-[#101211] shadow-xl overflow-hidden flex flex-col h-full">
+            <div className="border-b border-zinc-800 p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h3 className="flex items-center gap-2 font-bold text-zinc-100">
+                    <FolderTree className="h-5 w-5 text-amber-400" />
+                    فهرست گروه‌های تعریف‌شده
+                  </h3>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    برای ویرایش یا حذف هر گروه، از دکمه‌های ستون عملیات استفاده کنید.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 bg-zinc-900/80 border border-zinc-800 p-1 rounded-xl self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setDomainFilter('ALL')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                      domainFilter === 'ALL'
+                        ? 'bg-amber-500 text-zinc-950 font-bold'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    همه ({families.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDomainFilter('TAX')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                      domainFilter === 'TAX'
+                        ? 'bg-emerald-600 text-white font-bold'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    مالیات ({taxCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDomainFilter('INSURANCE')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                      domainFilter === 'INSURANCE'
+                        ? 'bg-sky-600 text-white font-bold'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    بیمه ({insuranceCount})
+                  </button>
+                </div>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="جستجو بر اساس عنوان، کد انگلیسی یا شرح گروه..."
+                  className="pr-9 bg-zinc-950/60 border-zinc-800 text-xs h-9"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Groups Table */}
+            <div className="flex-1 overflow-x-auto">
+              {filteredFamilies.length === 0 ? (
+                <div className="py-16 text-center text-zinc-500 text-xs space-y-2">
+                  <FolderTree className="mx-auto h-8 w-8 text-zinc-700" />
+                  <p>هیچ گروهی متناسب با جستجو یافت نشد.</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent border-zinc-800">
+                      <TableHead className="w-12 text-center">ردیف</TableHead>
+                      <TableHead>عنوان و کد گروه</TableHead>
+                      <TableHead className="text-center">حوزه</TableHead>
+                      <TableHead className="text-center">تکالیف متصل</TableHead>
+                      <TableHead className="text-center">وضعیت</TableHead>
+                      <TableHead className="text-center w-36">عملیات</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredFamilies.map((family, index) => {
+                      const linkedCount = catalog.filter((item) => item.obligation.family_id === family.id).length
+                      const isCurrentlyEditing = editingFamily?.id === family.id
+
+                      return (
+                        <TableRow
+                          key={family.id}
+                          className={`border-zinc-800/60 transition-colors ${
+                            isCurrentlyEditing
+                              ? 'bg-amber-950/30 border-amber-700/50'
+                              : 'hover:bg-zinc-900/40'
+                          }`}
+                        >
+                          <TableCell className="text-center font-bold text-zinc-500 text-xs">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-zinc-100 text-sm">{family.title}</span>
+                                {isCurrentlyEditing && (
+                                  <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-700/50">
+                                    در حال ویرایش
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="font-mono text-[11px] text-zinc-400 dir-ltr bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+                                  {family.code}
+                                </span>
+                                {family.description && (
+                                  <span className="text-[11px] text-zinc-500 truncate max-w-xs">
+                                    · {family.description}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {family.domain === 'INSURANCE' ? (
+                              <span className="rounded-full bg-sky-950/70 border border-sky-800/80 px-2.5 py-0.5 text-[11px] font-semibold text-sky-300">
+                                بیمه
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-emerald-950/70 border border-emerald-800/80 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+                                مالیات
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                                linkedCount > 0
+                                  ? 'bg-amber-950/60 border border-amber-800/70 text-amber-300'
+                                  : 'bg-zinc-900 border border-zinc-800 text-zinc-500'
+                              }`}
+                            >
+                              {linkedCount > 0 ? `${linkedCount.toLocaleString('fa-IR')} تکلیف` : 'بدون تکلیف'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {family.is_active !== false ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                فعال
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-500">
+                                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+                                غیرفعال
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <Button
+                                size="sm"
+                                variant={isCurrentlyEditing ? 'default' : 'outline'}
+                                className={
+                                  isCurrentlyEditing
+                                    ? 'bg-amber-500 text-zinc-950 font-bold h-8 text-xs gap-1 px-2.5'
+                                    : 'border-zinc-700 hover:bg-zinc-800 text-zinc-200 h-8 text-xs gap-1 px-2.5'
+                                }
+                                onClick={() => handleStartEdit(family)}
+                              >
+                                <Pencil className="h-3 w-3" />
+                                ویرایش
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-900/60 text-red-400 hover:bg-red-950/60 h-8 text-xs gap-1 px-2.5"
+                                onClick={() => handleDeleteClick(family)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                حذف
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Delete Guard Modal */}
+      <DeleteGuardModal
+        isOpen={deleteGuard.isOpen}
+        onClose={() => setDeleteGuard({ isOpen: false, family: null, dependencies: [], isDeleting: false })}
+        title={deleteGuard.family?.title ?? 'گروه'}
+        entityType="گروه تکالیف"
+        description={`گروه «${deleteGuard.family?.title ?? ''}» با کد انگلیسی ${deleteGuard.family?.code ?? ''}`}
+        checkResult={{
+          hasDependencies: deleteGuard.dependencies.length > 0,
+          dependencies: deleteGuard.dependencies,
+        }}
+        isDeleting={deleteGuard.isDeleting}
+        onConfirmDelete={() => void handleConfirmDelete()}
+      />
+    </div>
+  )
 }
-  return <Editor title="گروه جدید"><Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={50} placeholder="DIRECT_TAX" /></Field><Field label="عنوان"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مالیات‌های مستقیم" /></Field><Field label="حوزه"><Select value={domain} onValueChange={setDomain}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TAX">مالیات</SelectItem><SelectItem value="INSURANCE">بیمه</SelectItem></SelectContent></Select></Field><SaveButton onClick={save} disabled={saving} /></Editor>
-  }
 
 function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; onSaved: (versionId: string) => Promise<void>; onDirtyChange: (dirty: boolean) => void }) {
   const [familyId, setFamilyId] = useState(families[0]?.id ?? '')
@@ -1303,19 +3461,72 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
   )
 }
 
-function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: string; nextPriority: number; onSaved: () => Promise<void> }) {
+function EligibilityRuleForm({
+  versionId,
+  nextPriority,
+  editingRule,
+  editingConditions,
+  onCancelEdit,
+  onSaved,
+}: {
+  versionId: string
+  nextPriority: number
+  editingRule?: RuleSet | null
+  editingConditions?: Array<{ fact_key: string; operator: string; expected_value: any }>
+  onCancelEdit?: () => void
+  onSaved: () => Promise<void>
+}) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
+  const [priority, setPriority] = useState<number>(nextPriority)
   const [explanation, setExplanation] = useState('')
   const [outcome, setOutcome] = useState('ELIGIBLE')
   const [conditions, setConditions] = useState<DraftCondition[]>([
     { fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' },
   ])
 
+  useEffect(() => {
+    if (editingRule) {
+      setOpen(true)
+      setTitle(editingRule.title || '')
+      setPriority(editingRule.priority ?? nextPriority)
+      setOutcome(editingRule.outcome || 'ELIGIBLE')
+      setExplanation(editingRule.explanation || '')
+      if (editingConditions && editingConditions.length > 0) {
+        setConditions(
+          editingConditions.map((c) => ({
+            fact: c.fact_key,
+            operator: c.operator,
+            expected: Array.isArray(c.expected_value)
+              ? c.expected_value.join(', ')
+              : c.expected_value !== null && c.expected_value !== undefined
+                ? String(c.expected_value)
+                : '',
+          }))
+        )
+      } else {
+        setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' }])
+      }
+    } else {
+      setPriority(nextPriority)
+    }
+  }, [editingRule, editingConditions, nextPriority])
+
   const updateCondition = (index: number, patch: Partial<DraftCondition>) => {
     setConditions((current) => current.map((condition, position) =>
       position === index ? { ...condition, ...patch } : condition
     ))
+  }
+
+  const handleCancel = () => {
+    if (window.confirm('تغییرات قاعده ذخیره نشده است. خارج می‌شوید؟')) {
+      setOpen(false)
+      setTitle('')
+      setExplanation('')
+      setOutcome('ELIGIBLE')
+      setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' }])
+      onCancelEdit?.()
+    }
   }
 
   const save = async () => {
@@ -1334,10 +3545,84 @@ function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: 
       }
     }
 
+    const currentPriority = priority > 0 ? priority : nextPriority
+
+    if (editingRule) {
+      if (!isSupabaseConfigured) {
+        mockStudioDb.updateRuleSet(editingRule.id, {
+          priority: currentPriority,
+          title: title.trim(),
+          outcome,
+          explanation: explanation.trim(),
+          conditions: conditions.map((c) => ({
+            fact: c.fact,
+            operator: c.operator,
+            expected: numericFacts.has(c.fact)
+              ? Number(c.expected)
+              : c.operator === 'IN'
+                ? c.expected.split(',').map((v) => v.trim()).filter(Boolean)
+                : c.expected.trim(),
+          })),
+        })
+        toast.success(`قاعده «${title.trim()}» با موفقیت ویرایش شد.`)
+        setOpen(false)
+        onCancelEdit?.()
+        await onSaved()
+        return
+      }
+
+      try {
+        const { error: ruleUpdateError } = await supabase
+          .from('eligibility_rule_sets')
+          .update({
+            priority: currentPriority,
+            title: title.trim(),
+            outcome,
+            explanation: explanation.trim(),
+          })
+          .eq('id', editingRule.id)
+
+        if (ruleUpdateError) throw ruleUpdateError
+
+        await supabase.from('eligibility_conditions').delete().eq('rule_set_id', editingRule.id)
+
+        const rows = conditions.map((condition, index) => {
+          let expectedValue: Json | undefined
+          if (!noValueOperators.has(condition.operator)) {
+            expectedValue = numericFacts.has(condition.fact)
+              ? Number(condition.expected)
+              : condition.operator === 'IN'
+                ? condition.expected.split(',').map((value) => value.trim()).filter(Boolean)
+                : condition.expected.trim()
+          }
+          return {
+            rule_set_id: editingRule.id,
+            sequence: index + 1,
+            fact_key: condition.fact,
+            operator: condition.operator,
+            expected_value: expectedValue,
+          }
+        })
+        const { error: conditionError } = await supabase.from('eligibility_conditions').insert(rows)
+        if (conditionError) {
+          toast.error(conditionError.message)
+          return
+        }
+
+        toast.success(`قاعده «${title.trim()}» با موفقیت ویرایش شد.`)
+        setOpen(false)
+        onCancelEdit?.()
+        await onSaved()
+      } catch (err) {
+        toast.error(errorMessage(err, 'ویرایش قاعده انجام نشد.'))
+      }
+      return
+    }
+
     if (!isSupabaseConfigured) {
       mockStudioDb.addRuleSet({
         obligation_version_id: versionId,
-        priority: nextPriority,
+        priority: currentPriority,
         title: title.trim(),
         outcome,
         explanation: explanation.trim(),
@@ -1353,16 +3638,18 @@ function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: 
       })
       toast.success('قاعده تشخیص ثبت شد.')
       setOpen(false)
+      setTitle('')
+      setExplanation('')
       await onSaved()
       return
     }
 
     try {
-      const { data: rule, error } = await supabase.from('eligibility_rule_sets').insert({ obligation_version_id: versionId, priority: nextPriority, title: title.trim(), outcome, explanation: explanation.trim() }).select().single()
+      const { data: rule, error } = await supabase.from('eligibility_rule_sets').insert({ obligation_version_id: versionId, priority: currentPriority, title: title.trim(), outcome, explanation: explanation.trim() }).select().single()
       if (error) {
         mockStudioDb.addRuleSet({
           obligation_version_id: versionId,
-          priority: nextPriority,
+          priority: currentPriority,
           title: title.trim(),
           outcome,
           explanation: explanation.trim(),
@@ -1374,6 +3661,8 @@ function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: 
         })
         toast.success('قاعده تشخیص ثبت شد.')
         setOpen(false)
+        setTitle('')
+        setExplanation('')
         await onSaved()
         return
       }
@@ -1398,11 +3687,13 @@ function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: 
       if (conditionError) { await supabase.from('eligibility_rule_sets').delete().eq('id', rule.id); toast.error(conditionError.message); return }
       toast.success('قاعده تشخیص ثبت شد.')
       setOpen(false)
+      setTitle('')
+      setExplanation('')
       await onSaved()
     } catch {
       mockStudioDb.addRuleSet({
         obligation_version_id: versionId,
-        priority: nextPriority,
+        priority: currentPriority,
         title: title.trim(),
         outcome,
         explanation: explanation.trim(),
@@ -1414,45 +3705,115 @@ function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: 
       })
       toast.success('قاعده تشخیص ثبت شد.')
       setOpen(false)
+      setTitle('')
+      setExplanation('')
       await onSaved()
     }
   }
-  if (!open) return <Button variant="outline" className="mt-4 w-full border-zinc-700 gap-2" onClick={() => setOpen(true)}><Plus className="h-4 w-4" />افزودن قاعده</Button>
+
+  if (!open && !editingRule) return <Button variant="outline" className="mt-4 w-full border-zinc-700 gap-2" onClick={() => { setOpen(true); setTitle(''); setExplanation(''); setOutcome('ELIGIBLE'); setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' }]) }}><Plus className="h-4 w-4" />افزودن قاعده جدید</Button>
   return (
-    <div data-studio-dirty="true" className="mt-4 space-y-3 rounded-xl border border-zinc-800 p-4">
-      <Field label="عنوان قاعده"><Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مشمولیت اشخاص حقوقی" /></Field>
-      <Field label="نتیجه"><Select value={outcome} onValueChange={setOutcome}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ELIGIBLE">مشمول</SelectItem><SelectItem value="NOT_ELIGIBLE">غیرمشمول</SelectItem><SelectItem value="REVIEW">نیازمند بررسی</SelectItem></SelectContent></Select></Field>
+    <div data-studio-dirty="true" className="mt-4 space-y-3 rounded-xl border border-zinc-800 bg-[#161817] p-4">
+      <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+        <p className="text-sm font-bold text-amber-300">
+          {editingRule ? `ویرایش قاعده مشمولیت (${editingRule.title})` : 'افزودن قاعده مشمولیت جدید'}
+        </p>
+        {editingRule && (
+          <span className="rounded bg-amber-950/70 px-2 py-0.5 text-xs text-amber-300 border border-amber-800/60">حالت ویرایش</span>
+        )}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="sm:col-span-2">
+          <Field label="عنوان قاعده"><Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مشمولیت اشخاص حقوقی" /></Field>
+        </div>
+        <div>
+          <Field label="اولویت اجرا"><Input type="number" min={1} value={priority} onChange={(event) => setPriority(Number(event.target.value))} /></Field>
+        </div>
+      </div>
+      <Field label="نتیجه مشمولیت"><Select value={outcome} onValueChange={setOutcome}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ELIGIBLE">مشمول قطعی (ELIGIBLE)</SelectItem><SelectItem value="NOT_ELIGIBLE">غیرمشمول (NOT_ELIGIBLE)</SelectItem><SelectItem value="REVIEW">نیازمند بررسی (REVIEW)</SelectItem></SelectContent></Select></Field>
       <div className="space-y-3">
         {conditions.map((condition, index) => {
           const operatorOptions = allowedOperators(condition.fact)
           return (
-            <div key={index} className="rounded-lg border border-zinc-800 p-3">
+            <div key={index} className="rounded-lg border border-zinc-800 bg-[#121413] p-3">
               <p className="mb-3 text-xs text-zinc-500">شرط {index + 1} (همهٔ شرط‌ها باید برقرار باشند)</p>
               <div className="space-y-3">
-                <Field label="بر اساس"><Select value={condition.fact} onValueChange={(fact) => updateCondition(index, { fact, operator: allowedOperators(fact)[0]?.[0] ?? 'EQ', expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{FACTS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
-                <Field label="شرط"><Select value={condition.operator} onValueChange={(operator) => updateCondition(index, { operator, expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{operatorOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
-                {!noValueOperators.has(condition.operator) && <Field label={condition.operator === 'IN' ? 'مقادیر (با ویرگول جدا کنید)' : 'مقدار'}><Input value={condition.expected} onChange={(event) => updateCondition(index, { expected: event.target.value })} /></Field>}
-                {conditions.length > 1 && <Button variant="ghost" className="text-red-400" onClick={() => setConditions((current) => current.filter((_, position) => position !== index))}>حذف این شرط</Button>}
+                <Field label="بر اساس فکت"><Select value={condition.fact} onValueChange={(fact) => updateCondition(index, { fact, operator: allowedOperators(fact)[0]?.[0] ?? 'EQ', expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{FACTS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label="عملگر شرط"><Select value={condition.operator} onValueChange={(operator) => updateCondition(index, { operator, expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{operatorOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
+                {!noValueOperators.has(condition.operator) && <Field label={condition.operator === 'IN' ? 'مقادیر (با ویرگول جدا کنید)' : 'مقدار مورد انتظار'}><Input value={condition.expected} onChange={(event) => updateCondition(index, { expected: event.target.value })} /></Field>}
+                {conditions.length > 1 && <Button variant="ghost" className="text-red-400 text-xs" onClick={() => setConditions((current) => current.filter((_, position) => position !== index))}>حذف این شرط</Button>}
               </div>
             </div>
           )
         })}
       </div>
-      <Button variant="outline" className="w-full border-zinc-700" onClick={() => setConditions((current) => [...current, { fact: 'ENTITY_TYPE', operator: 'EQ', expected: '' }])}>افزودن شرط دیگر</Button>
+      <Button variant="outline" className="w-full border-zinc-700 text-xs gap-1" onClick={() => setConditions((current) => [...current, { fact: 'ENTITY_TYPE', operator: 'EQ', expected: '' }])}><Plus className="h-3.5 w-3.5" />افزودن شرط دیگر</Button>
       <Field label="توضیح ساده برای کاربر"><Input value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="توضیح قانونی برای شرکت‌ها..." /></Field>
-      <div className="flex gap-2"><SaveButton onClick={save} /><Button variant="ghost" onClick={() => { if (window.confirm('تغییرات قاعده ذخیره نشده است. خارج می‌شوید؟')) setOpen(false) }}>انصراف</Button></div>
+      <div className="flex gap-2">
+        <SaveButton onClick={save} />
+        <Button variant="ghost" onClick={handleCancel}>انصراف</Button>
+      </div>
     </div>
   )
 }
 
-function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version; nextSequence: number; onSaved: () => Promise<void> }) {
+function WorkflowStepForm({
+  version,
+  nextSequence,
+  editingStep,
+  onCancelEdit,
+  onSaved,
+}: {
+  version: Version
+  nextSequence: number
+  editingStep?: WorkflowStep | null
+  onCancelEdit?: () => void
+  onSaved: () => Promise<void>
+}) {
   const [open, setOpen] = useState(false)
+  const [sequence, setSequence] = useState<number>(nextSequence)
   const [title, setTitle] = useState('')
   const [code, setCode] = useState('')
   const [actor, setActor] = useState('USER')
+  const [instructions, setInstructions] = useState('')
   const [fieldLabel, setFieldLabel] = useState('')
   const [fieldKey, setFieldKey] = useState('')
   const [fieldType, setFieldType] = useState('text')
+
+  useEffect(() => {
+    if (editingStep) {
+      setOpen(true)
+      setSequence(editingStep.sequence ?? nextSequence)
+      setTitle(editingStep.title ? editingStep.title.replace(/^\d+\.\s*/, '') : '')
+      setCode(editingStep.code || '')
+      setActor(editingStep.actor || 'USER')
+      setInstructions(editingStep.instructions || '')
+      const firstField = editingStep.form_schema?.fields?.[0]
+      if (firstField) {
+        setFieldLabel(firstField.label || '')
+        setFieldKey(firstField.key || '')
+        setFieldType(firstField.type || 'text')
+      } else {
+        setFieldLabel('')
+        setFieldKey('')
+        setFieldType('text')
+      }
+    } else {
+      setSequence(nextSequence)
+    }
+  }, [editingStep, nextSequence])
+
+  const handleCancel = () => {
+    if (window.confirm('تغییرات مرحله ذخیره نشده است. خارج می‌شوید؟')) {
+      setOpen(false)
+      setTitle('')
+      setCode('')
+      setInstructions('')
+      setFieldLabel('')
+      setFieldKey('')
+      onCancelEdit?.()
+    }
+  }
 
   const save = async () => {
     if (!title.trim() || !code.trim()) {
@@ -1465,18 +3826,67 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
     }
 
     const fields: Json[] = fieldLabel.trim() ? [{ key: fieldKey.trim() || 'custom_field', label: fieldLabel.trim(), type: fieldType, required: true }] : []
+    const currentSequence = sequence > 0 ? sequence : nextSequence
+
+    if (editingStep) {
+      if (!isSupabaseConfigured) {
+        mockStudioDb.updateWorkflowStep(editingStep.id, {
+          sequence: currentSequence,
+          code: normalizeCode(code),
+          title: title.trim(),
+          actor,
+          instructions: instructions.trim() || null,
+          form_schema: { fields },
+        })
+        toast.success(`مرحله «${title.trim()}» با موفقیت ویرایش شد.`)
+        setOpen(false)
+        onCancelEdit?.()
+        await onSaved()
+        return
+      }
+
+      try {
+        const { error: stepUpdateError } = await supabase
+          .from('workflow_steps')
+          .update({
+            sequence: currentSequence,
+            code: normalizeCode(code),
+            title: title.trim(),
+            actor,
+            instructions: instructions.trim() || null,
+            form_schema: { fields },
+          })
+          .eq('id', editingStep.id)
+
+        if (stepUpdateError) throw stepUpdateError
+
+        toast.success(`مرحله «${title.trim()}» با موفقیت ویرایش شد.`)
+        setOpen(false)
+        onCancelEdit?.()
+        await onSaved()
+      } catch (err) {
+        toast.error(errorMessage(err, 'ویرایش مرحله انجام نشد.'))
+      }
+      return
+    }
 
     if (!isSupabaseConfigured) {
       mockStudioDb.addWorkflowStep({
         obligation_version_id: version.id,
-        sequence: nextSequence,
+        sequence: currentSequence,
         code: normalizeCode(code),
         title: title.trim(),
         actor,
+        instructions: instructions.trim() || undefined,
         form_schema: { fields },
       })
       toast.success('مرحله ثبت شد.')
       setOpen(false)
+      setTitle('')
+      setCode('')
+      setInstructions('')
+      setFieldLabel('')
+      setFieldKey('')
       await onSaved()
       return
     }
@@ -1490,70 +3900,111 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
         }
       }
       if (template) {
-        const result = await supabase.from('workflow_steps').insert({ workflow_template_id: template.id, sequence: nextSequence, code: normalizeCode(code), title: title.trim(), actor, form_schema: { fields } })
+        const result = await supabase.from('workflow_steps').insert({
+          workflow_template_id: template.id,
+          sequence: currentSequence,
+          code: normalizeCode(code),
+          title: title.trim(),
+          actor,
+          instructions: instructions.trim() || null,
+          form_schema: { fields },
+        })
         if (result.error) throw result.error
       } else {
         mockStudioDb.addWorkflowStep({
           obligation_version_id: version.id,
-          sequence: nextSequence,
+          sequence: currentSequence,
           code: normalizeCode(code),
           title: title.trim(),
           actor,
+          instructions: instructions.trim() || undefined,
           form_schema: { fields },
         })
       }
       toast.success('مرحله ثبت شد.')
       setOpen(false)
+      setTitle('')
+      setCode('')
+      setInstructions('')
+      setFieldLabel('')
+      setFieldKey('')
       await onSaved()
     } catch {
       mockStudioDb.addWorkflowStep({
         obligation_version_id: version.id,
-        sequence: nextSequence,
+        sequence: currentSequence,
         code: normalizeCode(code),
         title: title.trim(),
         actor,
+        instructions: instructions.trim() || undefined,
         form_schema: { fields },
       })
       toast.success('مرحله ثبت شد.')
       setOpen(false)
+      setTitle('')
+      setCode('')
+      setInstructions('')
+      setFieldLabel('')
+      setFieldKey('')
       await onSaved()
     }
   }
 
-  if (!open) return <Button variant="outline" className="mt-4 w-full border-zinc-700 gap-2" onClick={() => setOpen(true)}><Plus className="h-4 w-4" />افزودن مرحله</Button>
+  if (!open && !editingStep) return <Button variant="outline" className="mt-4 w-full border-zinc-700 gap-2" onClick={() => { setOpen(true); setTitle(''); setCode(''); setInstructions(''); setFieldLabel(''); setFieldKey('') }}><Plus className="h-4 w-4" />افزودن مرحله جدید</Button>
   return (
-    <div data-studio-dirty="true" className="mt-4 space-y-3 rounded-xl border border-zinc-800 p-4">
-      <Field label="عنوان مرحله"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="۱. بارگذاری اظهارنامه" /></Field>
-      <Field label="کد انگلیسی"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={80} placeholder="SUBMIT_RETURN" /></Field>
-      <Field label="مسئول انجام">
-        <Select value={actor} onValueChange={setActor}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="USER">کاربر شرکت</SelectItem>
-            <SelectItem value="PLATFORM_ADMIN">مدیر پلتفرم</SelectItem>
-            <SelectItem value="AUTHORITY">مرجع قانونی / ثبت توسط مدیر</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
-      <div className="rounded-lg border border-zinc-800 p-3">
-        <p className="mb-3 text-xs text-zinc-500">یک فیلد برای این مرحله (اختیاری)</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="عنوان فیلد"><Input value={fieldLabel} onChange={(e) => setFieldLabel(e.target.value)} placeholder="کد رهگیری" /></Field>
+    <div data-studio-dirty="true" className="mt-4 space-y-3 rounded-xl border border-zinc-800 bg-[#161817] p-4">
+      <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+        <p className="text-sm font-bold text-amber-300">
+          {editingStep ? `ویرایش مرحله فرایند (${editingStep.title})` : 'افزودن مرحله فرایند جدید'}
+        </p>
+        {editingStep && (
+          <span className="rounded bg-amber-950/70 px-2 py-0.5 text-xs text-amber-300 border border-amber-800/60">حالت ویرایش</span>
+        )}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-4">
+        <div className="sm:col-span-3">
+          <Field label="عنوان مرحله"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="بارگذاری اظهارنامه در سامانه" /></Field>
+        </div>
+        <div>
+          <Field label="ترتیب گام"><Input type="number" min={1} value={sequence} onChange={(e) => setSequence(Number(e.target.value))} /></Field>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="کد انگلیسی یکتا"><Input value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} dir="ltr" maxLength={80} placeholder="SUBMIT_RETURN" /></Field>
+        <Field label="مسئول انجام">
+          <Select value={actor} onValueChange={setActor}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="USER">کاربر شرکت</SelectItem>
+              <SelectItem value="PLATFORM_ADMIN">مدیر پلتفرم</SelectItem>
+              <SelectItem value="AUTHORITY">مرجع قانونی / ثبت توسط مدیر</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+      <Field label="راهنمای انجام برای کاربر (اختیاری)"><Input value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="مثال: ورود به درگاه ملی خدمات مالیاتی و بارگذاری فایل تراز آزمایشی..." /></Field>
+      <div className="rounded-lg border border-zinc-800 bg-[#121413] p-3">
+        <p className="mb-3 text-xs text-zinc-500">فیلد ورودی فرم برای این مرحله (اختیاری)</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="عنوان فیلد"><Input value={fieldLabel} onChange={(e) => setFieldLabel(e.target.value)} placeholder="کد رهگیری اظهارنامه" /></Field>
           <Field label="کلید انگلیسی"><Input value={fieldKey} onChange={(e) => setFieldKey(e.target.value)} dir="ltr" placeholder="tracking_code" /></Field>
           <Field label="نوع فیلد">
             <Select value={fieldType} onValueChange={setFieldType}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="text">متن</SelectItem>
-                <SelectItem value="number">عدد</SelectItem>
-                <SelectItem value="date">تاریخ</SelectItem>
-                <SelectItem value="checkbox">تأیید / بله‌خیر</SelectItem>
+                <SelectItem value="text">متن (Text)</SelectItem>
+                <SelectItem value="number">عدد (Number)</SelectItem>
+                <SelectItem value="date">تاریخ (Date)</SelectItem>
+                <SelectItem value="checkbox">تأیید / بله‌خیر (Boolean)</SelectItem>
               </SelectContent>
             </Select>
           </Field>
         </div>
       </div>
-      <div className="flex gap-2"><SaveButton onClick={save} /><Button variant="ghost" onClick={() => { if (window.confirm('تغییرات مرحله ذخیره نشده است. خارج می‌شوید؟')) setOpen(false) }}>انصراف</Button></div>
+      <div className="flex gap-2">
+        <SaveButton onClick={save} />
+        <Button variant="ghost" onClick={handleCancel}>انصراف</Button>
+      </div>
     </div>
   )
 }

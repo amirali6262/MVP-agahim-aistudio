@@ -2250,21 +2250,51 @@ export const mockStudioDb = {
     return [..._studioFamilies].sort((a, b) => a.title.localeCompare(b.title, 'fa'))
   },
 
-  createFamily(data: { code: string; title: string; domain: string }): MockObligationFamily {
+  createFamily(data: { code: string; title: string; domain: string; description?: string | null; is_active?: boolean }): MockObligationFamily {
     requireMockData()
     const family: MockObligationFamily = {
       id: 'fam-' + Date.now(),
       code: data.code.toUpperCase(),
       title: data.title,
       domain: data.domain,
-      description: null,
-      is_active: true,
+      description: data.description ?? null,
+      is_active: data.is_active ?? true,
       created_by: 'admin',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
     _studioFamilies.push(family)
     return family
+  },
+
+  updateFamily(
+    id: string,
+    data: { code?: string; title?: string; domain?: string; description?: string | null; is_active?: boolean }
+  ): MockObligationFamily | null {
+    requireMockData()
+    const family = _studioFamilies.find((item) => item.id === id)
+    if (!family) return null
+    if (data.code !== undefined) family.code = data.code.toUpperCase()
+    if (data.title !== undefined) family.title = data.title
+    if (data.domain !== undefined) family.domain = data.domain
+    if (data.description !== undefined) family.description = data.description
+    if (data.is_active !== undefined) family.is_active = data.is_active
+    family.updated_at = new Date().toISOString()
+    return family
+  },
+
+  deleteFamily(familyId: string): { success: boolean; error?: string } {
+    requireMockData()
+    const linkedObligations = _studioObligations.filter((ob) => ob.family_id === familyId)
+    if (linkedObligations.length > 0) {
+      return {
+        success: false,
+        error: `امکان حذف این گروه وجود ندارد زیرا ${linkedObligations.length} تکلیف به آن متصل است.`,
+      }
+    }
+    const initialLength = _studioFamilies.length
+    _studioFamilies = _studioFamilies.filter((item) => item.id !== familyId)
+    return { success: _studioFamilies.length < initialLength }
   },
 
   getObligations(): MockObligation[] {
@@ -2498,6 +2528,55 @@ export const mockStudioDb = {
     return ruleSet
   },
 
+  updateRuleSet(
+    ruleId: string,
+    data: {
+      priority?: number
+      title?: string
+      outcome?: string
+      explanation?: string
+      conditions?: Array<{ fact: string; operator: string; expected: any }>
+    }
+  ): MockEligibilityRuleSet | null {
+    requireMockData()
+    const idx = _studioRuleSets.findIndex((r) => r.id === ruleId)
+    if (idx === -1) return null
+
+    const existing = _studioRuleSets[idx]
+    _studioRuleSets[idx] = {
+      ...existing,
+      priority: data.priority ?? existing.priority,
+      title: data.title ?? existing.title,
+      outcome: data.outcome ?? existing.outcome,
+      explanation: data.explanation ?? existing.explanation,
+    }
+
+    if (data.conditions) {
+      _studioConditions = _studioConditions.filter((c) => c.rule_set_id !== ruleId)
+      data.conditions.forEach((c, cIdx) => {
+        _studioConditions.push({
+          id: 'cond-' + Date.now() + '-' + cIdx,
+          rule_set_id: ruleId,
+          sequence: cIdx + 1,
+          fact_key: c.fact,
+          operator: c.operator,
+          expected_value: c.expected,
+          created_at: new Date().toISOString(),
+        })
+      })
+    }
+
+    return _studioRuleSets[idx]
+  },
+
+  deleteRuleSet(ruleId: string): boolean {
+    requireMockData()
+    const initialLen = _studioRuleSets.length
+    _studioConditions = _studioConditions.filter((c) => c.rule_set_id !== ruleId)
+    _studioRuleSets = _studioRuleSets.filter((r) => r.id !== ruleId)
+    return _studioRuleSets.length < initialLen
+  },
+
   addWorkflowStep(data: {
     obligation_version_id: string
     sequence: number
@@ -2535,6 +2614,42 @@ export const mockStudioDb = {
     }
     _studioSteps.push(step)
     return step
+  },
+
+  updateWorkflowStep(
+    stepId: string,
+    data: {
+      sequence?: number
+      code?: string
+      title?: string
+      actor?: string
+      instructions?: string | null
+      form_schema?: any
+    }
+  ): MockWorkflowStep | null {
+    requireMockData()
+    const idx = _studioSteps.findIndex((s) => s.id === stepId)
+    if (idx === -1) return null
+
+    const existing = _studioSteps[idx]
+    _studioSteps[idx] = {
+      ...existing,
+      sequence: data.sequence ?? existing.sequence,
+      code: data.code ? data.code.toUpperCase() : existing.code,
+      title: data.title ?? existing.title,
+      actor: data.actor ?? existing.actor,
+      instructions: data.instructions !== undefined ? data.instructions : existing.instructions,
+      form_schema: data.form_schema !== undefined ? data.form_schema : existing.form_schema,
+    }
+
+    return _studioSteps[idx]
+  },
+
+  deleteWorkflowStep(stepId: string): boolean {
+    requireMockData()
+    const initialLen = _studioSteps.length
+    _studioSteps = _studioSteps.filter((s) => s.id !== stepId)
+    return _studioSteps.length < initialLen
   },
 
   getCirculars(): any[] {
