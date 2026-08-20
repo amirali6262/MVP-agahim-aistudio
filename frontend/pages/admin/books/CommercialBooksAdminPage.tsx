@@ -521,12 +521,11 @@ export default function CommercialBooksAdminPage() {
 
                       <div className="flex flex-col gap-1.5">
                         <Label className="text-white font-medium text-xs">تاریخ بخشنامه</Label>
-                        <Input
+                        <JalaliDatePicker
                           value={circularDate}
-                          onChange={(e) => setCircularDate(e.target.value)}
-                          placeholder="1404/05/20"
-                          className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-500 h-9 text-xs font-mono"
-                          dir="ltr"
+                          onChange={setCircularDate}
+                          placeholder="انتخاب تاریخ بخشنامه..."
+                          size="sm"
                         />
                       </div>
                     </div>

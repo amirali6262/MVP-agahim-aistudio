@@ -20,6 +20,7 @@ import { Badge } from '../lib/shadcn/badge'
 import { mockCommercialBooksDb, mockFulfillmentsDb } from '../lib/mockDb'
 import type { CommercialBookPeriod, TenantObligationFulfillment } from '../lib/supabase'
 import { SearchableYearSelect } from '../pages/admin/books/CommercialBooksAdminPage'
+import JalaliDatePicker from './JalaliDatePicker'
 
 interface Props {
   tenantId: string
@@ -320,12 +321,10 @@ export default function CompanyCommercialBooks({ tenantId, tenantName }: Props) 
                 <Label className="text-white font-medium text-xs">
                   تاریخ بارگذاری در سامانه (شمسی)
                 </Label>
-                <Input
+                <JalaliDatePicker
                   value={fulfillmentDate}
-                  onChange={(e) => setFulfillmentDate(e.target.value)}
-                  placeholder="1404/05/25"
-                  className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-500 h-10 text-sm font-mono"
-                  dir="ltr"
+                  onChange={setFulfillmentDate}
+                  placeholder="انتخاب تاریخ بارگذاری..."
                 />
               </div>
 

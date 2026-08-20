@@ -23,6 +23,7 @@ import { mockStudioDb } from '../../lib/mockDb'
 import type { Json, Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
+import JalaliDatePicker from '../../components/JalaliDatePicker'
 import { Label } from '../../lib/shadcn/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../lib/shadcn/table'
@@ -1117,7 +1118,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
       <Field label="ماده / مرجع قانونی"><Input value={legalReference} onChange={(e) => setLegalReference(e.target.value)} placeholder="ماده ۱۱۰ قانون مالیات‌های مستقیم" /></Field>
       <Field label="لینک منبع رسمی"><Input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} dir="ltr" placeholder="https://tax.gov.ir/..." /></Field>
       <Field label="لینک انجام کار"><Input value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} dir="ltr" placeholder="https://my.tax.gov.ir" /></Field>
-      <Field label="تاریخ شروع اعتبار"><Input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} /></Field>
+      <Field label="تاریخ شروع اعتبار"><JalaliDatePicker value={effectiveFrom} onChange={setEffectiveFrom} placeholder="انتخاب تاریخ..." /></Field>
       <Field label="نوع جریمه">
         <Select value={penaltyTypeValue} onValueChange={setPenaltyTypeValue}>
           <SelectTrigger><SelectValue /></SelectTrigger>

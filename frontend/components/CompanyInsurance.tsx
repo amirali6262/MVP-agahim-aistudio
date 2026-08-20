@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../lib/shadcn/select'
+import JalaliDatePicker from './JalaliDatePicker'
 
 interface Props {
   tenantId: string
@@ -360,11 +361,10 @@ export default function CompanyInsurance({ tenantId, tenantName, initialSubTab =
 
                 <div className="flex flex-col gap-1.5">
                   <Label className="text-white font-medium text-xs">تاریخ ارسال</Label>
-                  <Input
+                  <JalaliDatePicker
                     value={dateInput}
-                    onChange={(e) => setDateInput(e.target.value)}
-                    className="bg-zinc-900 border-zinc-700 text-white h-10 text-xs font-mono"
-                    dir="ltr"
+                    onChange={setDateInput}
+                    placeholder="انتخاب تاریخ ارسال..."
                   />
                 </div>
               </div>

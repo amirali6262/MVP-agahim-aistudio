@@ -12,6 +12,7 @@ interface Props {
   onConfirm?: () => void
   isDeleting?: boolean
   description?: string
+  allowCascadeDelete?: boolean
 }
 
 export default function DeleteGuardModal({
@@ -24,10 +25,25 @@ export default function DeleteGuardModal({
   onConfirm,
   isDeleting = false,
   description,
+  allowCascadeDelete = true,
 }: Props) {
   if (!isOpen) return null
 
-  const handleConfirm = onConfirmDelete || onConfirm || (() => {})
+  const handleConfirm = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    try {
+      if (typeof onConfirmDelete === 'function') {
+        await onConfirmDelete()
+      } else if (typeof onConfirm === 'function') {
+        await onConfirm()
+      }
+    } catch (err) {
+      console.error('Delete modal confirm execution error:', err)
+    }
+  }
 
   const getIcon = (iconType?: string) => {
     switch (iconType) {
@@ -45,12 +61,12 @@ export default function DeleteGuardModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" dir="rtl">
       <div
         className="w-full max-w-lg rounded-2xl border border-zinc-800 p-6 shadow-2xl overflow-hidden flex flex-col gap-5"
         style={{ background: '#1c1917' }}
       >
-        {checkResult.hasDependencies ? (
+        {checkResult.hasDependencies && !allowCascadeDelete ? (
           /* CANNOT DELETE STATE */
           <>
             <div className="flex items-start gap-3.5 pb-4 border-b border-zinc-800">
@@ -110,7 +126,7 @@ export default function DeleteGuardModal({
             </div>
           </>
         ) : (
-          /* CAN DELETE CONFIRMATION STATE */
+          /* CAN DELETE CONFIRMATION STATE (OR CASCADE DELETE) */
           <>
             <div className="flex items-start gap-3.5 pb-4 border-b border-zinc-800">
               <div className="w-11 h-11 rounded-xl bg-amber-950/80 border border-amber-800/80 flex items-center justify-center flex-shrink-0">
@@ -129,12 +145,28 @@ export default function DeleteGuardModal({
               </div>
             </div>
 
-            <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-4 text-xs text-zinc-300 leading-relaxed flex gap-2.5 items-center">
-              <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>
-                کنترل سیستم تأیید کرد: هیچ فرم یا داده وابسته دیگری برای این آیتم وجود ندارد. با انجام این عمل، آیتم به صورت کامل پاک خواهد شد.
-              </span>
-            </div>
+            {checkResult.hasDependencies ? (
+              <div className="bg-amber-950/40 border border-amber-800/60 rounded-xl p-3.5 text-xs text-amber-200 leading-relaxed flex flex-col gap-2">
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                  <span>هشدار: {checkResult.dependencies.length} وابستگی مرتبط نیز حذف خواهند شد:</span>
+                </div>
+                <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
+                  {checkResult.dependencies.map((dep, idx) => (
+                    <div key={idx} className="text-[11px] text-zinc-300 bg-zinc-900/70 rounded p-1.5 border border-zinc-800">
+                      • {dep.formName}: {dep.details}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-4 text-xs text-zinc-300 leading-relaxed flex gap-2.5 items-center">
+                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>
+                  کنترل سیستم تأیید کرد: این آیتم به صورت کامل و ایمن پاک خواهد شد.
+                </span>
+              </div>
+            )}
 
             <div className="pt-3 border-t border-zinc-800 flex items-center justify-end gap-3">
               <Button
@@ -157,7 +189,7 @@ export default function DeleteGuardModal({
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4" />
-                    حذف قطعی داده
+                    {checkResult.hasDependencies ? 'حذف به همراه موارد مرتبط' : 'حذف قطعی داده'}
                   </>
                 )}
               </Button>

@@ -8,6 +8,7 @@ import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
+import JalaliDatePicker from '../../components/JalaliDatePicker'
 
 type Circular = Tables<'legal_circulars'>
 type Version = Tables<'obligation_versions'>
@@ -298,7 +299,7 @@ function CircularForm({ options, onSaved }: { options: VersionOption[]; onSaved:
       <Field label="عنوان"><Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مثال: دستورالعمل تمدید مهلت تسلیم اظهارنامه عملکرد" /></Field>
       <Field label="شماره بخشنامه"><Input value={number} onChange={(event) => setNumber(event.target.value)} placeholder="مثال: ۲۰۰/۱۴۰۳/۵۱۰" /></Field>
       <Field label="لینک منبع رسمی"><Input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} dir="ltr" placeholder="https://tax.gov.ir/..." /></Field>
-      <Field label="تاریخ صدور"><Input type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} /></Field>
+      <Field label="تاریخ صدور"><JalaliDatePicker value={issuedOn} onChange={setIssuedOn} placeholder="انتخاب تاریخ صدور بخشنامه..." /></Field>
       <Field label="خلاصه قابل‌فهم برای کاربر"><Input value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="خلاصه اثر بخشنامه بر تکالیف شرکت‌ها" /></Field>
       <SaveButton onClick={save} disabled={!versionId} />
     </Editor>

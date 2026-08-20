@@ -22,6 +22,7 @@ import {
 import { mockDeadlineExtensionsDb, mockObligationsDb } from '../../../lib/mockDb'
 import type { DeadlineExtension, Obligation } from '../../../lib/supabase'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
+import JalaliDatePicker from '../../../components/JalaliDatePicker'
 import type { DependencyCheckResult } from '../../../lib/dependencyChecker'
 
 const FISCAL_YEARS = ['۱۴۰۲', '۱۴۰۳', '۱۴۰۴']
@@ -322,12 +323,11 @@ export default function DeadlineExtensionsPage() {
                     مقدار تمدید ({extensionType === 'تاریخ ثابت' ? 'تاریخ مهلت جدید' : 'تعداد روزهای اضافه'})
                   </Label>
                   {extensionType === 'تاریخ ثابت' ? (
-                    <Input
+                    <JalaliDatePicker
                       value={value}
-                      onChange={(e) => setValue(e.target.value)}
-                      placeholder="مثال: 1403/05/31"
-                      className="bg-zinc-900 border-zinc-700 text-zinc-100 h-11"
-                      dir="ltr"
+                      onChange={setValue}
+                      placeholder="انتخاب تاریخ تمدید..."
+                      size="lg"
                     />
                   ) : (
                     <Input

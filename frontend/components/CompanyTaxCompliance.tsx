@@ -895,11 +895,11 @@ export default function CompanyTaxCompliance({ tenantId, tenantName }: Props) {
                       </div>
                       <div>
                         <Label className="text-zinc-400 mb-1 block">تاریخ ابلاغ قانونی</Label>
-                        <Input
+                        <JalaliDatePicker
                           value={stageValues['assessment_event']?.['assessment_notice_date'] || ''}
-                          onChange={(e) => updateStageFieldValue('assessment_event', 'assessment_notice_date', e.target.value)}
-                          placeholder="1404/08/15"
-                          className="bg-zinc-900 border-zinc-700 text-xs h-8 text-white"
+                          onChange={(val) => updateStageFieldValue('assessment_event', 'assessment_notice_date', val)}
+                          placeholder="انتخاب تاریخ ابلاغ..."
+                          size="sm"
                         />
                       </div>
                       <div>

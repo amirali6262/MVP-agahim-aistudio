@@ -1,306 +1,607 @@
-import { useState, useMemo } from 'react'
-import { Calendar as CalendarIcon, ChevronRight, ChevronLeft, Sparkles, AlertCircle } from 'lucide-react'
-import { Button } from '../lib/shadcn/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../lib/shadcn/select'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
+import {
+  Calendar as CalendarIcon,
+  ChevronRight,
+  ChevronLeft,
+  ChevronsRight,
+  ChevronsLeft,
+  Clock,
+  Check,
+  X,
+  Sparkles,
+  Info,
+  CalendarDays,
+  Flame,
+} from 'lucide-react'
+import {
+  JALALI_MONTHS,
+  JALALI_WEEKDAYS,
+  OFFICIAL_HOLIDAYS,
+  TAX_DEADLINES_HIGHLIGHTS,
+  getJalaliMonthDays,
+  getJalaliFirstDayOfWeek,
+  getTodayJalali,
+  parseJalaliDate,
+  formatJalaliDate,
+  formatJalaliDatePersianText,
+  toPersianDigits,
+  toEnglishDigits,
+  isJalaliLeapYear,
+} from '../lib/jalaliUtils'
 
-// Jalali Month Names
-export const JALALI_MONTHS = [
-  'فروردین',
-  'اردیبهشت',
-  'خرداد',
-  'تیر',
-  'مرداد',
-  'شهریور',
-  'مهر',
-  'آبان',
-  'آذر',
-  'دی',
-  'بهمن',
-  'اسفند',
+// Common tax and legal deadline quick chips
+const COMMON_DEADLINE_PRESETS = [
+  { label: 'پلمپ دفاتر (۳۱ فروردین)', dateSuffix: '01/31' },
+  { label: 'اظهارنامه مشاغل (۳۱ تیر)', dateSuffix: '04/31' },
+  { label: 'اظهارنامه عملکرد حقوقی (۳۱ مرداد)', dateSuffix: '05/31' },
+  { label: 'ارزش افزوده تابستان (۱۵ مهر)', dateSuffix: '07/15' },
+  { label: 'معاملات فصلی پاییز (۳۰ آبان)', dateSuffix: '11/30' },
+  { label: 'پایان سال مالی (۲۹ اسفند)', dateSuffix: '12/29' },
 ]
 
-// Official Iranian Holidays & Statutory Tax Dates (Month-Day based in Jalali)
-const OFFICIAL_HOLIDAYS: Record<string, string> = {
-  '1/1': 'عید نوروز',
-  '1/2': 'عید نوروز',
-  '1/3': 'عید نوروز',
-  '1/4': 'عید نوروز',
-  '1/12': 'روز جمهوری اسلامی',
-  '1/13': 'روز طبیعت (سیزده بدر)',
-  '3/14': 'رحلت امام خمینی',
-  '3/15': 'قیام ۱۵ خرداد',
-  '11/22': 'پیروزی انقلاب اسلامی',
-  '12/29': 'ملی شدن صنعت نفت',
-  '12/30': 'آخرین روز سال (در سال‌های کبیسه)',
-}
-
-// Major statutory tax deadline milestones
-const TAX_DEADLINES_HIGHLIGHTS: Record<string, string> = {
-  '1/31': 'مهلت پلمپ دفاتر سال مالی جدید',
-  '4/31': 'مهلت اظهارنامه عملکرد و گزارشات فصلی',
-  '5/31': 'مهلت گزارشات سه‌ماهه اول / تسلیم اظهارنامه ارزش افزوده',
-  '6/31': 'پایان شش‌ماهه اول سال مالی',
-  '8/30': 'مهلت گزارشات سه‌ماهه دوم',
-  '11/30': 'مهلت گزارشات سه‌ماهه سوم',
-}
-
-// Years Range: 1360 to 1500
-const YEARS_RANGE = Array.from({ length: 141 }, (_, i) => 1360 + i)
-
-// Helper: check Jalali leap year
-export function isJalaliLeapYear(jy: number): boolean {
-  const breaks = [-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178]
-  let bl = breaks.length
-  let jp = breaks[0]
-  let jump = 0
-
-  if (jy < jp || jy >= breaks[bl - 1]) return false
-
-  for (let i = 1; i < bl; i += 1) {
-    const jm = breaks[i]
-    jump = jm - jp
-    if (jy < jm) break
-    jp = jm
-  }
-
-  let n = jy - jp
-  if (jump - n < 6) n = n - jump + (Math.floor(jump / 33) * 33)
-  let leap = ((n + 1) % 33) - 1
-  if (leap === -1) leap = 33
-
-  return leap % 4 === 0
-}
-
-// Get number of days in Jalali month
-export function getJalaliMonthDays(jy: number, jm: number): number {
-  if (jm >= 1 && jm <= 6) return 31
-  if (jm >= 7 && jm <= 11) return 30
-  if (jm === 12) return isJalaliLeapYear(jy) ? 30 : 29
-  return 30
-}
-
-interface Props {
-  value?: string // e.g., '1404/05/31'
+export interface JalaliDatePickerProps {
+  value?: string // e.g. '1404/05/31' or '2024-08-20'
   onChange: (value: string) => void
   label?: string
+  description?: string
   placeholder?: string
   disabled?: boolean
+  readOnly?: boolean
+  required?: boolean
+  error?: string
   className?: string
+  size?: 'sm' | 'md' | 'lg'
+  showQuickPresets?: boolean
+  allowClear?: boolean
 }
 
 export default function JalaliDatePicker({
   value,
   onChange,
   label,
-  placeholder = 'انتخاب تاریخ شمسی...',
+  description,
+  placeholder = 'انتخاب یا ورود تاریخ شمسی...',
   disabled = false,
+  readOnly = false,
+  required = false,
+  error,
   className = '',
-}: Props) {
+  size = 'md',
+  showQuickPresets = true,
+  allowClear = true,
+}: JalaliDatePickerProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [inputVal, setInputVal] = useState<string>('')
+  const [viewMode, setViewMode] = useState<'days' | 'months' | 'years'>('days')
 
-  // Parse current value or default to current Jalali year 1403/1404
-  const parsed = useMemo(() => {
-    if (value && value.includes('/')) {
-      const parts = value.split('/').map((p) => parseInt(p, 10))
-      if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
-        return { year: parts[0], month: parts[1], day: parts[2] }
-      }
-    }
-    return { year: 1403, month: 1, day: 1 }
+  const today = useMemo(() => getTodayJalali(), [])
+
+  // Parse currently selected value
+  const parsedValue = useMemo(() => {
+    return parseJalaliDate(value)
   }, [value])
 
-  const [viewYear, setViewYear] = useState<number>(parsed.year)
-  const [viewMonth, setViewMonth] = useState<number>(parsed.month)
+  // Synchronize internal text representation
+  useEffect(() => {
+    if (parsedValue) {
+      setInputVal(formatJalaliDate(parsedValue.year, parsedValue.month, parsedValue.day))
+    } else {
+      setInputVal(value ? toEnglishDigits(value) : '')
+    }
+  }, [value, parsedValue])
 
+  // Calendar navigation view state (defaults to value's year/month or today's)
+  const [viewYear, setViewYear] = useState<number>(() => parsedValue?.year ?? today.jy)
+  const [viewMonth, setViewMonth] = useState<number>(() => parsedValue?.month ?? today.jm)
+
+  // Update view position when opening or when value changes
+  useEffect(() => {
+    if (parsedValue) {
+      setViewYear(parsedValue.year)
+      setViewMonth(parsedValue.month)
+    }
+  }, [parsedValue])
+
+  // Click outside detection
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+        setViewMode('days')
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen])
+
+  // Month calculation for current view
   const daysInMonth = useMemo(() => {
     return getJalaliMonthDays(viewYear, viewMonth)
   }, [viewYear, viewMonth])
 
-  const handleSelectDay = (day: number) => {
-    const formattedMonth = viewMonth < 10 ? `0${viewMonth}` : `${viewMonth}`
-    const formattedDay = day < 10 ? `0${day}` : `${day}`
-    const selectedDateStr = `${viewYear}/${formattedMonth}/${formattedDay}`
-    onChange(selectedDateStr)
+  // First day of week index (0 = شنبه, ..., 6 = جمعه)
+  const firstDayOfWeek = useMemo(() => {
+    return getJalaliFirstDayOfWeek(viewYear, viewMonth)
+  }, [viewYear, viewMonth])
+
+  // Previous month day count for blank fillers
+  const prevMonthDays = useMemo(() => {
+    const prevM = viewMonth === 1 ? 12 : viewMonth - 1
+    const prevY = viewMonth === 1 ? viewYear - 1 : viewYear
+    return getJalaliMonthDays(prevY, prevM)
+  }, [viewYear, viewMonth])
+
+  const handleSelectDate = (year: number, month: number, day: number) => {
+    if (disabled || readOnly) return
+    const formatted = formatJalaliDate(year, month, day)
+    onChange(formatted)
     setIsOpen(false)
+    setViewMode('days')
   }
 
+  const handleClear = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    onChange('')
+    setInputVal('')
+  }
+
+  const handleSelectToday = () => {
+    setViewYear(today.jy)
+    setViewMonth(today.jm)
+    handleSelectDate(today.jy, today.jm, today.jd)
+  }
+
+  const handleSelectEndOfMonth = () => {
+    const lastDay = getJalaliMonthDays(viewYear, viewMonth)
+    handleSelectDate(viewYear, viewMonth, lastDay)
+  }
+
+  const handleQuickPreset = (dateSuffix: string) => {
+    const target = `${viewYear}/${dateSuffix}`
+    const parsed = parseJalaliDate(target)
+    if (parsed) {
+      handleSelectDate(parsed.year, parsed.month, parsed.day)
+    }
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value
+    setInputVal(raw)
+    const cleaned = toEnglishDigits(raw).replace(/[^\d\/]/g, '')
+    if (cleaned.length === 10 && cleaned.split('/').length === 3) {
+      const p = parseJalaliDate(cleaned)
+      if (p) {
+        onChange(formatJalaliDate(p.year, p.month, p.day))
+      }
+    }
+  }
+
+  const handleInputBlur = () => {
+    if (!inputVal.trim()) {
+      if (value) onChange('')
+      return
+    }
+    const p = parseJalaliDate(inputVal)
+    if (p) {
+      const formatted = formatJalaliDate(p.year, p.month, p.day)
+      onChange(formatted)
+      setInputVal(formatted)
+    } else {
+      // Revert if invalid
+      if (parsedValue) {
+        setInputVal(formatJalaliDate(parsedValue.year, parsedValue.month, parsedValue.day))
+      } else {
+        setInputVal(value || '')
+      }
+    }
+  }
+
+  // Navigation handlers
   const handlePrevMonth = () => {
     if (viewMonth === 1) {
-      if (viewYear > 1360) {
-        setViewYear(viewYear - 1)
-        setViewMonth(12)
-      }
+      setViewYear((y) => y - 1)
+      setViewMonth(12)
     } else {
-      setViewMonth(viewMonth - 1)
+      setViewMonth((m) => m - 1)
     }
   }
 
   const handleNextMonth = () => {
     if (viewMonth === 12) {
-      if (viewYear < 1500) {
-        setViewYear(viewYear + 1)
-        setViewMonth(1)
-      }
+      setViewYear((y) => y + 1)
+      setViewMonth(1)
     } else {
-      setViewMonth(viewMonth + 1)
+      setViewMonth((m) => m + 1)
     }
   }
 
+  const handlePrevYear = () => {
+    setViewYear((y) => y - 1)
+  }
+
+  const handleNextYear = () => {
+    setViewYear((y) => y + 1)
+  }
+
+  // Year decade range for years picker view
+  const yearDecadeStart = Math.floor(viewYear / 12) * 12
+
+  // Size styling
+  const sizeClasses = {
+    sm: 'h-9 text-xs px-2.5',
+    md: 'h-10 text-xs px-3',
+    lg: 'h-11 text-sm px-3.5',
+  }[size]
+
   return (
-    <div className={`relative flex flex-col gap-1.5 ${className}`}>
-      {label && <label className="text-xs font-semibold text-zinc-200">{label}</label>}
-
-      {/* Input Trigger Button */}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setIsOpen((v) => !v)}
-        className={`flex items-center justify-between w-full h-10 px-3.5 rounded-xl border text-xs font-medium transition-all ${
-          isOpen
-            ? 'border-[#E5A93C] ring-2 ring-[#E5A93C]/20 bg-zinc-900'
-            : 'border-zinc-700 bg-zinc-900/90 hover:border-zinc-600 text-white'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-      >
-        <div className="flex items-center gap-2">
-          <CalendarIcon className="w-4 h-4 text-[#E5A93C]" />
-          <span className={value ? 'text-white font-mono dir-ltr font-bold' : 'text-zinc-500'}>
-            {value || placeholder}
-          </span>
+    <div ref={containerRef} className={`relative flex flex-col gap-1.5 w-full ${className}`}>
+      {/* Label and Details */}
+      {label && (
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1">
+            {label}
+            {required && <span className="text-red-400 font-bold">*</span>}
+          </label>
+          {parsedValue && (
+            <span className="text-[11px] text-amber-400/90 font-medium">
+              {formatJalaliDatePersianText(parsedValue.year, parsedValue.month, parsedValue.day)}
+            </span>
+          )}
         </div>
-        <span className="text-[10px] text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded">تقویم شمسی</span>
-      </button>
+      )}
 
-      {/* Dropdown Calendar Modal */}
-      {isOpen && (
-        <div className="absolute top-12 right-0 z-50 w-80 rounded-2xl border border-zinc-700 bg-[#1c1917] p-4 shadow-2xl animate-in fade-in slide-in-from-top-2">
-          {/* Header Controls: Year & Month Selectors */}
-          <div className="flex items-center justify-between gap-2 pb-3 border-b border-zinc-800">
+      {/* Input Trigger Field */}
+      <div
+        className={`group relative flex items-center justify-between w-full rounded-xl border bg-[#181614] transition-all duration-200 ${sizeClasses} ${
+          error
+            ? 'border-red-500/80 ring-2 ring-red-500/20'
+            : isOpen
+            ? 'border-amber-500 ring-2 ring-amber-500/20 shadow-md shadow-amber-950/20'
+            : 'border-zinc-800 hover:border-zinc-700'
+        } ${disabled ? 'opacity-50 cursor-not-allowed bg-zinc-900/50' : ''}`}
+      >
+        <button
+          type="button"
+          disabled={disabled || readOnly}
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="flex items-center gap-2 flex-1 text-right cursor-pointer"
+        >
+          <div className="p-1 rounded-lg bg-amber-500/10 text-amber-400 group-hover:bg-amber-500/20 transition-colors">
+            <CalendarIcon className="w-4 h-4" />
+          </div>
+
+          <input
+            type="text"
+            disabled={disabled || readOnly}
+            value={inputVal}
+            onChange={handleInputChange}
+            onBlur={handleInputBlur}
+            onFocus={() => setIsOpen(true)}
+            placeholder={placeholder}
+            dir="ltr"
+            maxLength={10}
+            className="w-full bg-transparent text-zinc-100 placeholder:text-zinc-500 focus:outline-none font-mono text-xs sm:text-sm font-semibold tracking-wider"
+          />
+        </button>
+
+        <div className="flex items-center gap-1.5">
+          {allowClear && value && !disabled && !readOnly && (
             <button
               type="button"
-              onClick={handlePrevMonth}
-              className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800 text-zinc-300 hover:text-white"
-              title="ماه قبل"
+              onClick={handleClear}
+              className="p-1 rounded-md text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              title="پاک کردن تاریخ"
             >
-              <ChevronRight className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
+          )}
 
-            <div className="flex items-center gap-1.5">
-              {/* Month Picker */}
-              <Select
-                value={viewMonth.toString()}
-                onValueChange={(v) => setViewMonth(parseInt(v, 10))}
-              >
-                <SelectTrigger className="h-8 bg-zinc-900 border-zinc-700 text-white text-xs w-28 font-semibold">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-[#211d1a] border-zinc-700 max-h-56">
-                  {JALALI_MONTHS.map((m, idx) => (
-                    <SelectItem key={idx + 1} value={(idx + 1).toString()} className="text-xs text-white">
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <button
+            type="button"
+            disabled={disabled || readOnly}
+            onClick={() => setIsOpen((prev) => !prev)}
+            className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800/80 text-zinc-400 hover:text-amber-300 border border-zinc-700/60 transition-colors cursor-pointer"
+          >
+            تقویم
+          </button>
+        </div>
+      </div>
 
-              {/* Year Picker (1360 to 1500) */}
-              <Select
-                value={viewYear.toString()}
-                onValueChange={(v) => setViewYear(parseInt(v, 10))}
+      {description && !error && (
+        <p className="text-[11px] text-zinc-400 leading-tight">{description}</p>
+      )}
+
+      {error && (
+        <p className="text-[11px] text-red-400 flex items-center gap-1 font-medium">
+          <Info className="w-3 h-3" />
+          {error}
+        </p>
+      )}
+
+      {/* Popover Calendar */}
+      {isOpen && (
+        <div
+          dir="rtl"
+          className="absolute top-[calc(100%+6px)] right-0 z-50 w-80 sm:w-88 rounded-2xl border border-zinc-700/90 bg-[#191614] p-4 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+        >
+          {/* Header Bar */}
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handlePrevYear}
+                title="سال قبل"
+                className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
               >
-                <SelectTrigger className="h-8 bg-zinc-900 border-zinc-700 text-white text-xs w-20 font-bold font-mono">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-[#211d1a] border-zinc-700 max-h-56">
-                  {YEARS_RANGE.map((y) => (
-                    <SelectItem key={y} value={y.toString()} className="text-xs text-white font-mono">
-                      {y}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <ChevronsRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handlePrevMonth}
+                title="ماه قبل"
+                className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleNextMonth}
-              className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800 text-zinc-300 hover:text-white"
-              title="ماه بعد"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
+            {/* Month & Year Title Clickers */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setViewMode(viewMode === 'months' ? 'days' : 'months')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                  viewMode === 'months'
+                    ? 'bg-amber-500 text-zinc-950 shadow-md'
+                    : 'bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border border-zinc-700/60'
+                }`}
+              >
+                {JALALI_MONTHS[viewMonth - 1]}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode(viewMode === 'years' ? 'days' : 'years')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold font-mono transition-colors ${
+                  viewMode === 'years'
+                    ? 'bg-amber-500 text-zinc-950 shadow-md'
+                    : 'bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border border-zinc-700/60'
+                }`}
+              >
+                {viewYear}
+                {isJalaliLeapYear(viewYear) && (
+                  <span className="mr-1 text-[9px] font-normal text-emerald-400">کبیسه</span>
+                )}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleNextMonth}
+                title="ماه بعد"
+                className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNextYear}
+                title="سال بعد"
+                className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+              >
+                <ChevronsLeft className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
-          {/* Jalali Days Header */}
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-zinc-400 py-2 border-b border-zinc-800/60">
-            <span>ش</span>
-            <span>ی</span>
-            <span>د</span>
-            <span>س</span>
-            <span>چ</span>
-            <span>پ</span>
-            <span className="text-red-400">ج</span>
-          </div>
+          {/* VIEW: Months Selector Grid */}
+          {viewMode === 'months' && (
+            <div className="grid grid-cols-3 gap-2 py-3">
+              {JALALI_MONTHS.map((mName, idx) => {
+                const monthNum = idx + 1
+                const isCurrentView = viewMonth === monthNum
+                const isSelected = parsedValue?.year === viewYear && parsedValue?.month === monthNum
+                return (
+                  <button
+                    key={monthNum}
+                    type="button"
+                    onClick={() => {
+                      setViewMonth(monthNum)
+                      setViewMode('days')
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-semibold transition-all ${
+                      isSelected
+                        ? 'bg-amber-500 text-zinc-950 font-bold shadow-md shadow-amber-950/40'
+                        : isCurrentView
+                        ? 'bg-zinc-800 text-amber-300 border border-amber-500/40'
+                        : 'bg-zinc-900/70 text-zinc-200 hover:bg-zinc-800 border border-zinc-800'
+                    }`}
+                  >
+                    {mName}
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
-          {/* Days Grid */}
-          <div className="grid grid-cols-7 gap-1 pt-2">
-            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
-              const holidayKey = `${viewMonth}/${d}`
-              const isOfficialHoliday = OFFICIAL_HOLIDAYS[holidayKey]
-              const taxDeadlineNote = TAX_DEADLINES_HIGHLIGHTS[holidayKey]
-              const isSelected =
-                parsed.year === viewYear && parsed.month === viewMonth && parsed.day === d
+          {/* VIEW: Years Selector Grid */}
+          {viewMode === 'years' && (
+            <div className="py-2">
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 pb-2 mb-2 border-b border-zinc-800/60">
+                <span>انتخاب سال</span>
+                <span className="font-mono">{yearDecadeStart} - {yearDecadeStart + 11}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
+                {Array.from({ length: 12 }, (_, i) => yearDecadeStart + i).map((y) => {
+                  const isSelected = parsedValue?.year === y
+                  const isCurrentView = viewYear === y
+                  return (
+                    <button
+                      key={y}
+                      type="button"
+                      onClick={() => {
+                        setViewYear(y)
+                        setViewMode('days')
+                      }}
+                      className={`py-2 px-2 rounded-xl text-xs font-bold font-mono transition-all ${
+                        isSelected
+                          ? 'bg-amber-500 text-zinc-950 font-bold shadow-md shadow-amber-950/40'
+                          : isCurrentView
+                          ? 'bg-zinc-800 text-amber-300 border border-amber-500/40'
+                          : 'bg-zinc-900/70 text-zinc-200 hover:bg-zinc-800 border border-zinc-800'
+                      }`}
+                    >
+                      {y}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => handleSelectDay(d)}
-                  title={
-                    isOfficialHoliday
-                      ? `تعطیل رسمی: ${isOfficialHoliday}`
-                      : taxDeadlineNote
-                      ? `مهلت قانونی: ${taxDeadlineNote}`
-                      : `${d} ${JALALI_MONTHS[viewMonth - 1]}`
-                  }
-                  className={`relative flex items-center justify-center h-8 rounded-lg text-xs font-semibold font-mono transition-all ${
-                    isSelected
-                      ? 'bg-[#E5A93C] text-[#181614] font-bold shadow-lg scale-105'
-                      : isOfficialHoliday
-                      ? 'bg-red-950/60 border border-red-800/60 text-red-300 hover:bg-red-900/80'
-                      : taxDeadlineNote
-                      ? 'bg-amber-950/60 border border-amber-800/60 text-amber-300 hover:bg-amber-900/80'
-                      : 'bg-zinc-900/50 hover:bg-zinc-800 text-zinc-200 border border-zinc-800/60'
-                  }`}
-                >
-                  {d}
-                  {taxDeadlineNote && !isSelected && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          {/* VIEW: Standard Days Grid */}
+          {viewMode === 'days' && (
+            <>
+              {/* Weekdays Row */}
+              <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-zinc-400 py-2 border-b border-zinc-800/50">
+                {JALALI_WEEKDAYS.map((wd, i) => (
+                  <span
+                    key={i}
+                    className={`py-0.5 ${wd.isWeekend ? 'text-red-400 font-bold' : ''}`}
+                    title={wd.name}
+                  >
+                    {wd.short}
+                  </span>
+                ))}
+              </div>
 
-          {/* Footer Calendar Highlights Legend */}
-          <div className="mt-3 pt-2.5 border-t border-zinc-800 flex items-center justify-between text-[10px] text-zinc-400">
-            <span className="flex items-center gap-1 text-red-400">
-              <span className="w-2 h-2 rounded-full bg-red-500" /> تعطیلات رسمی
-            </span>
-            <span className="flex items-center gap-1 text-amber-400">
-              <span className="w-2 h-2 rounded-full bg-amber-400" /> مهلت‌های قانونی
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                onChange('1404/05/31')
-                setIsOpen(false)
-              }}
-              className="text-amber-300 hover:text-white h-6 text-[10px] p-0"
-            >
-              انتخاب ۳۱ مرداد
-            </Button>
+              {/* Day Cells Grid */}
+              <div className="grid grid-cols-7 gap-1 pt-2">
+                {/* Blank days from previous month for alignment */}
+                {Array.from({ length: firstDayOfWeek }).map((_, idx) => {
+                  const dayNum = prevMonthDays - firstDayOfWeek + idx + 1
+                  return (
+                    <div
+                      key={`prev-${idx}`}
+                      className="flex items-center justify-center h-8 rounded-lg text-[11px] font-mono text-zinc-600 select-none opacity-40"
+                    >
+                      {dayNum}
+                    </div>
+                  )
+                })}
+
+                {/* Days of Current Month */}
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
+                  const holidayKey = `${viewMonth}/${d}`
+                  const isOfficialHoliday = OFFICIAL_HOLIDAYS[holidayKey]
+                  const taxDeadlineInfo = TAX_DEADLINES_HIGHLIGHTS[holidayKey]
+                  const isSelected =
+                    parsedValue?.year === viewYear &&
+                    parsedValue?.month === viewMonth &&
+                    parsedValue?.day === d
+                  const isToday =
+                    today.jy === viewYear && today.jm === viewMonth && today.jd === d
+
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => handleSelectDate(viewYear, viewMonth, d)}
+                      title={
+                        isOfficialHoliday
+                          ? `تعطیل رسمی: ${isOfficialHoliday}`
+                          : taxDeadlineInfo
+                          ? `سررسید قانونی: ${taxDeadlineInfo.desc}`
+                          : isToday
+                          ? 'امروز'
+                          : `${d} ${JALALI_MONTHS[viewMonth - 1]}`
+                      }
+                      className={`relative flex items-center justify-center h-8 rounded-lg text-xs font-semibold font-mono transition-all duration-100 ${
+                        isSelected
+                          ? 'bg-amber-500 text-zinc-950 font-bold shadow-md shadow-amber-950/40 scale-105 z-10'
+                          : isToday
+                          ? 'border-2 border-amber-400 bg-amber-500/10 text-amber-300 font-bold'
+                          : isOfficialHoliday
+                          ? 'bg-red-950/40 border border-red-800/50 text-red-300 hover:bg-red-900/60'
+                          : taxDeadlineInfo
+                          ? 'bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 hover:bg-emerald-900/60 font-bold'
+                          : 'bg-zinc-900/60 hover:bg-zinc-800 text-zinc-200 border border-zinc-800/60 hover:border-zinc-700'
+                      }`}
+                    >
+                      {d}
+
+                      {/* Small Indicator Dot for Tax Deadline */}
+                      {taxDeadlineInfo && !isSelected && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#191614]" />
+                      )}
+
+                      {/* Small Red Dot for Holiday */}
+                      {isOfficialHoliday && !taxDeadlineInfo && !isSelected && (
+                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-400" />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+
+          {/* Quick Compliance Presets (Optional) */}
+          {showQuickPresets && (
+            <div className="mt-3 pt-2.5 border-t border-zinc-800/80">
+              <div className="text-[10px] font-semibold text-zinc-400 mb-1.5 flex items-center gap-1">
+                <Flame className="w-3 h-3 text-amber-400" />
+                سررسیدهای پرکاربرد مالیاتی سال {viewYear}:
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {COMMON_DEADLINE_PRESETS.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleQuickPreset(preset.dateSuffix)}
+                    className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-900 hover:bg-amber-950/60 hover:text-amber-300 text-zinc-300 border border-zinc-800 hover:border-amber-700/50 transition-colors"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Footer Shortcuts & Legend */}
+          <div className="mt-3 pt-2.5 border-t border-zinc-800 flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSelectToday}
+                className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-amber-300 font-medium transition-colors"
+              >
+                امروز ({today.formatted})
+              </button>
+              <button
+                type="button"
+                onClick={handleSelectEndOfMonth}
+                className="px-2 py-0.5 rounded bg-zinc-800/60 hover:bg-zinc-700 text-zinc-300 transition-colors"
+              >
+                پایان ماه
+              </button>
+            </div>
+
+            {allowClear && value && (
+              <button
+                type="button"
+                onClick={handleClear}
+                className="text-red-400 hover:text-red-300 transition-colors text-[10px]"
+              >
+                پاک کردن
+              </button>
+            )}
           </div>
         </div>
       )}

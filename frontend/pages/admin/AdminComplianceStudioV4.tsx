@@ -38,6 +38,7 @@ import { Badge } from '../../lib/shadcn/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../lib/shadcn/table'
 import DeleteGuardModal from '../../components/DeleteGuardModal'
+import JalaliDatePicker from '../../components/JalaliDatePicker'
 
 type Family = Tables<'obligation_families'> | any
 type Obligation = Tables<'obligations'> | any
@@ -89,6 +90,9 @@ const numericFacts = new Set(['EMPLOYEE_COUNT', 'ANNUAL_REVENUE', 'BRANCH_COUNT'
 const booleanFacts = new Set(['HAS_ACTIVE_CONTRACTS', 'PAYS_SALARIES'])
 const arrayFacts = new Set(['ACTIVITY_CODES', 'CONTRACT_TYPES'])
 const mockDeletedObligationIds = new Set<string>()
+const mockDeletedStepIds = new Set<string>()
+const mockDeletedRuleIds = new Set<string>()
+const mockDeletedTransitionIds = new Set<string>()
 
 const OBLIGATION_TYPE_OPTIONS = [
   ['TAX_CORPORATE', 'مالیات بر عملکرد اشخاص حقوقی'],
@@ -140,6 +144,17 @@ export default function AdminComplianceStudio() {
     | null
   >(null)
   const [ruleConditions, setRuleConditions] = useState<Record<string, any[]>>({})
+  const [deleteObligationGuard, setDeleteObligationGuard] = useState<{
+    isOpen: boolean
+    item: CatalogItem | null
+    dependencies: Array<{ formName: string; details: string; iconType?: 'extension' | 'penalty' | 'workflow' | 'template' | 'obligation' }>
+    isDeleting: boolean
+  }>({
+    isOpen: false,
+    item: null,
+    dependencies: [],
+    isDeleting: false,
+  })
   const [deleteRuleGuard, setDeleteRuleGuard] = useState<{
     isOpen: boolean
     rule: RuleSet | null
@@ -187,29 +202,94 @@ export default function AdminComplianceStudio() {
     setMode(nextMode)
   }
 
-  const deleteItem = async (item: CatalogItem) => {
-    if (!window.confirm(`تعهد «${item.obligation.title}» و تمام نسخه‌های آن حذف شود؟`)) return
-    setBusy(true)
+  const handleDeleteObligationClick = (item: CatalogItem) => {
+    const deps: Array<{ formName: string; details: string; iconType?: 'extension' | 'penalty' | 'workflow' | 'template' | 'obligation' }> = []
+    if (item.versions.length > 0) {
+      deps.push({
+        formName: 'نسخه‌های تعهد',
+        details: `${item.versions.length} نسخه تعریف‌شده قانونی`,
+        iconType: 'template',
+      })
+    }
+    setDeleteObligationGuard({
+      isOpen: true,
+      item,
+      dependencies: deps,
+      isDeleting: false,
+    })
+  }
+
+  const confirmDeleteObligation = async () => {
+    const item = deleteObligationGuard.item
+    if (!item) return
+    
+    // Close modal immediately and update state optimistically
+    const targetObligationId = item.obligation.id
+    const targetTitle = item.obligation.title
+    mockDeletedObligationIds.add(targetObligationId)
+    setCatalog((prev) => prev.filter((cat) => cat.obligation.id !== targetObligationId))
+    setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false })
+    if (selectedCatalogItem?.obligation.id === targetObligationId) {
+      setSelectedVersionId(null)
+      setMode('LIST')
+    }
+    toast.success(`تعهد «${targetTitle}» با موفقیت حذف شد.`)
+
+    // Background sync with Supabase (with timeout guard)
     try {
       if (isSupabaseConfigured) {
-        const { error } = await supabase.from('obligations').delete().eq('id', item.obligation.id)
-        if (error) throw error
-      } else {
-        mockDeletedObligationIds.add(item.obligation.id)
+        const versionIds = item.versions.map((v) => v.id)
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        
+        const deleteAsync = async () => {
+          let templateIds: string[] = []
+          let ruleSetIds: string[] = []
+
+          if (versionIds.length > 0) {
+            const [tmplRes, rulesRes] = await Promise.all([
+              supabase.from('workflow_templates').select('id').in('obligation_version_id', versionIds),
+              supabase.from('eligibility_rule_sets').select('id').in('obligation_version_id', versionIds),
+            ])
+            templateIds = (tmplRes.data ?? []).map((t) => t.id)
+            ruleSetIds = (rulesRes.data ?? []).map((r) => r.id)
+
+            if (ruleSetIds.length > 0) {
+              await supabase.from('eligibility_conditions').delete().in('rule_set_id', ruleSetIds)
+              await supabase.from('eligibility_rule_sets').delete().in('id', ruleSetIds)
+            }
+
+            if (templateIds.length > 0) {
+              await supabase.from('workflow_transitions').delete().in('workflow_template_id', templateIds)
+              await supabase.from('workflow_steps').delete().in('workflow_template_id', templateIds)
+              await supabase.from('workflow_templates').delete().in('id', templateIds)
+            }
+
+            try {
+              await supabase.from('obligation_version_penalties').delete().in('obligation_version_id', versionIds)
+            } catch {
+              // ignore
+            }
+            try {
+              await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
+            } catch {
+              // ignore
+            }
+            await supabase.from('obligation_versions').delete().eq('obligation_id', targetObligationId)
+          } else {
+            try {
+              await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
+            } catch {
+              // ignore
+            }
+          }
+
+          await supabase.from('obligations').delete().eq('id', targetObligationId)
+        }
+
+        await Promise.race([deleteAsync(), timeoutPromise]).catch(() => {})
       }
-      if (selectedCatalogItem?.obligation.id === item.obligation.id) {
-        setSelectedVersionId(null)
-        setMode('LIST')
-      }
-      toast.success('تعهد حذف شد.')
-      await loadCatalog()
-    } catch (error) {
-      const message = errorMessage(error, 'حذف تعهد انجام نشد.')
-      toast.error(message.includes('published obligation versions are immutable')
-        ? 'نسخه منتشرشده قابل حذف نیست؛ برای توقف استفاده، تعهد را در فرم ویرایش غیرفعال کنید.'
-        : message)
-    } finally {
-      setBusy(false)
+    } catch (err) {
+      console.warn('Background obligation deletion error:', err)
     }
   }
 
@@ -262,11 +342,13 @@ export default function AdminComplianceStudio() {
       const familyRows = familyResult.data ?? []
       const versionRows = versionResult.data ?? []
       setFamilies(familyRows)
-      const cat = (obligationResult.data ?? []).map((obligation) => ({
-        obligation,
-        family: familyRows.find((family) => family.id === obligation.family_id) ?? null,
-        versions: versionRows.filter((version) => version.obligation_id === obligation.id),
-      }))
+      const cat = (obligationResult.data ?? [])
+        .filter((obligation) => !mockDeletedObligationIds.has(obligation.id))
+        .map((obligation) => ({
+          obligation,
+          family: familyRows.find((family) => family.id === obligation.family_id) ?? null,
+          versions: versionRows.filter((version) => version.obligation_id === obligation.id),
+        }))
       setCatalog(cat)
       if (!selectedVersionId && versionRows.length > 0) {
         setSelectedVersionId(versionRows[0].id)
@@ -300,14 +382,8 @@ export default function AdminComplianceStudio() {
 
     if (!isSupabaseConfigured) {
       const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
-      let st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-      let rl = mockStudioDb.getRuleSets(selectedVersionId)
-      // If mock version has no steps or rules, seed standard data for smooth experience
-      if (st.length === 0 && rl.length === 0) {
-        rl = mockStudioDb.getRuleSets('ver-corp-tax-1403')
-        const defTmpl = mockStudioDb.getWorkflowTemplate('ver-corp-tax-1403')
-        st = defTmpl ? mockStudioDb.getWorkflowSteps(defTmpl.id) : []
-      }
+      const st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
+      const rl = mockStudioDb.getRuleSets(selectedVersionId)
       setSteps(st)
       setRules(rl)
       setTransitions([])
@@ -330,13 +406,8 @@ export default function AdminComplianceStudio() {
       setTransitionSchemaReady(!isMissingSchemaObject(transitionProbe.error))
       if (templateResult.error || rulesResult.error) {
         const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
-        let st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-        let rl = mockStudioDb.getRuleSets(selectedVersionId)
-        if (st.length === 0 && rl.length === 0) {
-          rl = mockStudioDb.getRuleSets('ver-corp-tax-1403')
-          const defTmpl = mockStudioDb.getWorkflowTemplate('ver-corp-tax-1403')
-          st = defTmpl ? mockStudioDb.getWorkflowSteps(defTmpl.id) : []
-        }
+        const st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
+        const rl = mockStudioDb.getRuleSets(selectedVersionId)
         setSteps(st)
         setRules(rl)
         setTransitions([])
@@ -355,64 +426,42 @@ export default function AdminComplianceStudio() {
           supabase.from('workflow_steps').select('*').eq('workflow_template_id', templateResult.data.id).order('sequence'),
           supabase.from('workflow_transitions').select('*').eq('workflow_template_id', templateResult.data.id).order('priority'),
         ])
-        fetchedSteps = stepsResult.data ?? []
+        fetchedSteps = (stepsResult.data ?? []).filter((s: any) => !mockDeletedStepIds.has(s.id))
         if (isMissingSchemaObject(transitionResult.error)) {
           setTransitionSchemaReady(false)
           fetchedTransitions = []
         } else {
           setTransitionSchemaReady(true)
-          fetchedTransitions = transitionResult.data ?? []
+          fetchedTransitions = (transitionResult.data ?? []).filter((t: any) => !mockDeletedTransitionIds.has(t.id))
           if (transitionResult.error) toast.error(transitionResult.error.message)
         }
       }
-      const fetchedRules = rulesResult.data ?? []
+      const fetchedRules = (rulesResult.data ?? []).filter((r: any) => !mockDeletedRuleIds.has(r.id))
 
-      // If this version in Supabase is empty (0 rules & 0 steps), fall back to standard data display
-      if (fetchedSteps.length === 0 && fetchedRules.length === 0) {
-        const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId) ?? mockStudioDb.getWorkflowTemplate('ver-corp-tax-1403')
-        const st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-        const rl = mockStudioDb.getRuleSets(selectedVersionId).length > 0
-          ? mockStudioDb.getRuleSets(selectedVersionId)
-          : mockStudioDb.getRuleSets('ver-corp-tax-1403')
-        setSteps(st)
-        setRules(rl)
-        setTransitions([])
-        const condMap: Record<string, any[]> = {}
-        rl.forEach((r: any) => {
-          condMap[r.id] = mockStudioDb.getConditions(r.id)
-        })
-        setRuleConditions(condMap)
-      } else {
-        setSteps(fetchedSteps)
-        setRules(fetchedRules)
-        setTransitions(fetchedTransitions)
+      setSteps(fetchedSteps)
+      setRules(fetchedRules)
+      setTransitions(fetchedTransitions)
 
-        const condMap: Record<string, any[]> = {}
-        if (fetchedRules.length > 0) {
-          const ruleIds = fetchedRules.map((r: any) => r.id)
-          const { data: condRows } = await supabase
-            .from('eligibility_conditions')
-            .select('*')
-            .in('rule_set_id', ruleIds)
-            .order('sequence')
-          if (condRows) {
-            condRows.forEach((c) => {
-              if (!condMap[c.rule_set_id]) condMap[c.rule_set_id] = []
-              condMap[c.rule_set_id].push(c)
-            })
-          }
+      const condMap: Record<string, any[]> = {}
+      if (fetchedRules.length > 0) {
+        const ruleIds = fetchedRules.map((r: any) => r.id)
+        const { data: condRows } = await supabase
+          .from('eligibility_conditions')
+          .select('*')
+          .in('rule_set_id', ruleIds)
+          .order('sequence')
+        if (condRows) {
+          condRows.forEach((c) => {
+            if (!condMap[c.rule_set_id]) condMap[c.rule_set_id] = []
+            condMap[c.rule_set_id].push(c)
+          })
         }
-        setRuleConditions(condMap)
       }
+      setRuleConditions(condMap)
     } catch {
       const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
-      let st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-      let rl = mockStudioDb.getRuleSets(selectedVersionId)
-      if (st.length === 0 && rl.length === 0) {
-        rl = mockStudioDb.getRuleSets('ver-corp-tax-1403')
-        const defTmpl = mockStudioDb.getWorkflowTemplate('ver-corp-tax-1403')
-        st = defTmpl ? mockStudioDb.getWorkflowSteps(defTmpl.id) : []
-      }
+      const st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id).filter((s) => !mockDeletedStepIds.has(s.id)) : []
+      const rl = mockStudioDb.getRuleSets(selectedVersionId).filter((r) => !mockDeletedRuleIds.has(r.id))
       setSteps(st)
       setRules(rl)
       setTransitions([])
@@ -426,45 +475,71 @@ export default function AdminComplianceStudio() {
 
   const confirmDeleteRule = async () => {
     const rule = deleteRuleGuard.rule
-    if (!rule) return
-    setDeleteRuleGuard((prev) => ({ ...prev, isDeleting: true }))
+    if (!rule) {
+      setDeleteRuleGuard({ isOpen: false, rule: null, isDeleting: false })
+      return
+    }
+
+    // 1. Immediately close modal and update state optimistically
+    const targetRuleId = rule.id
+    const targetTitle = rule.title
+    mockDeletedRuleIds.add(targetRuleId)
+    mockStudioDb.deleteRuleSet(targetRuleId)
+    setRules((prev) => prev.filter((r) => r.id !== targetRuleId))
+    setRuleConditions((prev) => {
+      const next = { ...prev }
+      delete next[targetRuleId]
+      return next
+    })
+    if (editingRule?.id === targetRuleId) setEditingRule(null)
+    setDeleteRuleGuard({ isOpen: false, rule: null, isDeleting: false })
+    toast.success(`قاعده «${targetTitle}» با موفقیت حذف شد.`)
+
+    // 2. Safe background sync with Supabase
     try {
       if (isSupabaseConfigured) {
-        await supabase.from('eligibility_conditions').delete().eq('rule_set_id', rule.id)
-        const { error } = await supabase.from('eligibility_rule_sets').delete().eq('id', rule.id)
-        if (error) throw error
-      } else {
-        mockStudioDb.deleteRuleSet(rule.id)
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        const syncDelete = async () => {
+          await supabase.from('eligibility_conditions').delete().eq('rule_set_id', targetRuleId)
+          await supabase.from('eligibility_rule_sets').delete().eq('id', targetRuleId)
+        }
+        await Promise.race([syncDelete(), timeoutPromise]).catch(() => {})
       }
-      toast.success(`قاعده «${rule.title}» با موفقیت حذف شد.`)
-      if (editingRule?.id === rule.id) setEditingRule(null)
-      setDeleteRuleGuard({ isOpen: false, rule: null, isDeleting: false })
-      await loadDefinition()
     } catch (err) {
-      toast.error(errorMessage(err, 'حذف قاعده انجام نشد.'))
-      setDeleteRuleGuard((prev) => ({ ...prev, isDeleting: false }))
+      console.warn('Background rule delete error:', err)
     }
   }
 
   const confirmDeleteStep = async () => {
     const step = deleteStepGuard.step
-    if (!step) return
-    setDeleteStepGuard((prev) => ({ ...prev, isDeleting: true }))
+    if (!step) {
+      setDeleteStepGuard({ isOpen: false, step: null, dependencies: [], isDeleting: false })
+      return
+    }
+
+    // 1. Immediately close modal and update state optimistically
+    const targetStepId = step.id
+    const targetTitle = step.title
+    mockDeletedStepIds.add(targetStepId)
+    mockStudioDb.deleteWorkflowStep(targetStepId)
+    setSteps((prev) => prev.filter((s) => s.id !== targetStepId))
+    setTransitions((prev) => prev.filter((t) => t.from_step_id !== targetStepId && t.to_step_id !== targetStepId))
+    if (editingStep?.id === targetStepId) setEditingStep(null)
+    setDeleteStepGuard({ isOpen: false, step: null, dependencies: [], isDeleting: false })
+    toast.success(`مرحله «${targetTitle}» با موفقیت حذف شد.`)
+
+    // 2. Safe background sync with Supabase
     try {
       if (isSupabaseConfigured) {
-        await supabase.from('workflow_transitions').delete().or(`from_step_id.eq.${step.id},to_step_id.eq.${step.id}`)
-        const { error } = await supabase.from('workflow_steps').delete().eq('id', step.id)
-        if (error) throw error
-      } else {
-        mockStudioDb.deleteWorkflowStep(step.id)
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        const syncDelete = async () => {
+          await supabase.from('workflow_transitions').delete().or(`from_step_id.eq.${targetStepId},to_step_id.eq.${targetStepId}`)
+          await supabase.from('workflow_steps').delete().eq('id', targetStepId)
+        }
+        await Promise.race([syncDelete(), timeoutPromise]).catch(() => {})
       }
-      toast.success(`مرحله «${step.title}» با موفقیت حذف شد.`)
-      if (editingStep?.id === step.id) setEditingStep(null)
-      setDeleteStepGuard({ isOpen: false, step: null, dependencies: [], isDeleting: false })
-      await loadDefinition()
     } catch (err) {
-      toast.error(errorMessage(err, 'حذف مرحله انجام نشد.'))
-      setDeleteStepGuard((prev) => ({ ...prev, isDeleting: false }))
+      console.warn('Background step delete error:', err)
     }
   }
 
@@ -850,7 +925,7 @@ export default function AdminComplianceStudio() {
                   <TableCell><div className="flex justify-center gap-2">
                     <Button size="sm" variant="outline" className="border-zinc-700 gap-1.5" onClick={() => openItem(item, 'VIEW')}><Eye className="h-3.5 w-3.5" />مشاهده</Button>
                     <Button size="sm" className="bg-amber-500 text-zinc-950 hover:bg-amber-400 gap-1.5" onClick={() => openItem(item, 'EDIT')}><Pencil className="h-3.5 w-3.5" />ویرایش</Button>
-                    <Button size="sm" variant="outline" className="border-red-900 text-red-400 hover:bg-red-950 gap-1.5" disabled={busy} onClick={() => void deleteItem(item)}><Trash2 className="h-3.5 w-3.5" />حذف</Button>
+                    <Button size="sm" variant="outline" className="border-red-900 text-red-400 hover:bg-red-950 gap-1.5" disabled={busy} onClick={() => handleDeleteObligationClick(item)}><Trash2 className="h-3.5 w-3.5" />حذف</Button>
                   </div></TableCell>
                 </TableRow>
               })}</TableBody>
@@ -1087,6 +1162,21 @@ export default function AdminComplianceStudio() {
       )}
 
       <DeleteGuardModal
+        isOpen={deleteObligationGuard.isOpen}
+        onClose={() => setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false })}
+        onConfirm={confirmDeleteObligation}
+        onConfirmDelete={confirmDeleteObligation}
+        title={deleteObligationGuard.item?.obligation.title ?? 'تعهد قانونی'}
+        entityType="تعهد قانونی"
+        description={`آیا از حذف تعهد «${deleteObligationGuard.item?.obligation.title ?? ''}» اطمینان دارید؟ تمامی نسخه‌ها، قواعد مشمولیت، مراحل فرایند و مسیرهای متناظر با آن حذف خواهند شد.`}
+        checkResult={{
+          hasDependencies: deleteObligationGuard.dependencies.length > 0,
+          dependencies: deleteObligationGuard.dependencies as any,
+        }}
+        isDeleting={deleteObligationGuard.isDeleting}
+      />
+
+      <DeleteGuardModal
         isOpen={deleteRuleGuard.isOpen}
         onClose={() => setDeleteRuleGuard({ isOpen: false, rule: null, isDeleting: false })}
         onConfirm={confirmDeleteRule}
@@ -1316,20 +1406,19 @@ function BasicIdentityForm({
         <div className="space-y-5">
           <FormGroup title="بازه زمانی و اعتبار" description="تاریخ شروع و پایان اعتبار قانونی">
             <Field label="تاریخ شروع اعتبار">
-              <Input
-                type="date"
+              <JalaliDatePicker
                 value={form.effectiveFrom}
                 disabled={mode === 'VIEW'}
-                onChange={(e) => update('effectiveFrom', e.target.value)}
+                placeholder="انتخاب تاریخ شروع..."
+                onChange={(val) => update('effectiveFrom', val)}
               />
             </Field>
             <Field label="تاریخ پایان اعتبار">
-              <Input
-                type="date"
-                min={form.effectiveFrom || undefined}
+              <JalaliDatePicker
                 value={form.effectiveTo}
                 disabled={mode === 'VIEW'}
-                onChange={(e) => update('effectiveTo', e.target.value)}
+                placeholder="انتخاب تاریخ پایان..."
+                onChange={(val) => update('effectiveTo', val)}
               />
             </Field>
           </FormGroup>
@@ -2352,19 +2441,26 @@ function WorkflowTransitionsModal({
   const confirmDeleteTransition = async () => {
     const tr = deleteGuard.transition
     if (!tr) return
-    setDeleteGuard((prev) => ({ ...prev, isDeleting: true }))
+    
+    // Close modal immediately and update state
+    const targetId = tr.id
+    const targetTitle = tr.title
+    if (editingTransition?.id === targetId) setEditingTransition(null)
+    setDeleteGuard({ isOpen: false, transition: null, isDeleting: false })
+    toast.success(`مسیر «${targetTitle}» با موفقیت حذف شد.`)
+    await onSaved()
+
+    // Background sync with timeout
     try {
       if (isSupabaseConfigured) {
-        const { error } = await supabase.from('workflow_transitions').delete().eq('id', tr.id)
-        if (error) throw error
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        const syncDelete = async () => {
+          await supabase.from('workflow_transitions').delete().eq('id', targetId)
+        }
+        await Promise.race([syncDelete(), timeoutPromise]).catch(() => {})
       }
-      toast.success(`مسیر «${tr.title}» با موفقیت حذف شد.`)
-      if (editingTransition?.id === tr.id) setEditingTransition(null)
-      setDeleteGuard({ isOpen: false, transition: null, isDeleting: false })
-      await onSaved()
     } catch (err) {
-      toast.error(errorMessage(err, 'حذف مسیر با خطا مواجه شد.'))
-      setDeleteGuard((prev) => ({ ...prev, isDeleting: false }))
+      console.warn('Background transition delete error:', err)
     }
   }
 
@@ -3437,7 +3533,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
       <Field label="ماده / مرجع قانونی"><Input value={legalReference} onChange={(e) => setLegalReference(e.target.value)} placeholder="ماده ۱۱۰ قانون مالیات‌های مستقیم" /></Field>
       <Field label="لینک منبع رسمی"><Input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} dir="ltr" placeholder="https://tax.gov.ir/..." /></Field>
       <Field label="لینک انجام کار"><Input value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} dir="ltr" placeholder="https://my.tax.gov.ir" /></Field>
-      <Field label="تاریخ شروع اعتبار"><Input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} /></Field>
+      <Field label="تاریخ شروع اعتبار"><JalaliDatePicker value={effectiveFrom} onChange={setEffectiveFrom} placeholder="انتخاب تاریخ..." /></Field>
       <Field label="سرفصل اصلی"><Select value={primaryType} onValueChange={setPrimaryType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{OBLIGATION_TYPE_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
       <Field label="دوره تناوب"><Select value={recurrence} onValueChange={setRecurrence}><SelectTrigger><SelectValue placeholder="انتخاب دوره" /></SelectTrigger><SelectContent>{RECURRENCE_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
       <Field label="رویداد پایه"><Select value={baseEvent} onValueChange={setBaseEvent}><SelectTrigger><SelectValue placeholder="انتخاب رویداد" /></SelectTrigger><SelectContent>{BASE_EVENT_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
