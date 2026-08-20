@@ -1,1 +1,20 @@
-{"name":"mvp-agahim","private":true,"workspaces":["frontend","backend"],"scripts":{"dev":"npm run dev --workspace\u003dfrontend","build":"npm run build --workspace\u003dfrontend","lint":"npm run lint --workspace\u003dfrontend","preview":"npm run preview --workspace\u003dfrontend"},"devDependencies":{"@types/node":"^26.2.0"},"dependencies":{"framer-motion":"^13.0.0"}}
+{
+  "name": "mvp-agahim",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=frontend",
+    "lint": "npm run lint --workspace=frontend",
+    "preview": "npm run preview --workspace=frontend"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0"
+  },
+  "dependencies": {
+    "framer-motion": "^13.0.0"
+  }
+}
