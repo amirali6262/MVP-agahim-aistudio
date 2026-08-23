@@ -146,7 +146,6 @@ export default function PublishReadinessWorkflowModal({
               </p>
             </section>
           )}
-
           <section className="rounded-xl border border-sky-900/70 bg-sky-950/20 p-5 space-y-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
