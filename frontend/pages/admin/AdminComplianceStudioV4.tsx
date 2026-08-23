@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import WorkflowStepsModalV2 from './WorkflowStepsModalV2'
+
 import {
   BookOpenCheck,
   Eye,
@@ -991,7 +993,7 @@ export default function AdminComplianceStudio() {
           onSaved={loadDefinition}
         />
       ) : activeSubModule === 'WORKFLOW_STEPS' ? (
-        <WorkflowStepsModal
+        <WorkflowStepsModalV2
           item={selectedCatalogItem}
           version={selectedVersion}
           steps={steps}

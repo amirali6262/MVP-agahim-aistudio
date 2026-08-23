@@ -6,11 +6,14 @@ import type { Database, Tables } from './database.types'
 // Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to your .env file
 // ---------------------------------------------------------------------------
 const supabaseUrl = (import.meta.env['VITE_SUPABASE_URL'] as string | undefined) ?? ''
-const supabasePublishableKey = (import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] as string | undefined) ?? ''
+// Support both the current publishable-key name and Supabase's legacy anon-key name.
+const supabasePublishableKey =
+  (import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] as string | undefined) ||
+  (import.meta.env['VITE_SUPABASE_ANON_KEY'] as string | undefined) || ''
 
 export const isSupabaseConfigured = Boolean(
-  supabaseUrl &&
-  supabasePublishableKey &&
+  supabaseUrl.trim() &&
+  supabasePublishableKey.trim() &&
   !supabaseUrl.includes('placeholder') &&
   !supabasePublishableKey.includes('placeholder')
 )

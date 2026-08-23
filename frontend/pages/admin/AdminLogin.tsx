@@ -123,8 +123,6 @@ export default function AdminLogin() {
             </div>
           </div>
 
-          {!recoveryMode && <div className="-mt-3 rounded-lg border border-amber-900/50 bg-amber-950/20 p-3 text-xs leading-6 text-amber-200">رمز ورود مدیر، رمز کاربر در بخش <span dir="ltr" className="font-mono">Authentication → Users</span> است؛ رمز Database برای ورود به پنل قابل استفاده نیست.</div>}
-
           <Button
             type="submit"
             disabled={submitting}
