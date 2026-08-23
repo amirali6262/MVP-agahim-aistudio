@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import WorkflowStepsModalV2 from './WorkflowStepsModalV2'
+import PublishReadinessWorkflowModal from './PublishReadinessWorkflowModal'
 
 import {
   BookOpenCheck,
@@ -27,6 +28,10 @@ import {
   Rocket,
   Layers,
   SlidersHorizontal,
+  ClipboardCheck,
+  MessageSquare,
+  UserCheck,
+  Inbox,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
@@ -125,6 +130,7 @@ export default function AdminComplianceStudio() {
   const [steps, setSteps] = useState<WorkflowStep[]>([])
   const [rules, setRules] = useState<RuleSet[]>([])
   const [transitions, setTransitions] = useState<WorkflowTransition[]>([])
+  const [reviewRequests, setReviewRequests] = useState<any[]>([])
   const [showFamilyForm, setShowFamilyForm] = useState(false)
   const [showDraftForm, setShowDraftForm] = useState(false)
   const [mode, setMode] = useState<StudioMode>('LIST')
@@ -371,6 +377,24 @@ export default function AdminComplianceStudio() {
     } finally {
       setLoading(false)
     }
+  }, [selectedVersionId])
+
+  const loadReviewRequests = useCallback(async () => {
+    if (!selectedVersionId || !isSupabaseConfigured) {
+      setReviewRequests([])
+      return
+    }
+    const { data, error } = await supabase
+      .from('obligation_review_requests')
+      .select('*')
+      .eq('obligation_version_id', selectedVersionId)
+      .order('submitted_at', { ascending: false })
+    if (error) {
+      if (!isMissingSchemaObject(error)) toast.error(errorMessage(error, 'بارگذاری سوابق بازبینی انجام نشد.'))
+      setReviewRequests([])
+      return
+    }
+    setReviewRequests(data ?? [])
   }, [selectedVersionId])
 
   const loadDefinition = useCallback(async () => {
@@ -783,6 +807,87 @@ export default function AdminComplianceStudio() {
 
   useEffect(() => { void loadCatalog() }, [loadCatalog])
   useEffect(() => { void loadDefinition() }, [loadDefinition])
+  useEffect(() => { void loadReviewRequests() }, [loadReviewRequests])
+
+  const submitForReview = async () => {
+    if (!selectedVersionId) return
+    setBusy(true)
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.rpc('submit_obligation_version_for_review', {
+          requested_version_id: selectedVersionId,
+        })
+        if (error) throw error
+      } else {
+        mockStudioDb.transitionVersionStatus(selectedVersionId, 'REVIEW')
+        const now = new Date().toISOString()
+        setReviewRequests((current) => [
+          {
+            id: `mock-review-${Date.now()}`,
+            obligation_version_id: selectedVersionId,
+            status: 'REQUESTED',
+            submitted_by: 'mock-admin',
+            submitted_at: now,
+            reviewer_id: null,
+            reviewed_at: null,
+            decision_note: null,
+            created_at: now,
+            updated_at: now,
+          },
+          ...current.filter((item) => item.obligation_version_id !== selectedVersionId || !['REQUESTED', 'IN_REVIEW'].includes(item.status)),
+        ])
+      }
+      toast.success('درخواست بازبینی ثبت شد و در کارتابل بازبین قرار گرفت.')
+      await Promise.all([loadCatalog(), loadDefinition(), loadReviewRequests()])
+    } catch (err) {
+      toast.error(errorMessage(err, 'ثبت درخواست بازبینی انجام نشد.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const decideReview = async (decision: 'approve' | 'reject') => {
+    const request = reviewRequests.find((item) => ['REQUESTED', 'IN_REVIEW'].includes(item.status))
+    if (!request) {
+      toast.error('درخواست بازبینی فعالی برای این نسخه وجود ندارد.')
+      return
+    }
+    const prompt = decision === 'approve'
+      ? 'جمع‌بندی و مستندات تأیید بازبینی را وارد کنید:'
+      : 'علت رد بازبینی و موارد اصلاحی را وارد کنید:'
+    const note = window.prompt(prompt, '')?.trim()
+    if (!note) return
+    setBusy(true)
+    try {
+      if (isSupabaseConfigured) {
+        if (request.status === 'REQUESTED') {
+          const { error: claimError } = await supabase.rpc('start_obligation_review', { requested_review_id: request.id })
+          if (claimError) throw claimError
+        }
+        const { error } = decision === 'approve'
+          ? await supabase.rpc('approve_obligation_review', { requested_review_id: request.id, requested_note: note })
+          : await supabase.rpc('reject_obligation_review', { requested_review_id: request.id, requested_note: note })
+        if (error) throw error
+      } else {
+        mockStudioDb.transitionVersionStatus(request.obligation_version_id, decision === 'approve' ? 'TESTING' : 'DRAFT')
+        const now = new Date().toISOString()
+        setReviewRequests((current) => current.map((item) => item.id === request.id ? {
+          ...item,
+          status: decision === 'approve' ? 'APPROVED' : 'REJECTED',
+          reviewer_id: 'mock-reviewer',
+          reviewed_at: now,
+          decision_note: note,
+          updated_at: now,
+        } : item))
+      }
+      toast.success(decision === 'approve' ? 'بازبینی تأیید شد و نسخه وارد آزمایش شد.' : 'بازبینی رد شد و نسخه برای اصلاح به پیش‌نویس برگشت.')
+      await Promise.all([loadCatalog(), loadDefinition(), loadReviewRequests()])
+    } catch (err) {
+      toast.error(errorMessage(err, 'ثبت تصمیم بازبینی انجام نشد.'))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const transitionStatus = async (targetStatus: 'DRAFT' | 'REVIEW' | 'TESTING', successMessage: string) => {
     if (!selectedVersionId) return
@@ -939,16 +1044,18 @@ export default function AdminComplianceStudio() {
           onSaved={async () => { await loadCatalog(); await loadDefinition() }}
         />
       ) : activeSubModule === 'PUBLISH_READINESS' ? (
-        <PublishReadinessModal
+        <PublishReadinessWorkflowModal
           item={selectedCatalogItem}
           version={selectedVersion}
           rules={rules}
           steps={steps}
+          reviewRequests={reviewRequests}
           penaltySchemaReady={penaltySchemaReady}
           busy={busy}
           mode={mode}
           onSeed={seedStandardCorporateTaxData}
-          onTransitionStatus={transitionStatus}
+          onSubmitForReview={submitForReview}
+          onDecideReview={decideReview}
           onPublish={publish}
           onClose={() => setActiveSubModule(null)}
           onSaved={async () => { await loadCatalog(); await loadDefinition() }}
