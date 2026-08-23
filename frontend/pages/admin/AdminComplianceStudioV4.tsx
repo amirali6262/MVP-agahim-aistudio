@@ -380,8 +380,12 @@ export default function AdminComplianceStudio() {
   }, [selectedVersionId])
 
   const loadReviewRequests = useCallback(async () => {
-    if (!selectedVersionId || !isSupabaseConfigured) {
+    if (!selectedVersionId) {
       setReviewRequests([])
+      return
+    }
+    if (!isSupabaseConfigured) {
+      setReviewRequests((current) => current.filter((item) => item.obligation_version_id === selectedVersionId))
       return
     }
     const { data, error } = await supabase
