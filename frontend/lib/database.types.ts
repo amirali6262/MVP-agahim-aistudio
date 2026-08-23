@@ -614,6 +614,53 @@ export type Database = {
         }
         Relationships: []
       }
+      obligation_review_requests: {
+        Row: {
+          created_at: string
+          decision_note: string | null
+          id: string
+          obligation_version_id: string
+          reviewed_at: string | null
+          reviewer_id: string | null
+          status: string
+          submitted_at: string
+          submitted_by: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          decision_note?: string | null
+          id?: string
+          obligation_version_id: string
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          status?: string
+          submitted_at?: string
+          submitted_by: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          decision_note?: string | null
+          id?: string
+          obligation_version_id?: string
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          status?: string
+          submitted_at?: string
+          submitted_by?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "obligation_review_requests_obligation_version_id_fkey"
+            columns: ["obligation_version_id"]
+            isOneToOne: false
+            referencedRelation: "obligation_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       obligation_version_penalties: {
         Row: { amount: number | null; created_at: string; id: string; obligation_version_id: string; penalty_type: string; rate_percent: number | null; sequence: number; title: string; updated_at: string }
         Insert: { amount?: number | null; created_at?: string; id?: string; obligation_version_id: string; penalty_type: string; rate_percent?: number | null; sequence: number; title: string; updated_at?: string }
@@ -1309,6 +1356,90 @@ export type Database = {
           tenant_id: string
           updated_at: string
           workflow_template_id: string
+        }
+      }
+      approve_obligation_review: {
+        Args: { requested_note: string; requested_review_id: string }
+        Returns: {
+          created_at: string
+          decision_note: string | null
+          id: string
+          obligation_version_id: string
+          reviewed_at: string | null
+          reviewer_id: string | null
+          status: string
+          submitted_at: string
+          submitted_by: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "obligation_review_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      reject_obligation_review: {
+        Args: { requested_note: string; requested_review_id: string }
+        Returns: {
+          created_at: string
+          decision_note: string | null
+          id: string
+          obligation_version_id: string
+          reviewed_at: string | null
+          reviewer_id: string | null
+          status: string
+          submitted_at: string
+          submitted_by: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "obligation_review_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      start_obligation_review: {
+        Args: { requested_review_id: string }
+        Returns: {
+          created_at: string
+          decision_note: string | null
+          id: string
+          obligation_version_id: string
+          reviewed_at: string | null
+          reviewer_id: string | null
+          status: string
+          submitted_at: string
+          submitted_by: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "obligation_review_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      submit_obligation_version_for_review: {
+        Args: { requested_version_id: string }
+        Returns: {
+          created_at: string
+          decision_note: string | null
+          id: string
+          obligation_version_id: string
+          reviewed_at: string | null
+          reviewer_id: string | null
+          status: string
+          submitted_at: string
+          submitted_by: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "obligation_review_requests"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       transition_obligation_version_status: {
