@@ -789,19 +789,11 @@ export default function AdminComplianceStudio() {
     setBusy(true)
     try {
       if (isSupabaseConfigured) {
-        // Try direct update on obligation_versions table
-        const { error } = await supabase
-          .from('obligation_versions')
-          .update({
-            status: targetStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedVersionId)
-
-        if (error) {
-          // If table update also failed, fallback to mock DB
-          mockStudioDb.transitionVersionStatus(selectedVersionId, targetStatus)
-        }
+        const { error } = await supabase.rpc('transition_obligation_version_status', {
+          requested_version_id: selectedVersionId,
+          requested_status: targetStatus,
+        })
+        if (error) throw error
       } else {
         mockStudioDb.transitionVersionStatus(selectedVersionId, targetStatus)
       }
@@ -809,12 +801,8 @@ export default function AdminComplianceStudio() {
       toast.success(successMessage)
       await loadCatalog()
       await loadDefinition()
-    } catch (err: any) {
-      // Fallback
-      mockStudioDb.transitionVersionStatus(selectedVersionId, targetStatus)
-      toast.success(successMessage)
-      await loadCatalog()
-      await loadDefinition()
+    } catch (err) {
+      toast.error(errorMessage(err, 'تغییر وضعیت نسخه انجام نشد.'))
     } finally {
       setBusy(false)
     }
@@ -826,19 +814,10 @@ export default function AdminComplianceStudio() {
     setBusy(true)
     try {
       if (isSupabaseConfigured) {
-        const { error } = await supabase
-          .from('obligation_versions')
-          .update({
-            status: 'PUBLISHED',
-            published_at: new Date().toISOString(),
-            published_by: 'مدیر سامانه',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedVersionId)
-
-        if (error) {
-          mockStudioDb.publishVersion(selectedVersionId)
-        }
+        const { error } = await supabase.rpc('publish_obligation_version', {
+          requested_version_id: selectedVersionId,
+        })
+        if (error) throw error
       } else {
         mockStudioDb.publishVersion(selectedVersionId)
       }
@@ -846,11 +825,8 @@ export default function AdminComplianceStudio() {
       toast.success('نسخه منتشر شد و برای تشخیص شرکت‌ها قابل استفاده است.')
       await loadCatalog()
       await loadDefinition()
-    } catch {
-      mockStudioDb.publishVersion(selectedVersionId)
-      toast.success('نسخه منتشر شد و برای تشخیص شرکت‌ها قابل استفاده است.')
-      await loadCatalog()
-      await loadDefinition()
+    } catch (err) {
+      toast.error(errorMessage(err, 'انتشار نسخه انجام نشد.'))
     } finally {
       setBusy(false)
     }
