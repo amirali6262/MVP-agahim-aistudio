@@ -1442,6 +1442,27 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      withdraw_obligation_review: {
+        Args: { requested_note?: string; requested_review_id: string }
+        Returns: {
+          created_at: string
+          decision_note: string | null
+          id: string
+          obligation_version_id: string
+          reviewed_at: string | null
+          reviewer_id: string | null
+          status: string
+          submitted_at: string
+          submitted_by: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "obligation_review_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       transition_obligation_version_status: {
         Args: { requested_status: string; requested_version_id: string }
         Returns: {
