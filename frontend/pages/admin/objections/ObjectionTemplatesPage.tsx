@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Plus, Trash2, Edit2, Save, ArrowRight, ShieldAlert, CheckCircle2, Handshake, FileCheck, Layers, GitBranch, HelpCircle, Hourglass, FileText, User, Building2, Scale, SlidersHorizontal, X } from 'lucide-react'
+import { Plus, Trash2, Edit2, Save, ArrowRight, ShieldAlert, CheckCircle2, Handshake, FileCheck, Layers, GitBranch, HelpCircle, Hourglass, FileText, User, Building2, Scale, SlidersHorizontal, X, PlusCircle, Sparkles, Copy, CheckSquare, Calendar, FileUp, Hash } from 'lucide-react'
 import { Button } from '../../../lib/shadcn/button'
 import { Input } from '../../../lib/shadcn/input'
 import { Label } from '../../../lib/shadcn/label'
@@ -219,13 +219,128 @@ export default function ObjectionTemplatesPage() {
 
   const handleAddFieldToStep = () => {
     const newF: WorkflowStepField = {
-      id: 'f-' + Date.now(),
+      id: 'f-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
       label: 'عنوان فیلد جدید',
-      key: 'field_' + Date.now(),
+      key: 'field_' + Date.now().toString().slice(-4),
       type: 'text',
       required: false,
     }
     setStepFields([...stepFields, newF])
+  }
+
+  // Add multiple fields at once (Batch Add)
+  const handleAddMultipleFieldsToStep = (count: number = 3) => {
+    const newFields: WorkflowStepField[] = Array.from({ length: count }, (_, i) => {
+      const idx = stepFields.length + i + 1
+      return {
+        id: 'f-' + Date.now() + '-' + i + '-' + Math.random().toString(36).slice(2, 5),
+        label: `فیلد ورودی شماره ${idx}`,
+        key: `field_${idx}_${Date.now().toString().slice(-3)}`,
+        type: 'text',
+        required: false,
+      }
+    })
+    setStepFields([...stepFields, ...newFields])
+    toast.success(`${count} فیلد جدید به لیست افزوده شد`)
+  }
+
+  // Add standard tax/objection form field package
+  const handleAddStandardFieldPack = (packType: 'assessment' | 'ruling' | 'general') => {
+    let presetPack: WorkflowStepField[] = []
+    const now = Date.now()
+
+    if (packType === 'assessment') {
+      presetPack = [
+        {
+          id: `f-${now}-1`,
+          label: 'شماره برگ تشخیص / ابلاغیه',
+          key: 'notice_number',
+          type: 'text',
+          required: true,
+          placeholder: 'مثال: ۱۴۰۴/ب/۹۸۱۲',
+        },
+        {
+          id: `f-${now}-2`,
+          label: 'تاریخ ابلاغ قانونی (شمسی)',
+          key: 'notice_date',
+          type: 'date',
+          required: true,
+        },
+        {
+          id: `f-${now}-3`,
+          label: 'مبلغ مالیات مورد مطالبه (ریال)',
+          key: 'tax_amount_claimed',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: `f-${now}-4`,
+          label: 'تصویر / فایل برگ ابلاغیه',
+          key: 'notice_document_file',
+          type: 'file',
+          required: false,
+        },
+      ]
+    } else if (packType === 'ruling') {
+      presetPack = [
+        {
+          id: `f-${now}-1`,
+          label: 'شماره دادنامه / رای صادره',
+          key: 'ruling_number',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: `f-${now}-2`,
+          label: 'تاریخ صدور / ابلاغ رای',
+          key: 'ruling_date',
+          type: 'date',
+          required: true,
+        },
+        {
+          id: `f-${now}-3`,
+          label: 'نتیجه رای هیأت / مرجع',
+          key: 'ruling_result_status',
+          type: 'select',
+          required: true,
+          options: ['تعدیل مالیات', 'رد اعتراض مودی (تایید برگه)', 'نقض و تجدید رسیدگی', 'قرار کارشناسی مجدد'],
+        },
+        {
+          id: `f-${now}-4`,
+          label: 'پیوست فایل دادنامه و مستندات',
+          key: 'ruling_file',
+          type: 'file',
+          required: false,
+        },
+      ]
+    } else {
+      presetPack = [
+        {
+          id: `f-${now}-1`,
+          label: 'شرح و متن دفاعیه/درخواست',
+          key: 'defense_text',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: `f-${now}-2`,
+          label: 'تاریخ اقدام یا ثبت',
+          key: 'submission_date',
+          type: 'date',
+          required: false,
+        },
+        {
+          id: `f-${now}-3`,
+          label: 'فایل لایحه اعتراضیه / مدارک',
+          key: 'defense_bill_file',
+          type: 'file',
+          required: false,
+        },
+      ]
+    }
+
+    setStepFields([...stepFields, ...presetPack])
+    toast.success(`بسته فیلدهای استاندارد (${presetPack.length} فیلد) اضافه شد`)
   }
 
   const handleRemoveFieldFromStep = (id: string) => {
@@ -1185,32 +1300,107 @@ export default function ObjectionTemplatesPage() {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 max-h-[60vh] overflow-y-auto flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold text-amber-300">لیست فیلدهای ورودی این گام</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleAddFieldToStep}
-                  className="bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 text-xs h-8 gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>افزودن فیلد جدید</span>
-                </Button>
+            <div className="p-6 max-h-[65vh] overflow-y-auto flex flex-col gap-4">
+              {/* Batch Actions & Quick Templates Header */}
+              <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span>افزودن سریع و همزمان چند فیلد</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAddFieldToStep}
+                      className="bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 text-xs h-7 gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+۱ فیلد</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => handleAddMultipleFieldsToStep(3)}
+                      className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs h-7 gap-1"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>+۳ فیلد همزمان</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => handleAddMultipleFieldsToStep(5)}
+                      className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs h-7 gap-1"
+                    >
+                      <Layers className="w-3.5 h-3.5 text-amber-400" />
+                      <span>+۵ فیلد همزمان</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Preset Packages */}
+                <div className="flex items-center gap-1.5 pt-2 border-t border-zinc-800/80 flex-wrap text-xs">
+                  <span className="text-[11px] text-zinc-400 font-medium ml-1">بسته‌های فیلد آماده:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleAddStandardFieldPack('assessment')}
+                    className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-amber-950/60 border border-zinc-700 hover:border-amber-500/60 text-zinc-300 hover:text-amber-300 text-[11px] font-medium transition-colors flex items-center gap-1"
+                  >
+                    <FileText className="w-3 h-3 text-amber-400" />
+                    <span>بسته برگ تشخیص (۴ فیلد)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAddStandardFieldPack('ruling')}
+                    className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-sky-950/60 border border-zinc-700 hover:border-sky-500/60 text-zinc-300 hover:text-sky-300 text-[11px] font-medium transition-colors flex items-center gap-1"
+                  >
+                    <Scale className="w-3 h-3 text-sky-400" />
+                    <span>بسته رای هیأت / دادنامه (۴ فیلد)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAddStandardFieldPack('general')}
+                    className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-emerald-950/60 border border-zinc-700 hover:border-emerald-500/60 text-zinc-300 hover:text-emerald-300 text-[11px] font-medium transition-colors flex items-center gap-1"
+                  >
+                    <CheckSquare className="w-3 h-3 text-emerald-400" />
+                    <span>بسته لایحه و دفاعیه (۳ فیلد)</span>
+                  </button>
+                </div>
               </div>
 
               {stepFields.length === 0 ? (
-                <div className="p-8 text-center border border-dashed border-zinc-800 rounded-xl bg-zinc-900/30 text-zinc-500 text-xs">
-                  هیچ فیلد پویایی برای این گام تعریف نشده است. جهت اضافه کردن اطلاعات ورودی مانند شماره، تاریخ یا فایل کلید افزودن را بزنید.
+                <div className="p-8 text-center border border-dashed border-zinc-800 rounded-xl bg-zinc-900/30 text-zinc-500 text-xs flex flex-col items-center gap-2">
+                  <SlidersHorizontal className="w-8 h-8 text-zinc-600" />
+                  <span>هیچ فیلد پویایی برای این گام تعریف نشده است.</span>
+                  <span className="text-zinc-400 text-[11px]">جهت اضافه کردن سریع، از دکمه‌های «+۳ فیلد همزمان» یا «بسته‌های فیلد آماده» در بالا استفاده نمایید.</span>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between text-xs text-zinc-400 px-1">
+                    <span>لیست فیلدهای تعریف‌شده ({stepFields.length} فیلد):</span>
+                    {stepFields.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setStepFields([])}
+                        className="text-red-400 hover:text-red-300 text-[11px] flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        حذف همه فیلدها
+                      </button>
+                    )}
+                  </div>
                   {stepFields.map((field, idx) => (
-                    <div key={field.id} className="p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/80 flex flex-col gap-3">
+                    <div key={field.id} className="p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/80 flex flex-col gap-3 hover:border-zinc-700 transition-colors">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-amber-400 bg-amber-950/40 border border-amber-800/60 px-2 py-0.5 rounded">
-                          فیلد #{idx + 1}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-amber-400 bg-amber-950/40 border border-amber-800/60 px-2 py-0.5 rounded">
+                            فیلد #{idx + 1}
+                          </span>
+                          <span className="text-xs font-semibold text-zinc-200">
+                            {field.label || 'بدون عنوان'}
+                          </span>
+                        </div>
                         <Button
                           type="button"
                           variant="ghost"
@@ -1219,11 +1409,11 @@ export default function ObjectionTemplatesPage() {
                           className="h-7 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/30"
                         >
                           <Trash2 className="w-3.5 h-3.5 ml-1" />
-                          حذف فیلد
+                          حذف
                         </Button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div className="flex flex-col gap-1">
                           <Label className="text-xs text-zinc-300">عنوان فیلد (نمایش به کاربر)</Label>
                           <Input
@@ -1246,7 +1436,7 @@ export default function ObjectionTemplatesPage() {
                         </div>
 
                         <div className="flex flex-col gap-1">
-                          <Label className="text-xs text-zinc-300">نوع فیلد</Label>
+                          <Label className="text-xs text-zinc-300">نوع فیلد ورودی</Label>
                           <Select
                             value={field.type}
                             onValueChange={(val) => handleUpdateStepField(field.id, 'type', val)}
@@ -1256,7 +1446,7 @@ export default function ObjectionTemplatesPage() {
                             </SelectTrigger>
                             <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
                               <SelectItem value="text" className="text-xs text-zinc-100">متن کوتاه (Text)</SelectItem>
-                              <SelectItem value="number" className="text-xs text-zinc-100">عددی/مبلغ (Number)</SelectItem>
+                              <SelectItem value="number" className="text-xs text-zinc-100">عددی / مبلغ (Number)</SelectItem>
                               <SelectItem value="date" className="text-xs text-zinc-100">تقویم شمسی (Date)</SelectItem>
                               <SelectItem value="file" className="text-xs text-zinc-100">بارگذاری فایل / پیوست (File)</SelectItem>
                               <SelectItem value="select" className="text-xs text-zinc-100">لیست کشویی (Select)</SelectItem>
@@ -1266,8 +1456,8 @@ export default function ObjectionTemplatesPage() {
                         </div>
 
                         {field.type === 'select' && (
-                          <div className="flex flex-col gap-1">
-                            <Label className="text-xs text-zinc-300">گزینه‌های لیست (با ویرگول جدا کنید)</Label>
+                          <div className="md:col-span-3 flex flex-col gap-1 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800">
+                            <Label className="text-xs text-amber-300">گزینه‌های لیست کشویی (با کاما جدا کنید)</Label>
                             <Input
                               value={field.options ? field.options.join(', ') : ''}
                               onChange={(e) =>
@@ -1278,7 +1468,7 @@ export default function ObjectionTemplatesPage() {
                                 )
                               }
                               placeholder="گزینه ۱, گزینه ۲, گزینه ۳"
-                              className="bg-zinc-950 border-zinc-700 text-zinc-100 h-8 text-xs"
+                              className="bg-zinc-900 border-zinc-700 text-zinc-100 h-8 text-xs"
                             />
                           </div>
                         )}

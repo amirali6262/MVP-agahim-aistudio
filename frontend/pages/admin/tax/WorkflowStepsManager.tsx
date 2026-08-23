@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { ArrowRight, Plus, Trash2, Save, GripVertical, SlidersHorizontal, Settings, X, CheckCircle2, FileText, Calendar, UploadCloud, CheckSquare } from 'lucide-react'
+import { ArrowRight, Plus, Trash2, Save, GripVertical, SlidersHorizontal, Settings, X, CheckCircle2, FileText, Calendar, UploadCloud, CheckSquare, Sparkles, PlusCircle, Scale, Layers } from 'lucide-react'
 import { Button } from '../../../lib/shadcn/button'
 import { Input } from '../../../lib/shadcn/input'
 import { Label } from '../../../lib/shadcn/label'
@@ -70,6 +70,119 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
       placeholder: '',
     }
     setEditingFields((prev) => [...prev, newF])
+  }
+
+  // Add multiple fields at once
+  const handleAddMultipleFieldsToStep = (count: number = 3) => {
+    const newFields: WorkflowStepField[] = Array.from({ length: count }, (_, i) => {
+      const idx = editingFields.length + i + 1
+      return {
+        id: 'f-' + uuid().slice(0, 8),
+        label: `فیلد ورودی شماره ${idx}`,
+        key: `field_${idx}`,
+        type: 'text',
+        required: false,
+        placeholder: '',
+      }
+    })
+    setEditingFields((prev) => [...prev, ...newFields])
+    toast.success(`${count} فیلد جدید همزمان اضافه شد`)
+  }
+
+  // Add predefined standard field packs
+  const handleAddStandardFieldPack = (packType: 'assessment' | 'ruling' | 'general') => {
+    let presetPack: WorkflowStepField[] = []
+    if (packType === 'assessment') {
+      presetPack = [
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'شماره برگ تشخیص / ابلاغیه',
+          key: 'notice_number',
+          type: 'text',
+          required: true,
+          placeholder: 'مثال: ۱۴۰۴/ب/۹۸۱۲',
+        },
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'تاریخ ابلاغ قانونی (شمسی)',
+          key: 'notice_date',
+          type: 'date',
+          required: true,
+        },
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'مبلغ مالیات مورد مطالبه (ریال)',
+          key: 'tax_amount_claimed',
+          type: 'number',
+          required: false,
+        },
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'تصویر برگ ابلاغیه / فایل پیوست',
+          key: 'notice_document_file',
+          type: 'file',
+          required: false,
+        },
+      ]
+    } else if (packType === 'ruling') {
+      presetPack = [
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'شماره دادنامه / رای صادره',
+          key: 'ruling_number',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'تاریخ صدور / ابلاغ رای',
+          key: 'ruling_date',
+          type: 'date',
+          required: true,
+        },
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'نتیجه رای هیأت / مرجع',
+          key: 'ruling_result_status',
+          type: 'select',
+          required: true,
+          options: ['تعدیل مالیات', 'رد اعتراض مودی', 'نقض و تجدید رسیدگی', 'قرار کارشناسی مجدد'],
+        },
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'پیوست فایل دادنامه و مدارک',
+          key: 'ruling_file',
+          type: 'file',
+          required: false,
+        },
+      ]
+    } else {
+      presetPack = [
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'شرح و متن دفاعیه/درخواست',
+          key: 'defense_text',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'تاریخ اقدام یا ثبت',
+          key: 'submission_date',
+          type: 'date',
+          required: false,
+        },
+        {
+          id: 'f-' + uuid().slice(0, 8),
+          label: 'فایل لایحه اعتراضیه / ضمائم',
+          key: 'defense_bill_file',
+          type: 'file',
+          required: false,
+        },
+      ]
+    }
+    setEditingFields((prev) => [...prev, ...presetPack])
+    toast.success(`بسته فیلدهای استاندارد (${presetPack.length} فیلد) اضافه شد`)
   }
 
   const handleUpdateField = (
@@ -376,20 +489,88 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
               </button>
             </div>
 
+            {/* Quick Multi-Field Addition Header */}
+            <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>افزودن سریع و همزمان چند فیلد</span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleAddFieldToStep}
+                    className="bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 text-xs h-7 gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+۱ فیلد</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => handleAddMultipleFieldsToStep(3)}
+                    className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs h-7 gap-1"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>+۳ فیلد همزمان</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => handleAddMultipleFieldsToStep(5)}
+                    className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs h-7 gap-1"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-amber-400" />
+                    <span>+۵ فیلد همزمان</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Preset Packages */}
+              <div className="flex items-center gap-1.5 pt-2 border-t border-zinc-800/80 flex-wrap text-xs">
+                <span className="text-[11px] text-zinc-400 font-medium ml-1">بسته‌های فیلد آماده:</span>
+                <button
+                  type="button"
+                  onClick={() => handleAddStandardFieldPack('assessment')}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-amber-950/60 border border-zinc-700 hover:border-amber-500/60 text-zinc-300 hover:text-amber-300 text-[11px] font-medium transition-colors flex items-center gap-1"
+                >
+                  <FileText className="w-3 h-3 text-amber-400" />
+                  <span>بسته برگ تشخیص (۴ فیلد)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddStandardFieldPack('ruling')}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-sky-950/60 border border-zinc-700 hover:border-sky-500/60 text-zinc-300 hover:text-sky-300 text-[11px] font-medium transition-colors flex items-center gap-1"
+                >
+                  <Scale className="w-3 h-3 text-sky-400" />
+                  <span>بسته رای دادنامه (۴ فیلد)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddStandardFieldPack('general')}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-emerald-950/60 border border-zinc-700 hover:border-emerald-500/60 text-zinc-300 hover:text-emerald-300 text-[11px] font-medium transition-colors flex items-center gap-1"
+                >
+                  <CheckSquare className="w-3 h-3 text-emerald-400" />
+                  <span>بسته دفاعیه (۳ فیلد)</span>
+                </button>
+              </div>
+            </div>
+
             {/* List of Dynamic Fields */}
             <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-300 font-bold">
-                  فیلدهای ورودی کاربر در این گام:
-                </span>
-                <Button
-                  type="button"
-                  onClick={handleAddFieldToStep}
-                  className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs h-8 px-3 gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  افزودن فیلد جدید
-                </Button>
+              <div className="flex items-center justify-between text-xs text-zinc-400 px-1">
+                <span>لیست فیلدهای ورودی این گام ({editingFields.length} فیلد):</span>
+                {editingFields.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingFields([])}
+                    className="text-red-400 hover:text-red-300 text-[11px] flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    حذف همه فیلدها
+                  </button>
+                )}
               </div>
 
               {editingFields.length === 0 ? (
