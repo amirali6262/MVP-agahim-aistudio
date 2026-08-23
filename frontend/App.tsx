@@ -6,7 +6,6 @@ import { AuthProvider } from './context/AuthContext'
 import { TenantProvider, useTenant } from './context/TenantContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import ProtectedRoute from './components/ProtectedRoute'
-import ConfigBanner from './components/ConfigBanner'
 import AdminLayout from './pages/admin/AdminLayout'
 
 import AdminLogin from './pages/admin/AdminLogin'
@@ -78,8 +77,6 @@ export default function App() {
     <ErrorBoundary>
       <AuthProvider>
         <TenantProvider>
-          <ConfigBanner />
-
           <Toaster
             position="top-center"
             richColors
