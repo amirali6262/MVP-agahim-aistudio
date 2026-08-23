@@ -850,6 +850,70 @@ export default function AdminComplianceStudio() {
     }
   }
 
+  const startReview = async () => {
+    const request = reviewRequests.find((item) => item.status === 'REQUESTED')
+    if (!request) {
+      toast.error('درخواست در صف بازبینی پیدا نشد.')
+      return
+    }
+    setBusy(true)
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.rpc('start_obligation_review', { requested_review_id: request.id })
+        if (error) throw error
+      } else {
+        const now = new Date().toISOString()
+        setReviewRequests((current) => current.map((item) => item.id === request.id ? {
+          ...item,
+          status: 'IN_REVIEW',
+          reviewer_id: 'mock-reviewer',
+          updated_at: now,
+        } : item))
+      }
+      toast.success('درخواست بازبینی به کارتابل شما منتقل شد.')
+      await loadReviewRequests()
+    } catch (err) {
+      toast.error(errorMessage(err, 'شروع بازبینی انجام نشد.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const withdrawReview = async () => {
+    const request = reviewRequests.find((item) => item.status === 'REQUESTED')
+    if (!request) {
+      toast.error('فقط درخواست‌های در صف بازبینی قابل بازگشت هستند.')
+      return
+    }
+    if (!window.confirm('درخواست از صف بازبینی خارج و نسخه به پیش‌نویس برگردانده شود؟')) return
+    setBusy(true)
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.rpc('withdraw_obligation_review', {
+          requested_review_id: request.id,
+          requested_note: 'درخواست توسط ثبت‌کننده برای اصلاح به پیش‌نویس بازگردانده شد.',
+        })
+        if (error) throw error
+      } else {
+        mockStudioDb.transitionVersionStatus(request.obligation_version_id, 'DRAFT')
+        const now = new Date().toISOString()
+        setReviewRequests((current) => current.map((item) => item.id === request.id ? {
+          ...item,
+          status: 'WITHDRAWN',
+          reviewed_at: now,
+          decision_note: 'درخواست توسط ثبت‌کننده برای اصلاح به پیش‌نویس بازگردانده شد.',
+          updated_at: now,
+        } : item))
+      }
+      toast.success('درخواست بازبینی به پیش‌نویس برگشت و امکان اصلاح فعال شد.')
+      await Promise.all([loadCatalog(), loadDefinition(), loadReviewRequests()])
+    } catch (err) {
+      toast.error(errorMessage(err, 'بازگرداندن نسخه به پیش‌نویس انجام نشد.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const decideReview = async (decision: 'approve' | 'reject') => {
     const request = reviewRequests.find((item) => ['REQUESTED', 'IN_REVIEW'].includes(item.status))
     if (!request) {
@@ -1059,8 +1123,11 @@ export default function AdminComplianceStudio() {
           mode={mode}
           onSeed={seedStandardCorporateTaxData}
           onSubmitForReview={submitForReview}
+          onStartReview={startReview}
           onDecideReview={decideReview}
+          onWithdrawReview={withdrawReview}
           onPublish={publish}
+          onEditVersion={() => setActiveSubModule(null)}
           onClose={() => setActiveSubModule(null)}
           onSaved={async () => { await loadCatalog(); await loadDefinition() }}
         />

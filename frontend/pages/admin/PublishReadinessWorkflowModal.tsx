@@ -27,8 +27,11 @@ type Props = {
   mode: StudioMode
   onSeed: () => Promise<void>
   onSubmitForReview: () => Promise<void>
+  onStartReview: () => Promise<void>
   onDecideReview: (decision: 'approve' | 'reject') => Promise<void>
+  onWithdrawReview: () => Promise<void>
   onPublish: () => Promise<void>
+  onEditVersion: () => void
   onClose: () => void
   onSaved: () => Promise<void>
 }
@@ -44,11 +47,15 @@ export default function PublishReadinessWorkflowModal({
   mode,
   onSeed,
   onSubmitForReview,
+  onStartReview,
   onDecideReview,
+  onWithdrawReview,
   onPublish,
+  onEditVersion,
   onClose,
 }: Props) {
   const activeRequest = reviewRequests.find((request) => ['REQUESTED', 'IN_REVIEW'].includes(request.status))
+  const latestRejectedRequest = reviewRequests.find((request) => request.status === 'REJECTED')
   const canEdit = mode === 'EDIT'
 
   return (
@@ -70,21 +77,43 @@ export default function PublishReadinessWorkflowModal({
 
             <div className="flex flex-wrap gap-2">
               {canEdit && version.status === 'DRAFT' && (
-                <Button onClick={() => void onSubmitForReview()} disabled={busy} className="gap-1.5 bg-amber-500 text-zinc-950 hover:bg-amber-400">
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Inbox className="h-4 w-4" />}
-                  ارسال به بازبینی
-                </Button>
+                <>
+                  <Button onClick={() => void onEditVersion()} disabled={busy} variant="outline" className="gap-1.5 border-sky-700 text-sky-300 hover:bg-sky-950/40">
+                    <BookOpenCheck className="h-4 w-4" />
+                    اصلاح نسخه
+                  </Button>
+                  <Button onClick={() => void onSubmitForReview()} disabled={busy} className="gap-1.5 bg-amber-500 text-zinc-950 hover:bg-amber-400">
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Inbox className="h-4 w-4" />}
+                    {latestRejectedRequest ? 'ارسال مجدد به بازبینی' : 'ارسال به بازبینی'}
+                  </Button>
+                </>
               )}
               {canEdit && version.status === 'REVIEW' && activeRequest && (
                 <>
-                  <Button onClick={() => void onDecideReview('approve')} disabled={busy} className="gap-1.5 bg-emerald-700 hover:bg-emerald-600">
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
-                    تأیید بازبینی و ورود به آزمایش
-                  </Button>
-                  <Button onClick={() => void onDecideReview('reject')} disabled={busy} variant="outline" className="gap-1.5 border-red-800 text-red-300 hover:bg-red-950/40">
-                    <X className="h-4 w-4" />
-                    رد و بازگشت برای اصلاح
-                  </Button>
+                  {activeRequest.status === 'REQUESTED' && (
+                    <>
+                      <Button onClick={() => void onStartReview()} disabled={busy} className="gap-1.5 bg-sky-700 hover:bg-sky-600">
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
+                        شروع بازبینی تخصصی
+                      </Button>
+                      <Button onClick={() => void onWithdrawReview()} disabled={busy} variant="outline" className="gap-1.5 border-sky-800 text-sky-300 hover:bg-sky-950/40">
+                        <BookOpenCheck className="h-4 w-4" />
+                        بازگشت به پیش‌نویس برای اصلاح
+                      </Button>
+                    </>
+                  )}
+                  {activeRequest.status === 'IN_REVIEW' && (
+                    <>
+                      <Button onClick={() => void onDecideReview('approve')} disabled={busy} className="gap-1.5 bg-emerald-700 hover:bg-emerald-600">
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
+                        تأیید بازبینی و ورود به آزمایش
+                      </Button>
+                      <Button onClick={() => void onDecideReview('reject')} disabled={busy} variant="outline" className="gap-1.5 border-red-800 text-red-300 hover:bg-red-950/40">
+                        <X className="h-4 w-4" />
+                        رد و بازگشت برای اصلاح
+                      </Button>
+                    </>
+                  )}
                 </>
               )}
               {canEdit && version.status === 'TESTING' && (
@@ -102,6 +131,21 @@ export default function PublishReadinessWorkflowModal({
             <Metric label="تاریخ اثرگذاری" value={version.effective_from || 'ثبت نشده'} icon={<Clock3 className="h-4 w-4" />} />
             <Metric label="منبع رسمی" value={version.source_url ? 'ثبت شده' : 'ثبت نشده'} icon={<BookOpenCheck className="h-4 w-4" />} />
           </div>
+
+          {latestRejectedRequest && version.status === 'DRAFT' && (
+            <section className="rounded-xl border border-red-900/70 bg-red-950/20 p-5 space-y-3">
+              <h4 className="flex items-center gap-2 font-bold text-red-200">
+                <MessageSquare className="h-4 w-4" />
+                موارد اصلاحی بازبین
+              </h4>
+              <p className="text-xs leading-6 text-red-100/80">
+                این نسخه به پیش‌نویس برگشته است. ابتدا با «اصلاح نسخه» اطلاعات را ویرایش و ذخیره کنید، سپس دوباره به بازبینی ارسال کنید.
+              </p>
+              <p className="rounded-lg border border-red-900/60 bg-red-950/30 p-3 text-xs leading-6 text-red-100">
+                {latestRejectedRequest.decision_note || 'بازبین توضیح اصلاحی ثبت نکرده است.'}
+              </p>
+            </section>
+          )}
 
           <section className="rounded-xl border border-sky-900/70 bg-sky-950/20 p-5 space-y-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -217,7 +261,7 @@ function statusLabel(status: string) {
 }
 
 function reviewStatusLabel(status: string) {
-  return ({ REQUESTED: 'در صف بازبینی', IN_REVIEW: 'در حال بازبینی', APPROVED: 'تأییدشده', REJECTED: 'ردشده' } as Record<string, string>)[status] ?? status
+  return ({ REQUESTED: 'در صف بازبینی', IN_REVIEW: 'در حال بازبینی', APPROVED: 'تأییدشده', REJECTED: 'ردشده', WITHDRAWN: 'بازگشته به پیش‌نویس' } as Record<string, string>)[status] ?? status
 }
 
 function reviewStatusClass(status: string) {
@@ -226,6 +270,7 @@ function reviewStatusClass(status: string) {
     IN_REVIEW: 'border-amber-800 bg-amber-950/50 text-amber-300',
     APPROVED: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
     REJECTED: 'border-red-800 bg-red-950/50 text-red-300',
+    WITHDRAWN: 'border-sky-800 bg-sky-950/50 text-sky-300',
   } as Record<string, string>)[status] ?? 'border-zinc-700 bg-zinc-900 text-zinc-300'
 }
 
