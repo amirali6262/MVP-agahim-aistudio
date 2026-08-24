@@ -815,7 +815,6 @@ export default function AdminComplianceStudio() {
 
   const repairReviewRequest = async () => {
     if (!selectedVersionId) return
-    if (!window.confirm('برای این نسخه درخواست رسمی بازبینی وجود ندارد. نسخه به‌صورت امن به پیش‌نویس برگردد و دوباره برای بازبینی ارسال شود؟')) return
     await transitionStatus('DRAFT', 'نسخه برای ایجاد درخواست رسمی به پیش‌نویس برگشت.')
     await submitForReview()
   }

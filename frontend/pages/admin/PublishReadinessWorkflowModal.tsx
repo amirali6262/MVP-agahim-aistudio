@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   BookOpenCheck,
   CheckCircle2,
@@ -56,6 +57,7 @@ export default function PublishReadinessWorkflowModal({
   onEditVersion,
   onClose,
 }: Props) {
+  const [repairDialogOpen, setRepairDialogOpen] = useState(false)
   const activeRequest = reviewRequests.find((request) => ['REQUESTED', 'IN_REVIEW'].includes(request.status))
   const latestRejectedRequest = reviewRequests.find((request) => request.status === 'REJECTED')
   const canEdit = mode === 'EDIT'
@@ -176,8 +178,8 @@ export default function PublishReadinessWorkflowModal({
                 {canEdit && version.status === 'REVIEW' && (
                   <>
                     <p className="mt-2 leading-5">این نسخه در وضعیت «در بازبینی» است، اما درخواست کارتابل برای آن پیدا نشد. برای ایجاد درخواست رسمی از دکمه زیر استفاده کنید.</p>
-                    <Button onClick={() => void onRepairReviewRequest()} disabled={busy} size="sm" className="mt-3 gap-1.5 bg-sky-700 hover:bg-sky-600">
-                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Inbox className="h-3.5 w-3.5" />}
+                    <Button onClick={() => setRepairDialogOpen(true)} disabled={busy} size="sm" className="mt-3 gap-1.5 bg-sky-700 hover:bg-sky-600">
+                      <Inbox className="h-3.5 w-3.5" />
                       ایجاد درخواست بازبینی برای این نسخه
                     </Button>
                   </>
@@ -253,6 +255,26 @@ export default function PublishReadinessWorkflowModal({
           </div>
         </section>
       </div>
+      {repairDialogOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="repair-review-title">
+          <div className="w-full max-w-md rounded-2xl border border-sky-800/70 bg-[#141817] p-6 text-right shadow-2xl" dir="rtl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-950 text-sky-300">
+                <Inbox className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 id="repair-review-title" className="text-base font-bold text-zinc-100">ایجاد درخواست بازبینی</h3>
+                <p className="mt-2 text-sm leading-7 text-zinc-300">این نسخه در وضعیت بازبینی است، اما درخواست کارتابل ندارد. نسخه به پیش‌نویس برمی‌گردد و سپس درخواست رسمی جدید ساخته می‌شود.</p>
+                <p className="mt-3 rounded-lg border border-amber-800/60 bg-amber-950/30 p-3 text-xs leading-6 text-amber-200">اطلاعات نسخه حذف نمی‌شود؛ فقط وضعیت آن برای اصلاح و ثبت صحیح درخواست تغییر می‌کند.</p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRepairDialogOpen(false)} disabled={busy} className="border-zinc-700">انصراف</Button>
+              <Button onClick={() => { setRepairDialogOpen(false); void onRepairReviewRequest() }} disabled={busy} className="bg-sky-700 hover:bg-sky-600">تأیید و ایجاد درخواست</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </FullScreen>
   )
 }
