@@ -879,7 +879,10 @@ export default function AdminComplianceStudio() {
       toast.success('درخواست بازبینی به کارتابل شما منتقل شد.')
       await loadReviewRequests()
     } catch (err) {
-      toast.error(errorMessage(err, 'شروع بازبینی انجام نشد.'))
+      const message = errorMessage(err, 'شروع بازبینی انجام نشد.')
+      toast.error(message.includes('submitter cannot claim') || message.includes('ثبت‌کننده')
+        ? 'شما ثبت‌کننده این درخواست هستید؛ برای شروع بازبینی باید با حساب یک بازبین یا مدیر دیگر وارد شوید.'
+        : message)
     } finally {
       setBusy(false)
     }
