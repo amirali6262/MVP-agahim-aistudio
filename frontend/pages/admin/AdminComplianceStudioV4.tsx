@@ -813,6 +813,13 @@ export default function AdminComplianceStudio() {
   useEffect(() => { void loadDefinition() }, [loadDefinition])
   useEffect(() => { void loadReviewRequests() }, [loadReviewRequests])
 
+  const repairReviewRequest = async () => {
+    if (!selectedVersionId) return
+    if (!window.confirm('برای این نسخه درخواست رسمی بازبینی وجود ندارد. نسخه به‌صورت امن به پیش‌نویس برگردد و دوباره برای بازبینی ارسال شود؟')) return
+    await transitionStatus('DRAFT', 'نسخه برای ایجاد درخواست رسمی به پیش‌نویس برگشت.')
+    await submitForReview()
+  }
+
   const submitForReview = async () => {
     if (!selectedVersionId) return
     setBusy(true)
@@ -1123,6 +1130,7 @@ export default function AdminComplianceStudio() {
           mode={mode}
           onSeed={seedStandardCorporateTaxData}
           onSubmitForReview={submitForReview}
+          onRepairReviewRequest={repairReviewRequest}
           onStartReview={startReview}
           onDecideReview={decideReview}
           onWithdrawReview={withdrawReview}

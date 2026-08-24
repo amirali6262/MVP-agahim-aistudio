@@ -27,6 +27,7 @@ type Props = {
   mode: StudioMode
   onSeed: () => Promise<void>
   onSubmitForReview: () => Promise<void>
+  onRepairReviewRequest: () => Promise<void>
   onStartReview: () => Promise<void>
   onDecideReview: (decision: 'approve' | 'reject') => Promise<void>
   onWithdrawReview: () => Promise<void>
@@ -47,6 +48,7 @@ export default function PublishReadinessWorkflowModal({
   mode,
   onSeed,
   onSubmitForReview,
+  onRepairReviewRequest,
   onStartReview,
   onDecideReview,
   onWithdrawReview,
@@ -172,7 +174,13 @@ export default function PublishReadinessWorkflowModal({
                   </Button>
                 )}
                 {canEdit && version.status === 'REVIEW' && (
-                  <p className="mt-2 leading-5">اگر نسخه در وضعیت «در بازبینی» است، صفحه را با Ctrl+F5 تازه‌سازی کنید تا درخواست ثبت‌شده نمایش داده شود.</p>
+                  <>
+                    <p className="mt-2 leading-5">این نسخه در وضعیت «در بازبینی» است، اما درخواست کارتابل برای آن پیدا نشد. برای ایجاد درخواست رسمی از دکمه زیر استفاده کنید.</p>
+                    <Button onClick={() => void onRepairReviewRequest()} disabled={busy} size="sm" className="mt-3 gap-1.5 bg-sky-700 hover:bg-sky-600">
+                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Inbox className="h-3.5 w-3.5" />}
+                      ایجاد درخواست بازبینی برای این نسخه
+                    </Button>
+                  </>
                 )}
               </div>
             ) : (
