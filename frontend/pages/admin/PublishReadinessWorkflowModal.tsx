@@ -180,6 +180,23 @@ export default function PublishReadinessWorkflowModal({
                       <span>ثبت‌کننده: <b className="font-mono text-zinc-300" dir="ltr">{request.submitted_by}</b></span>
                       <span>بازبین: <b className="font-mono text-zinc-300" dir="ltr">{request.reviewer_id || 'تخصیص نیافته'}</b></span>
                     </div>
+                    {request.status === 'REQUESTED' && (
+                      <p className="mt-2 rounded-md border border-sky-900/70 bg-sky-950/30 px-3 py-2 text-[11px] leading-5 text-sky-200">
+                        این درخواست هنوز در صف است. بازبین باید ابتدا «شروع بازبینی تخصصی» را انتخاب کند؛ پس از آن دکمه‌های تأیید و رد نمایش داده می‌شوند.
+                      </p>
+                    )}
+                    {request.status === 'IN_REVIEW' && (
+                      <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-800 pt-3">
+                        <Button onClick={() => void onDecideReview('approve')} disabled={busy} size="sm" className="gap-1.5 bg-emerald-700 hover:bg-emerald-600">
+                          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          تأیید نهایی و ورود به آزمایش
+                        </Button>
+                        <Button onClick={() => void onDecideReview('reject')} disabled={busy} size="sm" variant="outline" className="gap-1.5 border-red-800 text-red-300 hover:bg-red-950/40">
+                          <X className="h-3.5 w-3.5" />
+                          رد و ارسال برای اصلاح
+                        </Button>
+                      </div>
+                    )}
                     {request.decision_note && (
                       <p className="mt-2 flex items-start gap-1.5 border-t border-zinc-800 pt-2 leading-5 text-zinc-300">
                         <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
