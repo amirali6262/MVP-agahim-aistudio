@@ -163,9 +163,18 @@ export default function PublishReadinessWorkflowModal({
             </div>
 
             {reviewRequests.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-sky-900/70 p-4 text-center text-xs text-sky-100/60">
-                هنوز درخواست بازبینی برای این نسخه ثبت نشده است.
-              </p>
+              <div className="rounded-lg border border-dashed border-sky-900/70 p-4 text-center text-xs text-sky-100/70">
+                <p>هنوز درخواست بازبینی برای این نسخه ثبت نشده است.</p>
+                {canEdit && version.status === 'DRAFT' && (
+                  <Button onClick={() => void onSubmitForReview()} disabled={busy} size="sm" className="mt-3 gap-1.5 bg-amber-500 text-zinc-950 hover:bg-amber-400">
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Inbox className="h-3.5 w-3.5" />}
+                    ارسال همین نسخه به بازبینی تخصصی
+                  </Button>
+                )}
+                {canEdit && version.status === 'REVIEW' && (
+                  <p className="mt-2 leading-5">اگر نسخه در وضعیت «در بازبینی» است، صفحه را با Ctrl+F5 تازه‌سازی کنید تا درخواست ثبت‌شده نمایش داده شود.</p>
+                )}
+              </div>
             ) : (
               <div className="space-y-2">
                 {reviewRequests.map((request) => (
