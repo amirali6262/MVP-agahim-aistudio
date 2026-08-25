@@ -151,24 +151,6 @@ const ALL_ROLES: RoleDefinition[] = [
     ],
     restrictions: ['ویرایش نسخه‌ها', 'بازبینی تخصصی', 'تغییر نقش کاربران'],
   },
-  {
-    key: 'BUSINESS_USER',
-    label: 'کاربر سازمانی',
-    persianLabel: 'کاربر شرکت',
-    description: 'کاربر نهایی شرکت. مشاهده تعهدات، تکمیل فرم‌ها و پیگیری وظایف محوله.',
-    color: 'text-zinc-300',
-    bgColor: 'bg-zinc-500/10',
-    borderColor: 'border-zinc-500/30',
-    icon: Briefcase,
-    permissions: [
-      'مشاهده تعهدات شرکت خود',
-      'تکمیل فرم‌ها و مدارک',
-      'پیگیری وضعیت پرونده‌ها',
-      'مشاهده تقویم مهلت‌ها',
-      'دریافت اعلان‌ها و هشدارها',
-    ],
-    restrictions: ['تغییر تعهدات و قواعد', 'بازبینی نسخه‌ها', 'تغییر نقش کاربران'],
-  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -177,23 +159,21 @@ const ALL_ROLES: RoleDefinition[] = [
 
 interface PermissionMatrixRow {
   label: string
-  roles: Record<UserRole, boolean>
+  roles: Partial<Record<UserRole, boolean>>
 }
 
 const PERMISSION_MATRIX: PermissionMatrixRow[] = [
-  { label: 'مشاهده داشبورد مدیریت', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'ایجاد و ویرایش نسخه تعهد', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: true, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'شروع بازبینی تخصصی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'تأیید یا رد بازبینی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'تأیید نهایی انتشار', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true, BUSINESS_USER: false } },
-  { label: 'انتشار نسخه نهایی', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true, BUSINESS_USER: false } },
-  { label: 'مدیریت کاربران و نقش‌ها', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'مشاهده تعهدات شرکت', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: true } },
-  { label: 'تکمیل فرم‌ها و مدارک', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: true } },
-  { label: 'تغییر تنظیمات سامانه', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
+  { label: 'مشاهده داشبورد مدیریت', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: false, APPROVER: false } },
+  { label: 'ایجاد و ویرایش نسخه تعهد', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: true, REVIEWER: false, APPROVER: false } },
+  { label: 'شروع بازبینی تخصصی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false } },
+  { label: 'تأیید یا رد بازبینی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false } },
+  { label: 'تأیید نهایی انتشار', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true } },
+  { label: 'انتشار نسخه نهایی', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true } },
+  { label: 'مدیریت کاربران پلتفرم', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false } },
+  { label: 'تغییر تنظیمات سامانه', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false } },
 ]
 
-const ROLE_ORDER: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER', 'BUSINESS_USER']
+const ROLE_ORDER: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -221,7 +201,6 @@ export default function AdminUserAccessPage() {
         { id: 'mock-registrar-00000003', email: 'registrar@samaneh.ir', phone: null, role: 'REGISTRAR', created_at: '2024-01-02T00:00:00Z' },
         { id: 'mock-reviewer-00000004', email: 'reviewer@samaneh.ir', phone: null, role: 'REVIEWER', created_at: '2024-01-03T00:00:00Z' },
         { id: 'mock-approver-00000006', email: 'approver@samaneh.ir', phone: null, role: 'APPROVER', created_at: '2024-01-07T00:00:00Z' },
-        { id: 'mock-user-00000002', email: 'user@samaneh.ir', phone: null, role: 'BUSINESS_USER', created_at: '2024-01-04T00:00:00Z' },
       ])
       setLoading(false)
       return
@@ -334,7 +313,9 @@ export default function AdminUserAccessPage() {
               </div>
               <h2 className="text-2xl font-bold text-white sm:text-3xl">کاربران و نقش‌ها</h2>
               <p className="mt-2 max-w-2xl text-sm leading-7 text-zinc-300">
-                مدیریت حرفه‌ای دسترسی‌های سامانه. تعیین کنید چه کسی ثبت می‌کند، چه کسی بازبینی می‌کند و چه کسی تأیید نهایی می‌دهد.
+                مدیریت نقش‌های پلتفرم. تعیین کنید چه کسی ثبت می‌کند، چه کسی بازبینی می‌کند و چه کسی تأیید نهایی می‌دهد.
+                <br />
+                <span className="text-xs text-zinc-500">(اعضای شرکت‌ها در فضای کاری هر شرکت مدیریت می‌شوند)</span>
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -360,7 +341,7 @@ export default function AdminUserAccessPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
             icon={Users}
-            label="کل کاربران"
+            label="کل اعضای پلتفرم"
             value={users.length.toString()}
             color="text-amber-400"
             bg="bg-amber-950/30 border-amber-800/40"
@@ -381,8 +362,8 @@ export default function AdminUserAccessPage() {
           />
           <SummaryCard
             icon={Eye}
-            label="بازبین‌ها"
-            value={((roleCounts['REVIEWER'] ?? 0) + (roleCounts['APPROVER'] ?? 0) + (roleCounts['MANAGER'] ?? 0)).toString()}
+            label="بازبین‌ها و تأییدکنندگان"
+            value={((roleCounts['REVIEWER'] ?? 0) + (roleCounts['APPROVER'] ?? 0)).toString()}
             color="text-emerald-300"
             bg="bg-emerald-950/20 border-emerald-800/30"
           />
@@ -694,8 +675,8 @@ export default function AdminUserAccessPage() {
               <BookOpenCheck className="h-4 w-4 text-amber-400" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-sm">جریان کاری بازبینی و انتشار</h3>
-              <p className="text-xs text-zinc-400 mt-0.5">نقش هر کاربر در چرخه انتشار نسخه‌ها</p>
+              <h3 className="font-bold text-white text-sm">جریان کاری پلتفرم</h3>
+              <p className="text-xs text-zinc-400 mt-0.5">نقش هر عضو پلتفرم در چرخه انتشار نسخه‌ها</p>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
