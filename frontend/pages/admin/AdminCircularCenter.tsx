@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BellRing, CalendarClock, CheckCircle2, ExternalLink, Loader2, Plus, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { isSupabaseConfigured, supabase } from '../../lib/supabase'
-import { mockStudioDb } from '../../lib/mockDb'
+import { studioDb } from '../../lib/supabaseDb'
 import type { Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -40,8 +40,8 @@ export default function AdminCircularCenter() {
   const [showDeadlineForm, setShowDeadlineForm] = useState(false)
 
   const loadFromMock = useCallback(() => {
-    const mockObs = mockStudioDb.getObligations()
-    const mockVers = mockStudioDb.getVersions()
+    const mockObs = studioDb.getObligations()
+    const mockVers = studioDb.getVersions()
     const obMap = new Map(mockObs.map((o) => [o.id, o]))
 
     const opts: VersionOption[] = mockVers.flatMap((v) => {
@@ -50,7 +50,7 @@ export default function AdminCircularCenter() {
     })
 
     setVersionOptions(opts)
-    setCirculars(mockStudioDb.getCirculars() as any)
+    setCirculars(studioDb.getCirculars() as any)
     setCases([
       {
         id: 'case-demo-1',
@@ -107,7 +107,7 @@ export default function AdminCircularCenter() {
       }
 
       if (loadedCircs.length === 0) {
-        loadedCircs = mockStudioDb.getCirculars() as any
+        loadedCircs = studioDb.getCirculars() as any
       }
 
       setCirculars(loadedCircs)
@@ -252,7 +252,7 @@ function CircularForm({ options, onSaved }: { options: VersionOption[]; onSaved:
           status: 'DRAFT',
         })
         if (error) {
-          mockStudioDb.addCircular({
+          studioDb.addCircular({
             obligation_version_id: versionId,
             title: title.trim(),
             circular_number: number.trim(),
@@ -262,7 +262,7 @@ function CircularForm({ options, onSaved }: { options: VersionOption[]; onSaved:
           })
         }
       } else {
-        mockStudioDb.addCircular({
+        studioDb.addCircular({
           obligation_version_id: versionId,
           title: title.trim(),
           circular_number: number.trim(),

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { mockStudioDb } from '../../lib/mockDb'
+import { studioDb } from '../../lib/supabaseDb'
 import type { Json, Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -187,14 +187,14 @@ export default function WorkflowStepFormV2({
     try {
       if (editingStep) {
         if (!isSupabaseConfigured) {
-          mockStudioDb.updateWorkflowStep(editingStep.id, stepPayload)
+          studioDb.updateWorkflowStep(editingStep.id, stepPayload)
         } else {
           const { error } = await supabase.from('workflow_steps').update(stepPayload as any).eq('id', editingStep.id)
           if (error) throw error
         }
         toast.success(`مرحله «${title.trim()}» با موفقیت ویرایش شد.`)
       } else if (!isSupabaseConfigured) {
-        mockStudioDb.addWorkflowStep({
+        studioDb.addWorkflowStep({
           obligation_version_id: version.id,
           ...stepPayload,
           instructions: instructions.trim() || undefined,

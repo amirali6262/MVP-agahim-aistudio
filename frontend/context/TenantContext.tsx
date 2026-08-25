@@ -97,13 +97,8 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       let tenant: Tenant | null = null
 
       if (!isSupabaseConfigured) {
-        if (isMockAuthEnabled) {
-          const { mockTenantsDb } = await import('../lib/mockDb')
-          tenant = mockTenantsDb
-            .getForUser(userId)
-            .find((row) => row.tenant_id === storedSelection.tenant_id)
-            ?.tenants ?? null
-        }
+        clearTenant()
+        return
       } else {
         const { data, error } = await supabase
           .from('user_tenants')

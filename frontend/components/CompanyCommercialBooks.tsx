@@ -17,7 +17,7 @@ import { Button } from '../lib/shadcn/button'
 import { Input } from '../lib/shadcn/input'
 import { Label } from '../lib/shadcn/label'
 import { Badge } from '../lib/shadcn/badge'
-import { mockCommercialBooksDb, mockFulfillmentsDb } from '../lib/mockDb'
+import { fetchCommercialBookPeriods, fetchFulfillments, upsertFulfillment } from '../lib/supabaseDb'
 import type { CommercialBookPeriod, TenantObligationFulfillment } from '../lib/supabase'
 import { SearchableYearSelect } from '../pages/admin/books/CommercialBooksAdminPage'
 import JalaliDatePicker from './JalaliDatePicker'
@@ -43,14 +43,11 @@ export default function CompanyCommercialBooks({ tenantId, tenantName }: Props) 
   // Circular Attachment Preview Modal
   const [previewAttachment, setPreviewAttachment] = useState<{ url: string; name: string } | null>(null)
 
-  const loadData = () => {
-    // Get commercial book periods for selected year
-    const list = mockCommercialBooksDb.getAll(fiscalYear)
-    setPeriods(list)
-
-    // Get tenant fulfillments
-    const fuls = mockFulfillmentsDb.getForTenant(tenantId)
-    setFulfillments(fuls)
+  const loadData = async () => {
+    const list = await fetchCommercialBookPeriods(tenantId)
+    setPeriods(list.filter((p) => !fiscalYear || p.title?.includes(fiscalYear)))
+    const fuls = await fetchFulfillments(tenantId)
+    setFulfillments(fuls as TenantObligationFulfillment[])
   }
 
   useEffect(() => {
@@ -74,7 +71,7 @@ export default function CompanyCommercialBooks({ tenantId, tenantName }: Props) 
     setModalOpen(true)
   }
 
-  const handleSubmitFulfillment = (e: React.FormEvent) => {
+  const handleSubmitFulfillment = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedPeriod) return
     if (!trackingNumber.trim()) {
@@ -83,14 +80,11 @@ export default function CompanyCommercialBooks({ tenantId, tenantName }: Props) 
     }
 
     setSaving(true)
-    mockFulfillmentsDb.saveFulfillment({
+    await upsertFulfillment({
       tenant_id: tenantId,
       obligation_id: selectedPeriod.id,
-      shared_action_key: selectedPeriod.id,
-      fiscal_year: fiscalYear,
-      tracking_number: trackingNumber.trim(),
-      fulfillment_date: fulfillmentDate,
-      notes: notes.trim(),
+      status: 'COMPLETED',
+      notes: JSON.stringify({ shared_action_key: selectedPeriod.id, fiscal_year: fiscalYear, tracking_number: trackingNumber.trim(), fulfillment_date: fulfillmentDate, notes: notes.trim() }),
     })
 
     toast.success('کد رهگیری و شواهد دفاتر تجاری با موفقیت در سامانه ثبت شد.')

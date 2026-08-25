@@ -36,7 +36,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { mockStudioDb } from '../../lib/mockDb'
+import { studioDb } from '../../lib/supabaseDb'
 import type { Json, Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -341,8 +341,8 @@ export default function AdminComplianceStudio() {
           }
         }
       } else {
-        const { mockStudioDb } = await import('../../lib/mockDb')
-        mockStudioDb.cloneObligation(item.obligation.id, newTitle, newCode)
+        const { studioDb } = await import('../../lib/supabaseDb')
+        studioDb.cloneObligation(item.obligation.id, newTitle, newCode)
       }
       toast.success(`تعهد «${newTitle}» با موفقیت کپی شد.`)
       await loadCatalog()
@@ -357,9 +357,9 @@ export default function AdminComplianceStudio() {
     setLoading(true)
 
     if (!isSupabaseConfigured) {
-      const familyRows = mockStudioDb.getFamilies()
-      const obligationRows = mockStudioDb.getObligations().filter((item) => !mockDeletedObligationIds.has(item.id))
-      const versionRows = mockStudioDb.getVersions()
+      const familyRows = studioDb.getFamilies()
+      const obligationRows = studioDb.getObligations().filter((item) => !mockDeletedObligationIds.has(item.id))
+      const versionRows = studioDb.getVersions()
       setFamilies(familyRows)
       const cat = obligationRows.map((obligation) => ({
         obligation,
@@ -382,22 +382,7 @@ export default function AdminComplianceStudio() {
       ])
       const error = familyResult.error ?? obligationResult.error ?? versionResult.error
       if (error) {
-        // Fallback to mock data if network / credentials fail
-        const familyRows = mockStudioDb.getFamilies()
-        const obligationRows = mockStudioDb.getObligations().filter((item) => !mockDeletedObligationIds.has(item.id))
-        const versionRows = mockStudioDb.getVersions()
-        setFamilies(familyRows)
-        const cat = obligationRows.map((obligation) => ({
-          obligation,
-          family: familyRows.find((family) => family.id === obligation.family_id) ?? null,
-          versions: versionRows.filter((version) => version.obligation_id === obligation.id),
-        }))
-        setCatalog(cat)
-        if (!selectedVersionId && versionRows.length > 0) {
-          setSelectedVersionId(versionRows[0].id)
-        }
-        setLoading(false)
-        return
+        throw new Error(error.message || 'خطا در دریافت اطلاعات از Supabase.')
       }
       const familyRows = familyResult.data ?? []
       const versionRows = versionResult.data ?? []
@@ -413,19 +398,11 @@ export default function AdminComplianceStudio() {
       if (!selectedVersionId && versionRows.length > 0) {
         setSelectedVersionId(versionRows[0].id)
       }
-    } catch {
-      const familyRows = mockStudioDb.getFamilies()
-      const obligationRows = mockStudioDb.getObligations().filter((item) => !mockDeletedObligationIds.has(item.id))
-      const versionRows = mockStudioDb.getVersions()
-      setFamilies(familyRows)
-      setCatalog(obligationRows.map((obligation) => ({
-        obligation,
-        family: familyRows.find((family) => family.id === obligation.family_id) ?? null,
-        versions: versionRows.filter((version) => version.obligation_id === obligation.id),
-      })))
-      if (!selectedVersionId && versionRows.length > 0) {
-        setSelectedVersionId(versionRows[0].id)
-      }
+    } catch (error: any) {
+      toast.error(error?.message || 'دریافت اطلاعات از Supabase ناموفق بود.')
+      setFamilies([])
+      setCatalog([])
+      return
     } finally {
       setLoading(false)
     }
@@ -463,15 +440,15 @@ export default function AdminComplianceStudio() {
     }
 
     if (!isSupabaseConfigured) {
-      const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
-      const st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-      const rl = mockStudioDb.getRuleSets(selectedVersionId)
+      const tmpl = studioDb.getWorkflowTemplate(selectedVersionId)
+      const st = tmpl ? studioDb.getWorkflowSteps(tmpl.id) : []
+      const rl = studioDb.getRuleSets(selectedVersionId)
       setSteps(st)
       setRules(rl)
       setTransitions([])
       const condMap: Record<string, any[]> = {}
       rl.forEach((r: any) => {
-        condMap[r.id] = mockStudioDb.getConditions(r.id)
+        condMap[r.id] = studioDb.getConditions(r.id)
       })
       setRuleConditions(condMap)
       return
@@ -487,15 +464,15 @@ export default function AdminComplianceStudio() {
       setPenaltySchemaReady(!isMissingSchemaObject(penaltyProbe.error))
       setTransitionSchemaReady(!isMissingSchemaObject(transitionProbe.error))
       if (templateResult.error || rulesResult.error) {
-        const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
-        const st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-        const rl = mockStudioDb.getRuleSets(selectedVersionId)
+        const tmpl = studioDb.getWorkflowTemplate(selectedVersionId)
+        const st = tmpl ? studioDb.getWorkflowSteps(tmpl.id) : []
+        const rl = studioDb.getRuleSets(selectedVersionId)
         setSteps(st)
         setRules(rl)
         setTransitions([])
         const condMap: Record<string, any[]> = {}
         rl.forEach((r: any) => {
-          condMap[r.id] = mockStudioDb.getConditions(r.id)
+          condMap[r.id] = studioDb.getConditions(r.id)
         })
         setRuleConditions(condMap)
         return
@@ -541,15 +518,15 @@ export default function AdminComplianceStudio() {
       }
       setRuleConditions(condMap)
     } catch {
-      const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
-      const st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id).filter((s) => !mockDeletedStepIds.has(s.id)) : []
-      const rl = mockStudioDb.getRuleSets(selectedVersionId).filter((r) => !mockDeletedRuleIds.has(r.id))
+      const tmpl = studioDb.getWorkflowTemplate(selectedVersionId)
+      const st = tmpl ? studioDb.getWorkflowSteps(tmpl.id).filter((s) => !mockDeletedStepIds.has(s.id)) : []
+      const rl = studioDb.getRuleSets(selectedVersionId).filter((r) => !mockDeletedRuleIds.has(r.id))
       setSteps(st)
       setRules(rl)
       setTransitions([])
       const condMap: Record<string, any[]> = {}
       rl.forEach((r: any) => {
-        condMap[r.id] = mockStudioDb.getConditions(r.id)
+        condMap[r.id] = studioDb.getConditions(r.id)
       })
       setRuleConditions(condMap)
     }
@@ -566,7 +543,7 @@ export default function AdminComplianceStudio() {
     const targetRuleId = rule.id
     const targetTitle = rule.title
     mockDeletedRuleIds.add(targetRuleId)
-    mockStudioDb.deleteRuleSet(targetRuleId)
+    studioDb.deleteRuleSet(targetRuleId)
     setRules((prev) => prev.filter((r) => r.id !== targetRuleId))
     setRuleConditions((prev) => {
       const next = { ...prev }
@@ -603,7 +580,7 @@ export default function AdminComplianceStudio() {
     const targetStepId = step.id
     const targetTitle = step.title
     mockDeletedStepIds.add(targetStepId)
-    mockStudioDb.deleteWorkflowStep(targetStepId)
+    studioDb.deleteWorkflowStep(targetStepId)
     setSteps((prev) => prev.filter((s) => s.id !== targetStepId))
     setTransitions((prev) => prev.filter((t) => t.from_step_id !== targetStepId && t.to_step_id !== targetStepId))
     if (editingStep?.id === targetStepId) setEditingStep(null)
@@ -635,10 +612,10 @@ export default function AdminComplianceStudio() {
       }
       if (!isSupabaseConfigured) {
         const counts = Object.fromEntries(versionIds.map((versionId) => {
-          const template = mockStudioDb.getWorkflowTemplate(versionId)
+          const template = studioDb.getWorkflowTemplate(versionId)
           return [versionId, {
-            rules: mockStudioDb.getRuleSets(versionId).length,
-            steps: template ? mockStudioDb.getWorkflowSteps(template.id).length : 0,
+            rules: studioDb.getRuleSets(versionId).length,
+            steps: template ? studioDb.getWorkflowSteps(template.id).length : 0,
           }]
         }))
         if (!cancelled) setDefinitionCounts(counts)
@@ -810,7 +787,7 @@ export default function AdminComplianceStudio() {
       }
 
       // Also register in mock DB
-      mockStudioDb.addRuleSet({
+      studioDb.addRuleSet({
         obligation_version_id: selectedVersionId,
         priority: 1,
         title: 'مشمولیت عام کلیه شرکت‌ها و اشخاص حقوقی ثبت‌شده در ایران',
@@ -821,7 +798,7 @@ export default function AdminComplianceStudio() {
           { fact: 'TAX_REGISTRATION_STATUS', operator: 'IN', expected: ['ACTIVE', 'REGISTERED', 'فعال', 'ثبت‌شده'] },
         ],
       })
-      mockStudioDb.addRuleSet({
+      studioDb.addRuleSet({
         obligation_version_id: selectedVersionId,
         priority: 2,
         title: 'شرکت‌های دارای معافیت قانونی یا مشمول نرخ صفر (دانش‌بنیان، مناطق آزاد و ماده ۱۳۲)',
@@ -841,7 +818,7 @@ export default function AdminComplianceStudio() {
       ]
 
       for (const s of stepsData) {
-        mockStudioDb.addWorkflowStep({
+        if (false) studioDb.addWorkflowStep({
           obligation_version_id: selectedVersionId,
           sequence: s.seq,
           code: s.code,
@@ -881,7 +858,7 @@ export default function AdminComplianceStudio() {
         })
         if (error) throw error
       } else {
-        mockStudioDb.transitionVersionStatus(selectedVersionId, 'REVIEW')
+        studioDb.transitionVersionStatus(selectedVersionId, 'REVIEW')
         const now = new Date().toISOString()
         setReviewRequests((current) => [
           {
@@ -956,7 +933,7 @@ export default function AdminComplianceStudio() {
         })
         if (error) throw error
       } else {
-        mockStudioDb.transitionVersionStatus(request.obligation_version_id, 'DRAFT')
+        studioDb.transitionVersionStatus(request.obligation_version_id, 'DRAFT')
         const now = new Date().toISOString()
         setReviewRequests((current) => current.map((item) => item.id === request.id ? {
           ...item,
@@ -998,7 +975,7 @@ export default function AdminComplianceStudio() {
           : await supabase.rpc('reject_obligation_review', { requested_review_id: request.id, requested_note: note })
         if (error) throw error
       } else {
-        mockStudioDb.transitionVersionStatus(request.obligation_version_id, decision === 'approve' ? 'TESTING' : 'DRAFT')
+        studioDb.transitionVersionStatus(request.obligation_version_id, decision === 'approve' ? 'TESTING' : 'DRAFT')
         const now = new Date().toISOString()
         setReviewRequests((current) => current.map((item) => item.id === request.id ? {
           ...item,
@@ -1029,7 +1006,7 @@ export default function AdminComplianceStudio() {
         })
         if (error) throw error
       } else {
-        mockStudioDb.transitionVersionStatus(selectedVersionId, targetStatus)
+        studioDb.transitionVersionStatus(selectedVersionId, targetStatus)
       }
 
       toast.success(successMessage)
@@ -1053,7 +1030,7 @@ export default function AdminComplianceStudio() {
         })
         if (error) throw error
       } else {
-        mockStudioDb.publishVersion(selectedVersionId)
+        studioDb.publishVersion(selectedVersionId)
       }
 
       toast.success('نسخه منتشر شد و برای تشخیص شرکت‌ها قابل استفاده است.')
@@ -1545,8 +1522,8 @@ function BasicIdentityForm({
         if (obligationResult.error) throw obligationResult.error
         if (versionResult.error) throw versionResult.error
       } else {
-        const mockObligation = mockStudioDb.getObligations().find((row) => row.id === item.obligation.id)
-        const mockVersion = mockStudioDb.getVersions().find((row) => row.id === version.id)
+        const mockObligation = studioDb.getObligations().find((row) => row.id === item.obligation.id)
+        const mockVersion = studioDb.getVersions().find((row) => row.id === version.id)
         if (!mockObligation || !mockVersion) throw new Error('تعهد یا نسخه مورد نظر پیدا نشد.')
         Object.assign(mockObligation, obligationPatch, { updated_at: new Date().toISOString() })
         Object.assign(mockVersion, versionPatch, { updated_at: new Date().toISOString() })
@@ -1745,7 +1722,7 @@ function ClassificationModal({
         const { error } = await supabase.from('obligation_versions').update({ recurrence_rule: recurrencePatch }).eq('id', version.id)
         if (error) throw error
       } else {
-        const mockVersion = mockStudioDb.getVersions().find((row) => row.id === version.id)
+        const mockVersion = studioDb.getVersions().find((row) => row.id === version.id)
         if (!mockVersion) throw new Error('نسخه پیدا نشد.')
         mockVersion.recurrence_rule = recurrencePatch
         mockVersion.updated_at = new Date().toISOString()
@@ -1948,7 +1925,7 @@ function RecurrenceModal({
         }).eq('id', version.id)
         if (error) throw error
       } else {
-        const mockVersion = mockStudioDb.getVersions().find((row) => row.id === version.id)
+        const mockVersion = studioDb.getVersions().find((row) => row.id === version.id)
         if (!mockVersion) throw new Error('نسخه پیدا نشد.')
         mockVersion.recurrence_rule = recurrencePatch
         mockVersion.deadline_rule = deadlinePatch
@@ -2102,8 +2079,8 @@ function ScopeModal({
         if (obRes.error) throw obRes.error
         if (verRes.error) throw verRes.error
       } else {
-        const mockObligation = mockStudioDb.getObligations().find((row) => row.id === item.obligation.id)
-        const mockVersion = mockStudioDb.getVersions().find((row) => row.id === version.id)
+        const mockObligation = studioDb.getObligations().find((row) => row.id === item.obligation.id)
+        const mockVersion = studioDb.getVersions().find((row) => row.id === version.id)
         if (!mockObligation || !mockVersion) throw new Error('تعهد پیدا نشد.')
         mockObligation.is_active = isActive
         mockObligation.updated_at = new Date().toISOString()
@@ -2997,7 +2974,7 @@ function PenaltyForm({ version, multiPenaltyTableReady, onSaved }: { version: Ve
       const { error } = await supabase.from('obligation_versions').update({ penalty_rule: rule }).eq('id', version.id)
       if (error) { toast.error(error.message); return }
     } else {
-      const mockVersion = mockStudioDb.getVersions().find((item) => item.id === version.id)
+      const mockVersion = studioDb.getVersions().find((item) => item.id === version.id)
       if (!mockVersion) return toast.error('نسخه تعهد پیدا نشد.')
       mockVersion.penalty_rule = rule
       mockVersion.updated_at = new Date().toISOString()
@@ -3130,7 +3107,7 @@ function FamilyManager({
 
           if (error) throw error
         } else {
-          mockStudioDb.updateFamily(editingFamily.id, updatePayload)
+          studioDb.updateFamily(editingFamily.id, updatePayload)
         }
 
         toast.success(`گروه «${title.trim()}» با موفقیت به‌روزرسانی شد.`)
@@ -3153,7 +3130,7 @@ function FamilyManager({
 
           if (error) throw error
         } else {
-          mockStudioDb.createFamily(newPayload)
+          studioDb.createFamily(newPayload)
         }
 
         toast.success(`گروه جدید «${title.trim()}» با موفقیت ثبت شد.`)
@@ -3208,7 +3185,7 @@ function FamilyManager({
 
         if (error) throw error
       } else {
-        const result = mockStudioDb.deleteFamily(family.id)
+        const result = studioDb.deleteFamily(family.id)
         if (!result.success) {
           throw new Error(result.error || 'حذف گروه انجام نشد.')
         }
@@ -3699,7 +3676,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
     const deadlineRule: Json = { base_event: baseEvent, time_gap_value: timeGapValue ? Number(timeGapValue) : null, time_gap_unit: timeGapUnit || null }
 
     if (!isSupabaseConfigured) {
-      const { version } = mockStudioDb.createDraft({
+      const { version } = studioDb.createDraft({
         requested_family_id: familyId,
         requested_code: normalizedCode,
         requested_title: title.trim(),
@@ -3864,7 +3841,7 @@ function EligibilityRuleForm({
 
     if (editingRule) {
       if (!isSupabaseConfigured) {
-        mockStudioDb.updateRuleSet(editingRule.id, {
+        studioDb.updateRuleSet(editingRule.id, {
           priority: currentPriority,
           title: title.trim(),
           outcome,
@@ -3935,7 +3912,7 @@ function EligibilityRuleForm({
     }
 
     if (!isSupabaseConfigured) {
-      mockStudioDb.addRuleSet({
+      studioDb.addRuleSet({
         obligation_version_id: versionId,
         priority: currentPriority,
         title: title.trim(),
@@ -3962,7 +3939,7 @@ function EligibilityRuleForm({
     try {
       const { data: rule, error } = await supabase.from('eligibility_rule_sets').insert({ obligation_version_id: versionId, priority: currentPriority, title: title.trim(), outcome, explanation: explanation.trim() }).select().single()
       if (error) {
-        mockStudioDb.addRuleSet({
+        studioDb.addRuleSet({
           obligation_version_id: versionId,
           priority: currentPriority,
           title: title.trim(),
@@ -4006,7 +3983,7 @@ function EligibilityRuleForm({
       setExplanation('')
       await onSaved()
     } catch {
-      mockStudioDb.addRuleSet({
+      studioDb.addRuleSet({
         obligation_version_id: versionId,
         priority: currentPriority,
         title: title.trim(),
@@ -4145,7 +4122,7 @@ function WorkflowStepForm({
 
     if (editingStep) {
       if (!isSupabaseConfigured) {
-        mockStudioDb.updateWorkflowStep(editingStep.id, {
+        studioDb.updateWorkflowStep(editingStep.id, {
           sequence: currentSequence,
           code: normalizeCode(code),
           title: title.trim(),
@@ -4186,7 +4163,7 @@ function WorkflowStepForm({
     }
 
     if (!isSupabaseConfigured) {
-      mockStudioDb.addWorkflowStep({
+      studioDb.addWorkflowStep({
         obligation_version_id: version.id,
         sequence: currentSequence,
         code: normalizeCode(code),
@@ -4226,7 +4203,7 @@ function WorkflowStepForm({
         })
         if (result.error) throw result.error
       } else {
-        mockStudioDb.addWorkflowStep({
+        studioDb.addWorkflowStep({
           obligation_version_id: version.id,
           sequence: currentSequence,
           code: normalizeCode(code),
@@ -4245,7 +4222,7 @@ function WorkflowStepForm({
       setFieldKey('')
       await onSaved()
     } catch {
-      mockStudioDb.addWorkflowStep({
+      studioDb.addWorkflowStep({
         obligation_version_id: version.id,
         sequence: currentSequence,
         code: normalizeCode(code),

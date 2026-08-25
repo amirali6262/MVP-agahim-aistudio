@@ -5,7 +5,7 @@ import { Building2, Plus, MapPin, Tag, ChevronLeft, LogOut, Search, X } from 'lu
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { mockTenantsDb } from '../../lib/mockDb'
+import { fetchUserTenants } from '../../lib/supabaseDb'
 import type { Tenant, UserTenantWithTenant } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
@@ -29,7 +29,7 @@ export default function TenantSwitcher({ onAddNew }: Props) {
     setLoading(true)
 
     if (!isSupabaseConfigured) {
-      const rows = mockTenantsDb.getForUser(session.user.id)
+      const rows = await fetchUserTenants(session.user.id)
       const list: Tenant[] = rows
         .map((r) => r.tenants)
         .filter((t): t is Tenant => t !== null)

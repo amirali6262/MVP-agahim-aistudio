@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { mockStudioDb } from '../../lib/mockDb'
+import { studioDb } from '../../lib/supabaseDb'
 import type { Json, Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -137,10 +137,8 @@ export default function AdminComplianceStudio() {
       const { error } = await supabase.from('obligations').update({ title: obligationTitle.trim() }).eq('id', selectedCatalogItem.obligation.id)
       if (error) return toast.error(error.message)
     } else {
-      const obligation = mockStudioDb.getObligations().find((item) => item.id === selectedCatalogItem.obligation.id)
-      if (!obligation) return toast.error('تعهد پیدا نشد.')
-      obligation.title = obligationTitle.trim()
-      obligation.updated_at = new Date().toISOString()
+      throw new Error('Supabase connection is required.')
+      /*      throw new Error('Supabase connection is required.') */
     }
     setTitleDirty(false); toast.success('نام تعهد ذخیره شد.'); await loadCatalog()
   }
@@ -182,9 +180,15 @@ export default function AdminComplianceStudio() {
     setLoading(true)
 
     if (!isSupabaseConfigured) {
-      const familyRows = mockStudioDb.getFamilies()
-      const obligationRows = mockStudioDb.getObligations().filter((item) => !mockDeletedObligationIds.has(item.id))
-      const versionRows = mockStudioDb.getVersions()
+      toast.error('برای این عملیات اتصال Supabase الزامی است.')
+      return
+    }
+
+    /* Supabase-only path */
+    if (false) {
+      const familyRows = studioDb.getFamilies() as any[]
+      const obligationRows = (studioDb.getObligations() as any[]).filter((item) => !mockDeletedObligationIds.has(item.id))
+      const versionRows = studioDb.getVersions() as any[]
       setFamilies(familyRows)
       const cat = obligationRows.map((obligation) => ({
         obligation,
@@ -207,22 +211,7 @@ export default function AdminComplianceStudio() {
       ])
       const error = familyResult.error ?? obligationResult.error ?? versionResult.error
       if (error) {
-        // Fallback to mock data if network / credentials fail
-        const familyRows = mockStudioDb.getFamilies()
-        const obligationRows = mockStudioDb.getObligations().filter((item) => !mockDeletedObligationIds.has(item.id))
-        const versionRows = mockStudioDb.getVersions()
-        setFamilies(familyRows)
-        const cat = obligationRows.map((obligation) => ({
-          obligation,
-          family: familyRows.find((family) => family.id === obligation.family_id) ?? null,
-          versions: versionRows.filter((version) => version.obligation_id === obligation.id),
-        }))
-        setCatalog(cat)
-        if (!selectedVersionId && versionRows.length > 0) {
-          setSelectedVersionId(versionRows[0].id)
-        }
-        setLoading(false)
-        return
+        throw new Error(error.message || 'خطا در دریافت اطلاعات از Supabase.')
       }
       const familyRows = familyResult.data ?? []
       const versionRows = versionResult.data ?? []
@@ -237,9 +226,9 @@ export default function AdminComplianceStudio() {
         setSelectedVersionId(versionRows[0].id)
       }
     } catch {
-      const familyRows = mockStudioDb.getFamilies()
-      const obligationRows = mockStudioDb.getObligations().filter((item) => !mockDeletedObligationIds.has(item.id))
-      const versionRows = mockStudioDb.getVersions()
+      const familyRows = studioDb.getFamilies() as any[]
+      const obligationRows = (studioDb.getObligations() as any[]).filter((item) => !mockDeletedObligationIds.has(item.id))
+      const versionRows = studioDb.getVersions() as any[]
       setFamilies(familyRows)
       setCatalog(obligationRows.map((obligation) => ({
         obligation,
@@ -263,20 +252,10 @@ export default function AdminComplianceStudio() {
     }
 
     if (!isSupabaseConfigured) {
-      const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
-      let st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-      let rl = mockStudioDb.getRuleSets(selectedVersionId)
-      // If mock version has no steps or rules, seed standard data for smooth experience
-      if (st.length === 0 && rl.length === 0) {
-        rl = mockStudioDb.getRuleSets('ver-corp-tax-1403')
-        const defTmpl = mockStudioDb.getWorkflowTemplate('ver-corp-tax-1403')
-        st = defTmpl ? mockStudioDb.getWorkflowSteps(defTmpl.id) : []
-      }
-      setSteps(st)
-      setRules(rl)
-      setTransitions([])
+      toast.error('برای این عملیات اتصال Supabase الزامی است.')
       return
     }
+
 
     try {
       const [templateResult, rulesResult] = await Promise.all([
@@ -284,13 +263,13 @@ export default function AdminComplianceStudio() {
         supabase.from('eligibility_rule_sets').select('*').eq('obligation_version_id', selectedVersionId).order('priority'),
       ])
       if (templateResult.error || rulesResult.error) {
-        const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
-        let st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-        let rl = mockStudioDb.getRuleSets(selectedVersionId)
+        const tmpl = studioDb.getWorkflowTemplate(selectedVersionId)
+        let st = tmpl ? studioDb.getWorkflowSteps(tmpl.id) : []
+        let rl = studioDb.getRuleSets(selectedVersionId)
         if (st.length === 0 && rl.length === 0) {
-          rl = mockStudioDb.getRuleSets('ver-corp-tax-1403')
-          const defTmpl = mockStudioDb.getWorkflowTemplate('ver-corp-tax-1403')
-          st = defTmpl ? mockStudioDb.getWorkflowSteps(defTmpl.id) : []
+          rl = studioDb.getRuleSets('ver-corp-tax-1403')
+          const defTmpl = studioDb.getWorkflowTemplate('ver-corp-tax-1403')
+          st = defTmpl ? studioDb.getWorkflowSteps(defTmpl.id) : []
         }
         setSteps(st)
         setRules(rl)
@@ -318,11 +297,11 @@ export default function AdminComplianceStudio() {
 
       // If this version in Supabase is empty (0 rules & 0 steps), fall back to standard data display
       if (fetchedSteps.length === 0 && fetchedRules.length === 0) {
-        const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId) ?? mockStudioDb.getWorkflowTemplate('ver-corp-tax-1403')
-        const st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-        const rl = mockStudioDb.getRuleSets(selectedVersionId).length > 0
-          ? mockStudioDb.getRuleSets(selectedVersionId)
-          : mockStudioDb.getRuleSets('ver-corp-tax-1403')
+        const tmpl = studioDb.getWorkflowTemplate(selectedVersionId) ?? studioDb.getWorkflowTemplate('ver-corp-tax-1403')
+        const st = tmpl ? studioDb.getWorkflowSteps(tmpl.id) : []
+        const rl = studioDb.getRuleSets(selectedVersionId).length > 0
+          ? studioDb.getRuleSets(selectedVersionId)
+          : studioDb.getRuleSets('ver-corp-tax-1403')
         setSteps(st)
         setRules(rl)
         setTransitions([])
@@ -332,13 +311,13 @@ export default function AdminComplianceStudio() {
         setTransitions(fetchedTransitions)
       }
     } catch {
-      const tmpl = mockStudioDb.getWorkflowTemplate(selectedVersionId)
-      let st = tmpl ? mockStudioDb.getWorkflowSteps(tmpl.id) : []
-      let rl = mockStudioDb.getRuleSets(selectedVersionId)
+      const tmpl = studioDb.getWorkflowTemplate(selectedVersionId)
+      let st = tmpl ? studioDb.getWorkflowSteps(tmpl.id) : []
+      let rl = studioDb.getRuleSets(selectedVersionId)
       if (st.length === 0 && rl.length === 0) {
-        rl = mockStudioDb.getRuleSets('ver-corp-tax-1403')
-        const defTmpl = mockStudioDb.getWorkflowTemplate('ver-corp-tax-1403')
-        st = defTmpl ? mockStudioDb.getWorkflowSteps(defTmpl.id) : []
+        rl = studioDb.getRuleSets('ver-corp-tax-1403')
+        const defTmpl = studioDb.getWorkflowTemplate('ver-corp-tax-1403')
+        st = defTmpl ? studioDb.getWorkflowSteps(defTmpl.id) : []
       }
       setSteps(st)
       setRules(rl)
@@ -355,11 +334,17 @@ export default function AdminComplianceStudio() {
         return
       }
       if (!isSupabaseConfigured) {
+      toast.error('برای این عملیات اتصال Supabase الزامی است.')
+      return
+    }
+
+    /* Supabase-only path */
+    if (false) {
         const counts = Object.fromEntries(versionIds.map((versionId) => {
-          const template = mockStudioDb.getWorkflowTemplate(versionId)
+          const template = studioDb.getWorkflowTemplate(versionId)
           return [versionId, {
-            rules: mockStudioDb.getRuleSets(versionId).length,
-            steps: template ? mockStudioDb.getWorkflowSteps(template.id).length : 0,
+            rules: studioDb.getRuleSets(versionId).length,
+            steps: template ? studioDb.getWorkflowSteps(template.id).length : 0,
           }]
         }))
         if (!cancelled) setDefinitionCounts(counts)
@@ -531,7 +516,7 @@ export default function AdminComplianceStudio() {
       }
 
       // Also register in mock DB
-      mockStudioDb.addRuleSet({
+      studioDb.addRuleSet({
         obligation_version_id: selectedVersionId,
         priority: 1,
         title: 'مشمولیت عام کلیه شرکت‌ها و اشخاص حقوقی ثبت‌شده در ایران',
@@ -542,7 +527,7 @@ export default function AdminComplianceStudio() {
           { fact: 'TAX_REGISTRATION_STATUS', operator: 'IN', expected: ['ACTIVE', 'REGISTERED', 'فعال', 'ثبت‌شده'] },
         ],
       })
-      mockStudioDb.addRuleSet({
+      studioDb.addRuleSet({
         obligation_version_id: selectedVersionId,
         priority: 2,
         title: 'شرکت‌های دارای معافیت قانونی یا مشمول نرخ صفر (دانش‌بنیان، مناطق آزاد و ماده ۱۳۲)',
@@ -562,7 +547,7 @@ export default function AdminComplianceStudio() {
       ]
 
       for (const s of stepsData) {
-        mockStudioDb.addWorkflowStep({
+        studioDb.addWorkflowStep({
           obligation_version_id: selectedVersionId,
           sequence: s.seq,
           code: s.code,
@@ -599,23 +584,16 @@ export default function AdminComplianceStudio() {
           })
           .eq('id', selectedVersionId)
 
-        if (error) {
-          // If table update also failed, fallback to mock DB
-          mockStudioDb.transitionVersionStatus(selectedVersionId, targetStatus)
-        }
+        if (error) throw error
       } else {
-        mockStudioDb.transitionVersionStatus(selectedVersionId, targetStatus)
+        throw new Error('برای این عملیات اتصال Supabase الزامی است.')
       }
 
       toast.success(successMessage)
       await loadCatalog()
       await loadDefinition()
     } catch (err: any) {
-      // Fallback
-      mockStudioDb.transitionVersionStatus(selectedVersionId, targetStatus)
-      toast.success(successMessage)
-      await loadCatalog()
-      await loadDefinition()
+      toast.error(err?.message || 'عملیات در Supabase ناموفق بود.')
     } finally {
       setBusy(false)
     }
@@ -638,17 +616,17 @@ export default function AdminComplianceStudio() {
           .eq('id', selectedVersionId)
 
         if (error) {
-          mockStudioDb.publishVersion(selectedVersionId)
+          studioDb.publishVersion(selectedVersionId)
         }
       } else {
-        mockStudioDb.publishVersion(selectedVersionId)
+        studioDb.publishVersion(selectedVersionId)
       }
 
       toast.success('نسخه منتشر شد و برای تشخیص شرکت‌ها قابل استفاده است.')
       await loadCatalog()
       await loadDefinition()
     } catch {
-      mockStudioDb.publishVersion(selectedVersionId)
+      studioDb.publishVersion(selectedVersionId)
       toast.success('نسخه منتشر شد و برای تشخیص شرکت‌ها قابل استفاده است.')
       await loadCatalog()
       await loadDefinition()
@@ -956,7 +934,7 @@ function PenaltyForm({ version, onSaved }: { version: Version; onSaved: () => Pr
       const { error } = await supabase.from('obligation_versions').update({ penalty_rule: rule }).eq('id', version.id)
       if (error) { toast.error(error.message); return }
     } else {
-      const mockVersion = mockStudioDb.getVersions().find((item) => item.id === version.id)
+      const mockVersion = (studioDb.getVersions() as any[]).find((item) => item.id === version.id)
       if (!mockVersion) return toast.error('نسخه تعهد پیدا نشد.')
       mockVersion.penalty_rule = rule
       mockVersion.updated_at = new Date().toISOString()
@@ -987,14 +965,14 @@ function FamilyForm({ onSaved, onDirtyChange }: { onSaved: () => Promise<void>; 
       return
     }
     if (!isSupabaseConfigured) {
-      mockStudioDb.createFamily({ code: code.trim().toUpperCase(), title: title.trim(), domain })
+      studioDb.createFamily({ code: code.trim().toUpperCase(), title: title.trim(), domain })
       toast.success('گروه ثبت شد.')
       await onSaved()
       return
     }
     const { error } = await supabase.from('obligation_families').insert({ code: code.trim().toUpperCase(), title: title.trim(), domain })
     if (error) {
-      mockStudioDb.createFamily({ code: code.trim().toUpperCase(), title: title.trim(), domain })
+      studioDb.createFamily({ code: code.trim().toUpperCase(), title: title.trim(), domain })
       toast.success('گروه ثبت شد.')
       await onSaved()
     } else {
@@ -1041,7 +1019,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
         : { type: 'NONE' }
 
     if (!isSupabaseConfigured) {
-      const { version } = mockStudioDb.createDraft({
+      const { version } = studioDb.createDraft({
         requested_family_id: familyId,
         requested_code: code.trim().toUpperCase(),
         requested_title: title.trim(),
@@ -1074,7 +1052,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
         requested_penalty_rule: penaltyRule,
       })
       if (error) {
-        const { version } = mockStudioDb.createDraft({
+        const { version } = studioDb.createDraft({
           requested_family_id: familyId,
           requested_code: code.trim().toUpperCase(),
           requested_title: title.trim(),
@@ -1091,7 +1069,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
         await onSaved(data.id)
       }
     } catch {
-      const { version } = mockStudioDb.createDraft({
+      const { version } = studioDb.createDraft({
         requested_family_id: familyId,
         requested_code: code.trim().toUpperCase(),
         requested_title: title.trim(),
@@ -1168,7 +1146,7 @@ function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: 
     }
 
     if (!isSupabaseConfigured) {
-      mockStudioDb.addRuleSet({
+      studioDb.addRuleSet({
         obligation_version_id: versionId,
         priority: nextPriority,
         title: title.trim(),
@@ -1193,7 +1171,7 @@ function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: 
     try {
       const { data: rule, error } = await supabase.from('eligibility_rule_sets').insert({ obligation_version_id: versionId, priority: nextPriority, title: title.trim(), outcome, explanation: explanation.trim() }).select().single()
       if (error) {
-        mockStudioDb.addRuleSet({
+        studioDb.addRuleSet({
           obligation_version_id: versionId,
           priority: nextPriority,
           title: title.trim(),
@@ -1233,7 +1211,7 @@ function EligibilityRuleForm({ versionId, nextPriority, onSaved }: { versionId: 
       setOpen(false)
       await onSaved()
     } catch {
-      mockStudioDb.addRuleSet({
+      studioDb.addRuleSet({
         obligation_version_id: versionId,
         priority: nextPriority,
         title: title.trim(),
@@ -1296,7 +1274,7 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
     const fields: Json[] = fieldLabel.trim() ? [{ key: fieldKey.trim() || 'custom_field', label: fieldLabel.trim(), type: fieldType, required: true }] : []
 
     if (!isSupabaseConfigured) {
-      mockStudioDb.addWorkflowStep({
+      studioDb.addWorkflowStep({
         obligation_version_id: version.id,
         sequence: nextSequence,
         code: code.trim().toUpperCase(),
@@ -1322,7 +1300,7 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
         const result = await supabase.from('workflow_steps').insert({ workflow_template_id: template.id, sequence: nextSequence, code: code.trim().toUpperCase(), title: title.trim(), actor, form_schema: { fields } })
         if (result.error) throw result.error
       } else {
-        mockStudioDb.addWorkflowStep({
+        studioDb.addWorkflowStep({
           obligation_version_id: version.id,
           sequence: nextSequence,
           code: code.trim().toUpperCase(),
@@ -1335,7 +1313,7 @@ function WorkflowStepForm({ version, nextSequence, onSaved }: { version: Version
       setOpen(false)
       await onSaved()
     } catch {
-      mockStudioDb.addWorkflowStep({
+      studioDb.addWorkflowStep({
         obligation_version_id: version.id,
         sequence: nextSequence,
         code: code.trim().toUpperCase(),

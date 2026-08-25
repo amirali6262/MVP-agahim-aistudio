@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../../lib/shadcn/table'
-import { mockDeadlineExtensionsDb, mockObligationsDb } from '../../../lib/mockDb'
+import { fetchDeadlineExtensions, createDeadlineExtension, deleteDeadlineExtension, fetchObligations } from '../../../lib/supabaseDb'
 import type { DeadlineExtension, Obligation } from '../../../lib/supabase'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import JalaliDatePicker from '../../../components/JalaliDatePicker'
@@ -41,9 +41,11 @@ export default function DeadlineExtensionsPage() {
   const [value, setValue] = useState('1403/05/31')
   const [circularDescription, setCircularDescription] = useState('')
 
-  const loadData = () => {
-    setExtensions(mockDeadlineExtensionsDb.getAll())
-    setObligations(mockObligationsDb.getAll('TAX_CORPORATE'))
+  const loadData = async () => {
+    const exts = await fetchDeadlineExtensions()
+    setExtensions(exts)
+    const obls = await fetchObligations('TAX_CORPORATE')
+    setObligations(obls)
   }
 
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function DeadlineExtensionsPage() {
     }
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedObligationTitle) {
       toast.error('لطفاً تکلیف مورد نظر را انتخاب کنید.')
       return
@@ -87,7 +89,7 @@ export default function DeadlineExtensionsPage() {
       return
     }
 
-    mockDeadlineExtensionsDb.insert({
+    await createDeadlineExtension({
       obligation_id: selectedObligationId,
       obligation_title: selectedObligationTitle,
       fiscal_year: fiscalYear,
@@ -116,9 +118,9 @@ export default function DeadlineExtensionsPage() {
     setDeleteModalOpen(true)
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!itemToDelete) return
-    mockDeadlineExtensionsDb.delete(itemToDelete.id)
+    await deleteDeadlineExtension(itemToDelete.id)
     toast.success(`تمدید مهلت «${itemToDelete.obligation_title}» با موفقیت حذف شد.`)
     loadData()
     setDeleteModalOpen(false)

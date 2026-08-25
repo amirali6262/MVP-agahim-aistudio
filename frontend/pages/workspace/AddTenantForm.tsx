@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '../../lib/shadcn/select'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { mockTenantsDb } from '../../lib/mockDb'
+import { createTenant } from '../../lib/supabaseDb'
 import { useAuth } from '../../context/AuthContext'
 
 const PROVINCES = [
@@ -58,17 +58,14 @@ export default function AddTenantForm({ onBack, onSuccess }: Props) {
     setSubmitting(true)
 
     if (!isSupabaseConfigured) {
-      // Mock path
-      mockTenantsDb.insertTenant(
-        {
-          name: name.trim(),
-          entity_type: entityType,
-          national_id: nationalId.trim() || null,
-          economic_code: economicCode.trim() || null,
-          province: province || null,
-        },
-        session.user.id
-      )
+      await createTenant({
+        name: name.trim(),
+        entity_type: entityType,
+        national_id: nationalId.trim() || undefined,
+        economic_code: economicCode.trim() || undefined,
+        province: province || undefined,
+        created_by: session.user.id,
+      })
       toast.success('شرکت با موفقیت ثبت شد.')
       setSubmitting(false)
       onSuccess()

@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../../lib/shadcn/table'
-import { mockObligationsDb } from '../../../lib/mockDb'
+import { fetchObligations as fetchObligationsFromDb, deleteObligation } from '../../../lib/supabaseDb'
 import PenaltiesManager from './PenaltiesManager'
 import type { Obligation } from '../../../lib/supabase'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
@@ -92,9 +92,9 @@ export default function ObligationsList({ obligationType = 'TAX_CORPORATE', onAd
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const fetchObligations = useCallback(() => {
+  const loadObligations = useCallback(async () => {
     setLoading(true)
-    const raw = mockObligationsDb.getAll(obligationType === 'ALL' ? undefined : obligationType)
+    const raw = await fetchObligationsFromDb(obligationType === 'ALL' ? undefined : obligationType)
     
     // Sort automatically by Phase Group, then Sequence Order ascending
     const sorted = [...raw].sort((a, b) => {
@@ -112,23 +112,23 @@ export default function ObligationsList({ obligationType = 'TAX_CORPORATE', onAd
   }, [])
 
   useEffect(() => {
-    fetchObligations()
-  }, [fetchObligations, refreshToken])
+    loadObligations()
+  }, [loadObligations, refreshToken])
 
-  const handleInitiateDelete = (ob: Obligation) => {
+  const handleInitiateDelete = async (ob: Obligation) => {
     setItemToDelete(ob)
-    const res = checkObligationDependencies(ob.id)
+    const res = await checkObligationDependencies(ob.id)
     setCheckResult(res)
     setDeleteModalOpen(true)
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!itemToDelete) return
     setIsDeleting(true)
-    const success = mockObligationsDb.delete(itemToDelete.id)
+    const success = await deleteObligation(itemToDelete.id)
     if (success) {
       toast.success(`تکلیف «${itemToDelete.title}» با موفقیت حذف شد.`)
-      fetchObligations()
+      await loadObligations()
     } else {
       toast.error('خطا در حذف تکلیف.')
     }
@@ -138,13 +138,12 @@ export default function ObligationsList({ obligationType = 'TAX_CORPORATE', onAd
   }
 
   if (selectedForPenalties) {
-    return (
-      <PenaltiesManager
+    return (            <PenaltiesManager
         obligation={selectedForPenalties}
         onBack={() => setSelectedForPenalties(null)}
         onSaved={() => {
           setSelectedForPenalties(null)
-          fetchObligations()
+          loadObligations()
         }}
       />
     )
@@ -214,7 +213,7 @@ export default function ObligationsList({ obligationType = 'TAX_CORPORATE', onAd
           <Button
             variant="ghost"
             size="sm"
-            onClick={fetchObligations}
+            onClick={loadObligations}
             className="text-zinc-300 hover:text-white hover:bg-zinc-800"
             aria-label="بارگذاری مجدد"
           >

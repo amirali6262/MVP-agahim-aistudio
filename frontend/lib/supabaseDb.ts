@@ -54,7 +54,8 @@ export interface ChecklistTemplate {
   id: string
   title: string
   description?: string
-  category?: string
+  category: string
+  fiscal_year?: string
   sections: any[]
   is_active: boolean
   created_at: string
@@ -72,12 +73,18 @@ export interface TenantChecklistProgress {
 
 export interface CommercialBookPeriod {
   id: string
-  tenant_id: string
+  tenant_id?: string
+  fiscal_year: string
+  period_type: 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL' | 'ANNUAL_SEALING'
   title: string
-  period_type: string
-  start_date: string
-  end_date: string
-  status: string
+  statutory_deadline: string
+  extended_deadline?: string | null
+  circular_number?: string | null
+  circular_date?: string | null
+  attachment_url?: string | null
+  attachment_name?: string | null
+  notes?: string | null
+  is_active: boolean
   created_at: string
 }
 
@@ -511,10 +518,304 @@ export async function fetchUserTenants(userId: string): Promise<any[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Objection Templates CRUD
+// ---------------------------------------------------------------------------
+
+export async function fetchObjectionTemplateById(id: string): Promise<ObjectionTemplate | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any).from('tax_objection_stages').select('*').eq('id', id).single()
+  if (error || !data) return null
+  return { id: data.id, template_name: data.title_fa, is_base_template: true, steps: [], created_at: data.created_at } as ObjectionTemplate
+}
+
+export async function createObjectionTemplate(payload: { title_fa: string; phase_code?: string; is_active?: boolean }): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any).from('tax_objection_stages').insert({
+    code: 'CUSTOM_' + Date.now(),
+    title_fa: payload.title_fa,
+    phase_code: payload.phase_code || 'PHASE_1',
+    is_active: payload.is_active ?? true,
+  }).select().single()
+  if (error) { console.warn('[supabaseDb] createObjectionTemplate:', error.message); return null }
+  return data
+}
+
+export async function updateObjectionTemplate(id: string, payload: Partial<any>): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any).from('tax_objection_stages').update(payload).eq('id', id).select().single()
+  if (error) { console.warn('[supabaseDb] updateObjectionTemplate:', error.message); return null }
+  return data
+}
+
+export async function deleteObjectionTemplate(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  const { error } = await (supabase as any).from('tax_objection_stages').delete().eq('id', id)
+  return !error
+}
+
+// ---------------------------------------------------------------------------
+// Obligations CRUD
+// ---------------------------------------------------------------------------
+
+export async function createObligation(payload: any): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any).from('obligations').insert(payload).select().single()
+  if (error) { console.warn('[supabaseDb] createObligation:', error.message); return null }
+  return data
+}
+
+export async function updateObligation(id: string, payload: any): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any).from('obligations').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  if (error) { console.warn('[supabaseDb] updateObligation:', error.message); return null }
+  return data
+}
+
+export async function deleteObligation(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  const { error } = await (supabase as any).from('obligations').delete().eq('id', id)
+  return !error
+}
+
+// ---------------------------------------------------------------------------
+// Deadline Extensions CRUD
+// ---------------------------------------------------------------------------
+
+export async function deleteDeadlineExtension(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  const { error } = await (supabase as any).from('deadline_extensions').delete().eq('id', id)
+  return !error
+}
+
+// ---------------------------------------------------------------------------
+// Tenants CRUD
+// ---------------------------------------------------------------------------
+
+export async function createTenant(payload: { name: string; entity_type: string; national_id?: string; economic_code?: string; province?: string; created_by: string }): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any).from('tenants').insert(payload).select().single()
+  if (error) { console.warn('[supabaseDb] createTenant:', error.message); return null }
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Studio DB: Obligation Families
+// ---------------------------------------------------------------------------
+
+export async function fetchObligationFamilies(): Promise<any[]> {
+  return safeQuery(() => (supabase as any).from('obligation_families').select('*').order('title'))
+}
+
+export async function createObligationFamily(data: { code: string; title: string; domain: string; description?: string; is_active?: boolean }): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data: result, error } = await (supabase as any).from('obligation_families').insert({
+    code: data.code, title: data.title, domain: data.domain,
+    description: data.description ?? null, is_active: data.is_active ?? true,
+  }).select().single()
+  if (error) { console.warn('[supabaseDb] createObligationFamily:', error.message); return null }
+  return result
+}
+
+export async function updateObligationFamily(id: string, data: any): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data: result, error } = await (supabase as any).from('obligation_families').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  if (error) { console.warn('[supabaseDb] updateObligationFamily:', error.message); return null }
+  return result
+}
+
+export async function deleteObligationFamily(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  const { error } = await (supabase as any).from('obligation_families').delete().eq('id', id)
+  return !error
+}
+
+// ---------------------------------------------------------------------------
+// Studio DB: Obligations (Studio version)
+// ---------------------------------------------------------------------------
+
+export async function fetchStudioObligations(): Promise<any[]> {
+  return safeQuery(() => (supabase as any).from('obligations').select('*').order('title'))
+}
+
+export async function fetchObligationVersions(): Promise<any[]> {
+  return safeQuery(() => (supabase as any).from('obligation_versions').select('*').order('created_at', { ascending: false }))
+}
+
+// ---------------------------------------------------------------------------
+// Studio DB: Workflow Templates & Steps
+// ---------------------------------------------------------------------------
+
+export async function fetchWorkflowTemplate(versionId: string): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any).from('workflow_templates').select('*').eq('obligation_version_id', versionId).single()
+  if (error || !data) return null
+  return data
+}
+
+export async function fetchWorkflowSteps(templateId: string): Promise<any[]> {
+  return safeQuery(() =>
+    (supabase as any).from('workflow_steps').select('*').eq('workflow_template_id', templateId).order('sequence')
+  )
+}
+
+export async function createWorkflowStep(data: any): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data: result, error } = await (supabase as any).from('workflow_steps').insert(data).select().single()
+  if (error) { console.warn('[supabaseDb] createWorkflowStep:', error.message); return null }
+  return result
+}
+
+export async function updateWorkflowStep(id: string, data: any): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data: result, error } = await (supabase as any).from('workflow_steps').update(data).eq('id', id).select().single()
+  if (error) { console.warn('[supabaseDb] updateWorkflowStep:', error.message); return null }
+  return result
+}
+
+export async function deleteWorkflowStep(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  const { error } = await (supabase as any).from('workflow_steps').delete().eq('id', id)
+  return !error
+}
+
+// ---------------------------------------------------------------------------
+// Studio DB: Eligibility Rule Sets & Conditions
+// ---------------------------------------------------------------------------
+
+export async function fetchRuleSets(versionId: string): Promise<any[]> {
+  return safeQuery(() =>
+    (supabase as any).from('eligibility_rule_sets').select('*').eq('obligation_version_id', versionId).order('priority')
+  )
+}
+
+export async function fetchConditions(ruleSetId: string): Promise<any[]> {
+  return safeQuery(() =>
+    (supabase as any).from('eligibility_conditions').select('*').eq('rule_set_id', ruleSetId).order('sequence')
+  )
+}
+
+export async function createRuleSet(data: any): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data: result, error } = await (supabase as any).from('eligibility_rule_sets').insert(data).select().single()
+  if (error) { console.warn('[supabaseDb] createRuleSet:', error.message); return null }
+  return result
+}
+
+export async function updateRuleSet(id: string, data: any): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data: result, error } = await (supabase as any).from('eligibility_rule_sets').update(data).eq('id', id).select().single()
+  if (error) { console.warn('[supabaseDb] updateRuleSet:', error.message); return null }
+  return result
+}
+
+export async function deleteRuleSet(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  const { error } = await (supabase as any).from('eligibility_rule_sets').delete().eq('id', id)
+  return !error
+}
+
+// ---------------------------------------------------------------------------
+// Studio DB: Circulars
+// ---------------------------------------------------------------------------
+
+export async function fetchCirculars(): Promise<any[]> {
+  return safeQuery(() => (supabase as any).from('circulars').select('*').order('created_at', { ascending: false }))
+}
+
+export async function createCircular(data: any): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data: result, error } = await (supabase as any).from('circulars').insert(data).select().single()
+  if (error) { console.warn('[supabaseDb] createCircular:', error.message); return null }
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// Studio DB: Version Operations
+// ---------------------------------------------------------------------------
+
+export async function publishVersion(versionId: string): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any).from('obligation_versions').update({
+    status: 'PUBLISHED', published_at: new Date().toISOString(),
+  }).eq('id', versionId).select().single()
+  if (error) { console.warn('[supabaseDb] publishVersion:', error.message); return null }
+  return data
+}
+
+export async function transitionVersionStatus(versionId: string, status: string): Promise<any | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any).from('obligation_versions').update({
+    status, updated_at: new Date().toISOString(),
+  }).eq('id', versionId).select().single()
+  if (error) { console.warn('[supabaseDb] transitionVersionStatus:', error.message); return null }
+  return data
+}
+
+export async function updateVersionPenalty(versionId: string, penaltyRule: any): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  const { error } = await (supabase as any).from('obligation_versions').update({
+    penalty_rule: penaltyRule, updated_at: new Date().toISOString(),
+  }).eq('id', versionId)
+  return !error
+}
+
+// ---------------------------------------------------------------------------
 // Dependency checker (replaces mockDb dependencyChecker)
 // ---------------------------------------------------------------------------
 
-export function checkObligationDependencies(obligationId: string): { linkedExtensions: number; linkedTemplates: number; hasDependencies: boolean } {
-  // This will be async in the real implementation
-  return { linkedExtensions: 0, linkedTemplates: 0, hasDependencies: false }
+export async function checkObligationDependencies(obligationId: string): Promise<{ linkedExtensions: number; linkedTemplates: number; hasDependencies: boolean }> {
+  if (!isSupabaseConfigured) return { linkedExtensions: 0, linkedTemplates: 0, hasDependencies: false }
+  const [extResult, tplResult] = await Promise.all([
+    (supabase as any).from('deadline_extensions').select('id', { count: 'exact', head: true }).eq('obligation_id', obligationId),
+    (supabase as any).from('obligation_versions').select('id', { count: 'exact', head: true }).eq('obligation_id', obligationId),
+  ])
+  const linkedExtensions = extResult?.count ?? 0
+  const linkedTemplates = tplResult?.count ?? 0
+  return { linkedExtensions, linkedTemplates, hasDependencies: linkedExtensions > 0 || linkedTemplates > 0 }
+}
+
+// ---------------------------------------------------------------------------
+// Studio DB Compatibility Adapter (replaces mockStudioDb)
+// ---------------------------------------------------------------------------
+
+export const studioDb = {
+  // Read methods: compatibility stubs return no records; active pages fetch directly from Supabase.
+  getFamilies: (): any[] => [],
+  getObligations: (): any[] => [],
+  getVersions: (): any[] => [],
+  getWorkflowTemplate: (_versionId: string): any => null,
+  getWorkflowSteps: (_templateId: string): any[] => [],
+  getRuleSets: (_versionId: string): any[] => [],
+  getConditions: (_ruleSetId: string): any[] => [],
+  getCirculars: (): any[] => [],
+  // Compatibility methods deliberately fail closed; no in-memory records are created.
+  createDraft: (_params: any): never => { throw new Error('Supabase connection is required to create a draft.') },
+  cloneObligation: (_sourceId: string, _newTitle: string, _newCode: string): never => { throw new Error('Supabase connection is required to clone an obligation.') },
+  createFamily: (_data: any): never => { throw new Error('Supabase connection is required to create an obligation family.') },
+  updateFamily: (_id: string, _data: any): never => { throw new Error('Supabase connection is required to update an obligation family.') },
+  deleteFamily: (_id: string): never => { throw new Error('Supabase connection is required to delete an obligation family.') },
+  deleteObligation: (_id: string): never => { throw new Error('Supabase connection is required to delete an obligation.') },
+  updateVersionPenalty: (_versionId: string, _penaltyRule: any): never => { throw new Error('Supabase connection is required to update a penalty rule.') },
+  publishVersion: (_versionId: string): never => { throw new Error('Supabase connection is required to publish a version.') },
+  transitionVersionStatus: (_versionId: string, _status: string): never => { throw new Error('Supabase connection is required to change version status.') },
+  addRuleSet: (_data: any): never => { throw new Error('Supabase connection is required to create a rule set.') },
+  updateRuleSet: (_id: string, _data: any): never => { throw new Error('Supabase connection is required to update a rule set.') },
+  deleteRuleSet: (_id: string): never => { throw new Error('Supabase connection is required to delete a rule set.') },
+  addWorkflowStep: (_data: any): never => { throw new Error('Supabase connection is required to create a workflow step.') },
+  updateWorkflowStep: (_id: string, _data: any): never => { throw new Error('Supabase connection is required to update a workflow step.') },
+  deleteWorkflowStep: (_id: string): never => { throw new Error('Supabase connection is required to delete a workflow step.') },
+  addCircular: (_data: any): never => { throw new Error('Supabase connection is required to create a circular.') },
+}
+
+// ---------------------------------------------------------------------------
+// Tenant Mock Compatibility (replaces mockTenantsDb)
+// ---------------------------------------------------------------------------
+
+export const tenantsDb = {
+  getForUser: async (_userId: string): Promise<any[]> => {
+    return fetchUserTenants(_userId)
+  },
+  insertTenant: async (params: any, createdBy: string): Promise<any> => {
+    return createTenant({ ...params, created_by: createdBy })
+  },
 }
