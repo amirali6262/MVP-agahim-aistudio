@@ -19,7 +19,8 @@ import {
   TableHeader,
   TableRow,
 } from '../../../lib/shadcn/table'
-import { mockObjectionTemplatesDb, mockObligationsDb } from '../../../lib/mockDb'
+import { mockObjectionTemplatesDb, mockObligationsDb, isMockDataEnabled } from '../../../lib/mockDb'
+import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField, TaxTypeOverride } from '../../../lib/supabase'
 
 const DEFAULT_TAX_OVERRIDES: TaxTypeOverride[] = [
@@ -359,9 +360,95 @@ export default function ObjectionTemplatesPage() {
     )
   }
 
-  const loadData = () => {
-    setTemplates(mockObjectionTemplatesDb.getAll())
-    setAllObligations(mockObligationsDb.getAll())
+  const loadData = async () => {
+    // Always load mock data (works in both modes)
+    const mockTemplates = mockObjectionTemplatesDb.getAll()
+    const mockObligations = mockObligationsDb.getAll()
+    setAllObligations(mockObligations)
+
+    if (!isSupabaseConfigured) {
+      setTemplates(mockTemplates)
+      return
+    }
+
+    // When Supabase is configured, also fetch from the database
+    try {
+      const { data: templates, error: tplErr } = await supabase
+        .from('workflow_templates')
+        .select('id, title')
+        .order('created_at', { ascending: false })
+
+      if (tplErr || !templates || templates.length === 0) {
+        setTemplates(mockTemplates)
+        return
+      }
+
+      const allTemplates: ObjectionTemplate[] = []
+
+      for (const tpl of templates) {
+        const { data: steps } = await supabase
+          .from('workflow_steps')
+          .select('*')
+          .eq('workflow_template_id', tpl.id)
+          .order('sequence', { ascending: true })
+
+        if (!steps || steps.length === 0) continue
+
+        const mappedSteps: ObjectionStep[] = steps.map((s: any) => {
+          const formFields: WorkflowStepField[] =
+            s.form_schema?.fields?.map((f: any) => ({
+              id: f.id || s.id + '-' + f.key,
+              label: f.label || f.key,
+              key: f.key,
+              type: f.type || 'text',
+              required: f.required ?? false,
+              placeholder: f.placeholder,
+              options: f.options,
+            })) ?? []
+
+          // Map actor role to StepActor
+          const actorRole = (s.actor_role_code || s.actor || '') as string
+          let actor: StepActor = 'TAX_AUTHORITY'
+          if (actorRole.includes('taxpayer') || actorRole === 'TAXPAYER') actor = 'TAXPAYER'
+          else if (actorRole.includes('divan') || actorRole === 'COURT_DIVAN') actor = 'COURT_DIVAN'
+
+          // Map step nature from phase_code and step_type
+          let stepNature: ObjectionStepNature = 'MANDATORY'
+          const phase = (s.phase_code || '') as string
+          const stepType = (s.step_type || '') as string
+          if (stepType.includes('CONDITIONAL') || stepType.includes('EXPERT')) stepNature = 'CONDITIONAL_EXPERT'
+          else if (phase.includes('FINAL') || stepType.includes('FINAL_NOTICE')) stepNature = 'FINAL_NOTICE_ISSUANCE'
+          else if (phase.includes('NEXT') || stepType.includes('NEXT_STAGE')) stepNature = 'NEXT_STAGE'
+          else if (phase.includes('SETTLE') || stepType.includes('SETTLEMENT')) stepNature = 'SETTLEMENT_END'
+          else if (phase.includes('AGREE') || stepType.includes('AGREEMENT')) stepNature = 'AGREEMENT_END'
+          else if (phase.includes('EXPIRE') || stepType.includes('EXPIRED')) stepNature = 'EXPIRED_END'
+
+          return {
+            id: s.id,
+            title: s.title || s.code,
+            base_event: 'تاریخ ابلاغ برگ/اختیاریه',
+            gap_value: 30,
+            gap_unit: 'روز',
+            step_nature: stepNature,
+            actor,
+            note: s.user_guidance_fa || s.admin_guidance_fa || '',
+            fields: formFields,
+          }
+        })
+
+        allTemplates.push({
+          id: 'db-' + tpl.id,
+          template_name: tpl.title,
+          is_base_template: true,
+          steps: mappedSteps,
+          created_at: new Date().toISOString(),
+        })
+      }
+
+      setTemplates([...allTemplates, ...mockTemplates])
+    } catch {
+      setTemplates(mockTemplates)
+    }
   }
 
   useEffect(() => {
