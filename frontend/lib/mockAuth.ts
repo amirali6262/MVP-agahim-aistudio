@@ -27,6 +27,26 @@ const MOCK_USERS: Record<string, MockCred> = {
     role: 'PLATFORM_ADMIN',
     id: 'mock-admin-00000001',
   },
+  'manager@samaneh.ir': {
+    password: 'Manager@1234',
+    role: 'MANAGER',
+    id: 'mock-manager-00000005',
+  },
+  'registrar@samaneh.ir': {
+    password: 'Registrar@1234',
+    role: 'REGISTRAR',
+    id: 'mock-registrar-00000003',
+  },
+  'reviewer@samaneh.ir': {
+    password: 'Reviewer@1234',
+    role: 'REVIEWER',
+    id: 'mock-reviewer-00000004',
+  },
+  'approver@samaneh.ir': {
+    password: 'Approver@1234',
+    role: 'APPROVER',
+    id: 'mock-approver-00000006',
+  },
   'user@samaneh.ir': {
     password: 'User@1234',
     role: 'BUSINESS_USER',

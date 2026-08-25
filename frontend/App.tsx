@@ -17,6 +17,7 @@ import CommercialBooksAdminPage from './pages/admin/books/CommercialBooksAdminPa
 import ChecklistAdminPage from './pages/admin/checklists/ChecklistAdminPage'
 import ObjectionTemplatesPage from './pages/admin/objections/ObjectionTemplatesPage'
 import DeadlineExtensionsPage from './pages/admin/extensions/DeadlineExtensionsPage'
+import AdminUserAccessPage from './pages/admin/AdminUserAccessPage'
 import UserAuth from './pages/auth/UserAuth'
 import WorkspacePage from './pages/workspace/WorkspacePage'
 import PanelDashboard from './pages/panel/PanelDashboard'
@@ -239,6 +240,15 @@ export default function App() {
               element={
                 <AdminPage>
                   <ObjectionTemplatesPage />
+                </AdminPage>
+              }
+            />
+
+            <Route
+              path="/admin/users"
+              element={
+                <AdminPage>
+                  <AdminUserAccessPage />
                 </AdminPage>
               }
             />

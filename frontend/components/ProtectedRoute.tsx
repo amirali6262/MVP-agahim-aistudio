@@ -8,6 +8,8 @@ interface Props {
   redirectTo?: string
 }
 
+const ADMIN_ROLES: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
+
 export default function ProtectedRoute({ children, requireRole, redirectTo }: Props) {
   const { session, profile, loading } = useAuth()
   const location = useLocation()
@@ -28,8 +30,15 @@ export default function ProtectedRoute({ children, requireRole, redirectTo }: Pr
     return <Navigate to={to} state={{ from: location }} replace />
   }
 
-  if (requireRole && profile?.role !== requireRole) {
-    return <Navigate to="/login" replace />
+  if (requireRole) {
+    // For admin roles, allow any of the admin-level roles
+    if (requireRole === 'PLATFORM_ADMIN') {
+      if (!profile || !ADMIN_ROLES.includes(profile.role)) {
+        return <Navigate to="/login" replace />
+      }
+    } else if (profile?.role !== requireRole) {
+      return <Navigate to="/login" replace />
+    }
   }
 
   return <>{children}</>

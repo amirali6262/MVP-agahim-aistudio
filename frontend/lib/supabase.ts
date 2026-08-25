@@ -30,7 +30,7 @@ export const supabase = createClient<Database>(
 // Domain types (mirror your Supabase public schema)
 // ---------------------------------------------------------------------------
 
-export type UserRole = 'PLATFORM_ADMIN' | 'BUSINESS_USER'
+export type UserRole = 'PLATFORM_ADMIN' | 'BUSINESS_USER' | 'REGISTRAR' | 'REVIEWER' | 'APPROVER' | 'MANAGER'
 
 export type AppUser = Pick<Tables<'users'>, 'id' | 'email' | 'phone' | 'created_at'> & {
   role: UserRole
