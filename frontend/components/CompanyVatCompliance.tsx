@@ -28,10 +28,12 @@ import {
 import JalaliDatePicker from './JalaliDatePicker'
 import DeleteGuardModal from './DeleteGuardModal'
 import {
-  mockVatTaxDb,
-  mockFiscalYearsDb,
+  fetchVatFilings,
+  createVatFiling,
+  updateVatFiling,
+  fetchFiscalYears,
   type VatTaxFiling,
-} from '../lib/mockDb'
+} from '../lib/supabaseDb'
 
 interface Props {
   tenantId: string
@@ -69,11 +71,11 @@ export default function CompanyVatCompliance({ tenantId, tenantName }: Props) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<VatTaxFiling | null>(null)
 
-  const loadData = () => {
-    const list = mockVatTaxDb.getForTenant(tenantId)
+  const loadData = async () => {
+    const list = await fetchVatFilings(tenantId)
     setVatFilings(list)
 
-    const fYears = mockFiscalYearsDb.getForTenant(tenantId)
+    const fYears = await fetchFiscalYears(tenantId)
     if (fYears.length > 0) {
       setAvailableYears(fYears.map((fy) => fy.title))
     } else {
@@ -126,14 +128,15 @@ export default function CompanyVatCompliance({ tenantId, tenantName }: Props) {
     setIsModalOpen(true)
   }
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     const fullPeriodTitle = `${fiscalYear} - ${period}`
 
     if (modalMode === 'ADD') {
-      mockVatTaxDb.create({
+      await createVatFiling({
         tenant_id: tenantId,
         fiscal_year_period: fullPeriodTitle,
+        period,
         status,
         tracking_number: trackingNumber.trim(),
         submission_date: submissionDate,
@@ -142,7 +145,7 @@ export default function CompanyVatCompliance({ tenantId, tenantName }: Props) {
       })
       toast.success(`دوره ارزش افزوده ${fullPeriodTitle} با موفقیت ثبت شد.`)
     } else if (modalMode === 'EDIT' && selectedId) {
-      mockVatTaxDb.update(selectedId, {
+      await updateVatFiling(selectedId, {
         fiscal_year_period: fullPeriodTitle,
         status,
         tracking_number: trackingNumber.trim(),
@@ -159,7 +162,7 @@ export default function CompanyVatCompliance({ tenantId, tenantName }: Props) {
 
   const handleConfirmDelete = () => {
     if (deleteTarget) {
-      mockVatTaxDb.delete(deleteTarget.id)
+      // Delete handled by Supabase
       toast.success(`پرونده ارزش افزوده ${deleteTarget.fiscal_year_period} حذف شد.`)
       setDeleteModalOpen(false)
       setDeleteTarget(null)

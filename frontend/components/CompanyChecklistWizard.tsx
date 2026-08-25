@@ -25,7 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../lib/shadcn/select'
-import { mockChecklistsDb } from '../lib/mockDb'
+import {
+  fetchChecklistTemplates,
+  fetchChecklistProgress,
+  upsertChecklistProgress,
+} from '../lib/supabaseDb'
 import type {
   ChecklistTemplate,
   ChecklistSection,
@@ -50,21 +54,22 @@ export default function CompanyChecklistWizard({ tenantId, tenantName }: Props) 
   const [noteInput, setNoteInput] = useState('')
 
   useEffect(() => {
-    const list = mockChecklistsDb.getAllTemplates()
-    setTemplates(list)
-    if (list.length > 0 && !selectedTemplateId) {
-      setSelectedTemplateId(list[0].id)
-    }
+    fetchChecklistTemplates().then((list) => {
+      setTemplates(list as any)
+      if (list.length > 0 && !selectedTemplateId) {
+        setSelectedTemplateId(list[0].id)
+      }
+    })
   }, [])
 
   const currentTemplate = useMemo(() => {
     return templates.find((t) => t.id === selectedTemplateId) || templates[0] || null
   }, [templates, selectedTemplateId])
 
-  const loadProgress = () => {
+  const loadProgress = async () => {
     if (!currentTemplate) return
-    const prog = mockChecklistsDb.getTenantProgress(tenantId, currentTemplate.id, fiscalYear)
-    setProgress(prog)
+    const prog = await fetchChecklistProgress(tenantId, currentTemplate.id, fiscalYear)
+    setProgress(prog as any)
   }
 
   useEffect(() => {
@@ -118,16 +123,33 @@ export default function CompanyChecklistWizard({ tenantId, tenantName }: Props) 
   const isSummaryStep = activeStepIndex === sectionsCount
   const currentSection = !isSummaryStep ? currentTemplate.sections[activeStepIndex] : null
 
-  const handleToggleItem = (itemId: string) => {
+  const handleToggleItem = async (itemId: string) => {
     if (!progress) return
-    const updated = mockChecklistsDb.toggleItemProgress(tenantId, currentTemplate.id, fiscalYear, itemId)
-    setProgress({ ...updated })
+    // Build updated completed_items
+    const newCompleted = { ...(progress?.completed_items || {}) }
+    newCompleted[itemId] = { completed: !newCompleted[itemId]?.completed, notes: newCompleted[itemId]?.notes }
+    const updated = await upsertChecklistProgress({
+      tenant_id: tenantId,
+      checklist_template_id: currentTemplate.id,
+      fiscal_year: fiscalYear,
+      completed_items: newCompleted,
+      status: 'IN_PROGRESS',
+    })
+    if (updated) setProgress({ ...progress, ...updated, updated_at: new Date().toISOString() })
   }
 
-  const handleSaveNote = (itemId: string) => {
+  const handleSaveNote = async (itemId: string) => {
     if (!progress) return
-    const updated = mockChecklistsDb.updateItemNote(tenantId, currentTemplate.id, fiscalYear, itemId, noteInput)
-    setProgress({ ...updated })
+    const newCompleted = { ...(progress?.completed_items || {}) }
+    newCompleted[itemId] = { completed: newCompleted[itemId]?.completed ?? false, notes: noteInput }
+    const updated = await upsertChecklistProgress({
+      tenant_id: tenantId,
+      checklist_template_id: currentTemplate.id,
+      fiscal_year: fiscalYear,
+      completed_items: newCompleted,
+      status: 'IN_PROGRESS',
+    })
+    if (updated) setProgress({ ...progress, ...updated, updated_at: new Date().toISOString() })
     setEditingNoteId(null)
     toast.success('یادداشت کنترلی ذخیره گردید.')
   }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   Gavel,
@@ -39,7 +39,7 @@ import {
   SelectValue,
 } from '../lib/shadcn/select'
 import ObjectionFlowDiagramModal from './ObjectionFlowDiagramModal'
-import { mockObjectionTemplatesDb } from '../lib/mockDb'
+import { fetchObjectionTemplates } from '../lib/supabaseDb'
 import type { ObjectionStep, StepTransition, TransitionTriggerType, TransitionTargetType } from '../lib/supabase'
 
 interface Props {
@@ -78,7 +78,10 @@ export default function CompanyTaxDisputes({ tenantId, tenantName }: Props) {
   const [isGraphOpen, setIsGraphOpen] = useState(false)
   const [selectedCaseId, setSelectedCaseId] = useState<string>('disp-01')
 
-  const template = useMemo(() => mockObjectionTemplatesDb.getById('obj-001') || mockObjectionTemplatesDb.getAll()[0] || null, [])
+  const [template, setTemplate] = useState<any>(null)
+  useEffect(() => {
+    fetchObjectionTemplates().then((t) => setTemplate(t[0] || null))
+  }, [])
 
   // Comprehensive state machine cases for this company
   const [cases, setCases] = useState<DisputeCase[]>([
@@ -197,7 +200,7 @@ export default function CompanyTaxDisputes({ tenantId, tenantName }: Props) {
   // Get current active step in the dispute template
   const currentStep = useMemo(() => {
     if (!template || !template.steps) return null
-    return template.steps.find((s) => s.id === selectedCase?.currentStepId) || null
+    return template.steps.find((s: { id: string; title: string; base_event: string; gap_value: number; gap_unit: string; step_nature?: string; actor?: string; note?: string; legal_basis?: string; fields?: any[]; transitions?: any[] }) => s.id === selectedCase?.currentStepId) || null
   }, [template, selectedCase])
 
   // Available transitions/branches from the current state
@@ -428,7 +431,7 @@ export default function CompanyTaxDisputes({ tenantId, tenantName }: Props) {
     }
 
     // Move to next step or loop back
-    const targetStep = template?.steps.find((s) => s.id === trans.target_step_id)
+    const targetStep = template?.steps.find((s: { id: string; title: string; base_event: string; gap_value: number; gap_unit: string; step_nature?: string; actor?: string; note?: string; legal_basis?: string; fields?: any[]; transitions?: any[] }) => s.id === trans.target_step_id)
     const newTitle = targetStep?.title || trans.title
 
     setCases((prev) =>

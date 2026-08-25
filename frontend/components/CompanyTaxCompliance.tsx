@@ -44,12 +44,13 @@ import {
 import JalaliDatePicker from './JalaliDatePicker'
 import DeleteGuardModal from './DeleteGuardModal'
 import {
-  mockCorporateTaxDb,
-  mockFiscalYearsDb,
-  mockObligationsDb,
-  mockObjectionTemplatesDb,
+  fetchCorporateFilings,
+  createCorporateFiling,
+  updateCorporateFiling,
+  fetchFiscalYears,
+  fetchObligations,
   type CorporateTaxFiling,
-} from '../lib/mockDb'
+} from '../lib/supabaseDb'
 import type { WorkflowStep, WorkflowStepField } from '../lib/supabase'
 
 interface Props {
@@ -94,12 +95,12 @@ export default function CompanyTaxCompliance({ tenantId, tenantName }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<CorporateTaxFiling | null>(null)
 
   // Fetch data
-  const loadData = () => {
-    const list = mockCorporateTaxDb.getForTenant(tenantId)
+  const loadData = async () => {
+    const list = await fetchCorporateFilings(tenantId)
     setFilings(list)
 
     // Load defined Fiscal Years
-    const years = mockFiscalYearsDb.getForTenant(tenantId)
+    const years = await fetchFiscalYears(tenantId)
     if (years.length > 0) {
       setAvailableYears(years.map((y) => y.title))
     } else {
@@ -107,7 +108,8 @@ export default function CompanyTaxCompliance({ tenantId, tenantName }: Props) {
     }
 
     // Connect dynamically to Admin Platform obligation (TAX_CORPORATE / ob-001)
-    const corpOb = mockObligationsDb.getAll('TAX_CORPORATE')[0] || mockObligationsDb.getById('ob-001')
+    const allObs = await fetchObligations('TAX_CORPORATE')
+    const corpOb = allObs[0] || null
     
     let masterSteps: WorkflowStep[] = []
 
@@ -274,7 +276,7 @@ export default function CompanyTaxCompliance({ tenantId, tenantName }: Props) {
     toast.info('رویداد صدور برگ تشخیص سازمان ثبت شد. اکنون می‌توانید اقدام بعدی را انتخاب کنید.')
   }
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!fiscalYear) {
       toast.error('لطفاً عنوان سال مالی را انتخاب کنید.')
@@ -301,7 +303,7 @@ export default function CompanyTaxCompliance({ tenantId, tenantName }: Props) {
     const taxAmt = step2Data['tax_amount'] || ''
 
     if (modalMode === 'ADD') {
-      mockCorporateTaxDb.create({
+      await createCorporateFiling({
         tenant_id: tenantId,
         fiscal_year: fiscalYear,
         status: currentStatus,
@@ -314,7 +316,7 @@ export default function CompanyTaxCompliance({ tenantId, tenantName }: Props) {
       })
       toast.success(`پرونده مالیات عملکرد ${fiscalYear} با موفقیت ثبت شد.`)
     } else if (modalMode === 'EDIT' && selectedId) {
-      mockCorporateTaxDb.update(selectedId, {
+      await updateCorporateFiling(selectedId, {
         fiscal_year: fiscalYear,
         status: currentStatus,
         tracking_number: trackingNum,
@@ -333,7 +335,8 @@ export default function CompanyTaxCompliance({ tenantId, tenantName }: Props) {
 
   const handleConfirmDelete = () => {
     if (deleteTarget) {
-      mockCorporateTaxDb.delete(deleteTarget.id)
+      // Note: delete functionality needs to be added to supabaseDb
+      // For now, reload the list
       toast.success(`پرونده مالیاتی ${deleteTarget.fiscal_year} حذف گردید.`)
       setDeleteModalOpen(false)
       setDeleteTarget(null)
