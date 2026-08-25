@@ -10,15 +10,17 @@ import {
   LogOut,
   MapPin,
   Tag,
+  Users,
 } from 'lucide-react'
 import { Button } from '../../lib/shadcn/button'
 import { useAuth } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
 import CompanyBusinessProfile from '../../components/CompanyBusinessProfile'
 import CompanyComplianceOverview from '../../components/CompanyComplianceOverview'
+import CompanyMembersPage from './CompanyMembersPage'
 import ThemeToggle from '../../components/ThemeToggle'
 
-type ActiveTab = 'OVERVIEW' | 'BUSINESS_PROFILE'
+type ActiveTab = 'OVERVIEW' | 'BUSINESS_PROFILE' | 'MEMBERS'
 
 export default function PanelDashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW')
@@ -74,6 +76,7 @@ export default function PanelDashboard() {
               <div className="space-y-2">
                 <NavButton active={activeTab === 'OVERVIEW'} onClick={() => setActiveTab('OVERVIEW')} icon={<LayoutDashboard className="h-4 w-4" />} label="خانه و کارهای فوری" />
                 <NavButton active={activeTab === 'BUSINESS_PROFILE'} onClick={() => setActiveTab('BUSINESS_PROFILE')} icon={<Building2 className="h-4 w-4" />} label="کسب‌وکار و مشمولیت" />
+                <NavButton active={activeTab === 'MEMBERS'} onClick={() => setActiveTab('MEMBERS')} icon={<Users className="h-4 w-4" />} label="اعضای شرکت" />
               </div>
             </div>
 
@@ -90,9 +93,9 @@ export default function PanelDashboard() {
           </aside>
 
           <main>
-            {activeTab === 'OVERVIEW'
-              ? <CompanyComplianceOverview tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
-              : <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />}
+            {activeTab === 'OVERVIEW' && <CompanyComplianceOverview tenantId={selectedTenant.id} tenantName={selectedTenant.name} />}
+            {activeTab === 'BUSINESS_PROFILE' && <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />}
+            {activeTab === 'MEMBERS' && <CompanyMembersPage />}
           </main>
         </div>
       </div>
