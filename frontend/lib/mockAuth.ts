@@ -18,6 +18,7 @@ function assertMockAuthEnabled(): void {
 interface MockCred {
   password: string
   role: UserRole
+  roles: UserRole[]  // Support for multiple roles
   id: string
 }
 
@@ -25,31 +26,37 @@ const MOCK_USERS: Record<string, MockCred> = {
   'admin@samaneh.ir': {
     password: 'Admin@1234',
     role: 'PLATFORM_ADMIN',
+    roles: ['PLATFORM_ADMIN', 'MANAGER'],  // Multiple roles example
     id: 'mock-admin-00000001',
   },
   'manager@samaneh.ir': {
     password: 'Manager@1234',
     role: 'MANAGER',
+    roles: ['MANAGER', 'REVIEWER'],  // Multiple roles example
     id: 'mock-manager-00000005',
   },
   'registrar@samaneh.ir': {
     password: 'Registrar@1234',
     role: 'REGISTRAR',
+    roles: ['REGISTRAR'],
     id: 'mock-registrar-00000003',
   },
   'reviewer@samaneh.ir': {
     password: 'Reviewer@1234',
     role: 'REVIEWER',
+    roles: ['REVIEWER'],
     id: 'mock-reviewer-00000004',
   },
   'approver@samaneh.ir': {
     password: 'Approver@1234',
     role: 'APPROVER',
+    roles: ['APPROVER', 'REVIEWER'],  // Multiple roles example
     id: 'mock-approver-00000006',
   },
   'user@samaneh.ir': {
     password: 'User@1234',
     role: 'BUSINESS_USER',
+    roles: ['BUSINESS_USER'],
     id: 'mock-user-00000002',
   },
 }
@@ -106,9 +113,9 @@ export function buildFakeSession(userId: string, email: string): Session {
   } as unknown as Session
 }
 
-export function buildFakeProfile(userId: string, email: string, role: UserRole): AppUser {
+export function buildFakeProfile(userId: string, email: string, role: UserRole, roles?: UserRole[]): AppUser {
   assertMockAuthEnabled()
-  return { id: userId, email, phone: null, role, created_at: new Date().toISOString() }
+  return { id: userId, email, phone: null, role, roles: roles ?? [role], created_at: new Date().toISOString() }
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +135,7 @@ export function mockSignIn(
   return {
     error: null,
     session: buildFakeSession(cred.id, key),
-    profile: buildFakeProfile(cred.id, key, cred.role),
+    profile: buildFakeProfile(cred.id, key, cred.role, cred.roles),
   }
 }
 
@@ -143,7 +150,7 @@ export function mockSignUp(
     return { error: 'این کاربر از قبل وجود دارد.', session: null, profile: null }
   }
   const id = 'mock-new-' + Date.now()
-  MOCK_USERS[key] = { password: _password, role: 'BUSINESS_USER', id }
+  MOCK_USERS[key] = { password: _password, role: 'BUSINESS_USER', roles: ['BUSINESS_USER'], id }
   save({ userId: id, email: key, role: 'BUSINESS_USER' })
   return {
     error: null,
@@ -157,8 +164,11 @@ export function restoreMockSession(): { session: Session; profile: AppUser } | n
   assertMockAuthEnabled()
   const s = load()
   if (!s) return null
+  // Find the mock user to get their roles
+  const cred = MOCK_USERS[s.email]
+  const roles = cred?.roles ?? [s.role]
   return {
     session: buildFakeSession(s.userId, s.email),
-    profile: buildFakeProfile(s.userId, s.email, s.role),
+    profile: buildFakeProfile(s.userId, s.email, s.role, roles),
   }
 }

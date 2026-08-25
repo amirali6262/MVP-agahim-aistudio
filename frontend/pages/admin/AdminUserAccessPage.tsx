@@ -23,6 +23,7 @@ import {
   BookOpenCheck,
   UserX,
   AlertTriangle,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured, type UserRole } from '../../lib/supabase'
@@ -37,7 +38,8 @@ type UserRow = {
   id: string
   email: string | null
   phone: string | null
-  role: string
+  role: string  // Primary role (backward compatible)
+  roles: UserRole[]  // All assigned roles
   created_at: string
   full_name?: string | null
 }
@@ -151,6 +153,22 @@ const ALL_ROLES: RoleDefinition[] = [
     ],
     restrictions: ['ویرایش نسخه‌ها', 'بازبینی تخصصی', 'تغییر نقش کاربران'],
   },
+  {
+    key: 'BUSINESS_USER',
+    label: 'کاربر',
+    persianLabel: 'کاربر سازمانی',
+    description: 'کاربر عادی سازمان. مشاهده اطلاعات و ارسال درخواست‌ها.',
+    color: 'text-zinc-300',
+    bgColor: 'bg-zinc-500/10',
+    borderColor: 'border-zinc-500/30',
+    icon: Briefcase,
+    permissions: [
+      'مشاهده اطلاعات شخصی',
+      'ارسال درخواست‌ها',
+      'پیگیری وضعیت درخواست‌ها',
+    ],
+    restrictions: ['مدیریت کاربران', 'تغییر تنظیمات', 'بازبینی و تأیید'],
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -163,17 +181,116 @@ interface PermissionMatrixRow {
 }
 
 const PERMISSION_MATRIX: PermissionMatrixRow[] = [
-  { label: 'مشاهده داشبورد مدیریت', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: false, APPROVER: false } },
-  { label: 'ایجاد و ویرایش نسخه تعهد', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: true, REVIEWER: false, APPROVER: false } },
-  { label: 'شروع بازبینی تخصصی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false } },
-  { label: 'تأیید یا رد بازبینی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false } },
-  { label: 'تأیید نهایی انتشار', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true } },
-  { label: 'انتشار نسخه نهایی', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true } },
-  { label: 'مدیریت کاربران پلتفرم', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false } },
-  { label: 'تغییر تنظیمات سامانه', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false } },
+  { label: 'مشاهده داشبورد مدیریت', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
+  { label: 'ایجاد و ویرایش نسخه تعهد', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: true, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
+  { label: 'شروع بازبینی تخصصی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false, BUSINESS_USER: false } },
+  { label: 'تأیید یا رد بازبینی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false, BUSINESS_USER: false } },
+  { label: 'تأیید نهایی انتشار', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true, BUSINESS_USER: false } },
+  { label: 'انتشار نسخه نهایی', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true, BUSINESS_USER: false } },
+  { label: 'مدیریت کاربران پلتفرم', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
+  { label: 'تغییر تنظیمات سامانه', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
 ]
 
-const ROLE_ORDER: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
+const ROLE_ORDER: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER', 'BUSINESS_USER']
+
+// ---------------------------------------------------------------------------
+// Multi-Select Role Component
+// ---------------------------------------------------------------------------
+
+function MultiRoleSelector({
+  selectedRoles,
+  onChange,
+  disabled,
+}: {
+  selectedRoles: UserRole[]
+  onChange: (roles: UserRole[]) => void
+  disabled?: boolean
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  const toggleRole = (role: UserRole) => {
+    if (disabled) return
+    if (selectedRoles.includes(role)) {
+      // Don't allow removing the last role
+      if (selectedRoles.length > 1) {
+        onChange(selectedRoles.filter((r) => r !== role))
+      } else {
+        toast.error('حداقل یک نقش باید انتخاب شود.')
+      }
+    } else {
+      onChange([...selectedRoles, role])
+    }
+  }
+
+  const getRoleDef = (role: UserRole) => ALL_ROLES.find((r) => r.key === role) ?? ALL_ROLES[5]
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className={`w-full min-h-[42px] rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-left transition focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-50 ${isOpen ? 'border-amber-500' : ''}`}
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {selectedRoles.length === 0 ? (
+            <span className="text-zinc-500">انتخاب نقش...</span>
+          ) : (
+            selectedRoles.map((role) => {
+              const def = getRoleDef(role)
+              return (
+                <span
+                  key={role}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-semibold ${def.bgColor} ${def.color} border ${def.borderColor}`}
+                >
+                  {def.persianLabel}
+                  {!disabled && (
+                    <X
+                      className="h-3 w-3 cursor-pointer hover:text-white"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleRole(role)
+                      }}
+                    />
+                  )}
+                </span>
+              )
+            })
+          )}
+        </div>
+        <ChevronDown className={`absolute left-3 top-3 h-4 w-4 text-zinc-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && !disabled && (
+        <div className="absolute z-50 mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl max-h-64 overflow-y-auto">
+          {ALL_ROLES.map((role) => {
+            const isSelected = selectedRoles.includes(role.key)
+            const RoleIcon = role.icon
+            return (
+              <button
+                key={role.key}
+                type="button"
+                onClick={() => toggleRole(role.key)}
+                className={`flex items-center gap-3 w-full px-3 py-2.5 text-right transition hover:bg-zinc-800 ${isSelected ? 'bg-zinc-800/50' : ''}`}
+              >
+                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${role.bgColor} border ${role.borderColor}`}>
+                  <RoleIcon className={`h-4 w-4 ${role.color}`} />
+                </div>
+                <div className="flex-1">
+                  <div className={`text-sm font-semibold ${role.color}`}>{role.persianLabel}</div>
+                  <div className="text-xs text-zinc-500">{role.description.slice(0, 60)}...</div>
+                </div>
+                <div className={`h-5 w-5 rounded-lg border-2 flex items-center justify-center transition ${isSelected ? 'border-amber-500 bg-amber-500' : 'border-zinc-600'}`}>
+                  {isSelected && <CheckCircle2 className="h-3.5 w-3.5 text-white" />}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -189,25 +306,33 @@ export default function AdminUserAccessPage() {
   const [expandedRole, setExpandedRole] = useState<string | null>(null)
   const [showAddUser, setShowAddUser] = useState(false)
   const [newUserEmail, setNewUserEmail] = useState('')
-  const [newUserRole, setNewUserRole] = useState<UserRole>('BUSINESS_USER')
+  const [newUserRoles, setNewUserRoles] = useState<UserRole[]>(['BUSINESS_USER'])
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [editingRoles, setEditingRoles] = useState<string | null>(null)
+  const [editRolesValue, setEditRolesValue] = useState<UserRole[]>([])
 
   const loadUsers = useCallback(async () => {
     setLoading(true)
     if (!isSupabaseConfigured) {
       setUsers([
-        { id: 'mock-admin-00000001', email: 'admin@samaneh.ir', phone: null, role: 'PLATFORM_ADMIN', created_at: '2024-01-01T00:00:00Z' },
-        { id: 'mock-manager-00000005', email: 'manager@samaneh.ir', phone: null, role: 'MANAGER', created_at: '2024-01-06T00:00:00Z' },
-        { id: 'mock-registrar-00000003', email: 'registrar@samaneh.ir', phone: null, role: 'REGISTRAR', created_at: '2024-01-02T00:00:00Z' },
-        { id: 'mock-reviewer-00000004', email: 'reviewer@samaneh.ir', phone: null, role: 'REVIEWER', created_at: '2024-01-03T00:00:00Z' },
-        { id: 'mock-approver-00000006', email: 'approver@samaneh.ir', phone: null, role: 'APPROVER', created_at: '2024-01-07T00:00:00Z' },
+        { id: 'mock-admin-00000001', email: 'admin@samaneh.ir', phone: null, role: 'PLATFORM_ADMIN', roles: ['PLATFORM_ADMIN', 'MANAGER'], created_at: '2024-01-01T00:00:00Z' },
+        { id: 'mock-manager-00000005', email: 'manager@samaneh.ir', phone: null, role: 'MANAGER', roles: ['MANAGER', 'REVIEWER'], created_at: '2024-01-06T00:00:00Z' },
+        { id: 'mock-registrar-00000003', email: 'registrar@samaneh.ir', phone: null, role: 'REGISTRAR', roles: ['REGISTRAR'], created_at: '2024-01-02T00:00:00Z' },
+        { id: 'mock-reviewer-00000004', email: 'reviewer@samaneh.ir', phone: null, role: 'REVIEWER', roles: ['REVIEWER'], created_at: '2024-01-03T00:00:00Z' },
+        { id: 'mock-approver-00000006', email: 'approver@samaneh.ir', phone: null, role: 'APPROVER', roles: ['APPROVER', 'REVIEWER'], created_at: '2024-01-07T00:00:00Z' },
+        { id: 'mock-user-00000002', email: 'user@samaneh.ir', phone: null, role: 'BUSINESS_USER', roles: ['BUSINESS_USER'], created_at: '2024-01-04T00:00:00Z' },
       ])
       setLoading(false)
       return
     }
     const { data, error } = await supabase.from('users').select('id,email,phone,role,created_at').order('created_at', { ascending: false })
     if (error) toast.error('بارگذاری کاربران انجام نشد.')
-    setUsers((data ?? []) as UserRow[])
+    // Transform data to include roles array (use role field as fallback)
+    const transformedData = (data ?? []).map((item) => ({
+      ...item,
+      roles: [item.role as UserRole],
+    })) as UserRow[]
+    setUsers(transformedData)
     setLoading(false)
   }, [])
 
@@ -217,37 +342,46 @@ export default function AdminUserAccessPage() {
     const query = search.trim().toLowerCase()
     if (!query) return users
     return users.filter((user) => {
-      const roleDef = ALL_ROLES.find((r) => r.key === user.role)
-      return `${user.email ?? ''} ${user.phone ?? ''} ${roleDef?.persianLabel ?? user.role} ${roleDef?.label ?? ''}`.toLowerCase().includes(query)
+      const roleLabels = user.roles.map((r) => {
+        const roleDef = ALL_ROLES.find((rd) => rd.key === r)
+        return `${roleDef?.persianLabel ?? ''} ${roleDef?.label ?? ''}`
+      }).join(' ')
+      return `${user.email ?? ''} ${user.phone ?? ''} ${roleLabels} ${user.role}`.toLowerCase().includes(query)
     })
   }, [search, users])
 
+  // Count users per role (users can be counted in multiple roles)
   const roleCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const user of users) {
-      counts[user.role] = (counts[user.role] || 0) + 1
+      for (const role of user.roles) {
+        counts[role] = (counts[role] || 0) + 1
+      }
     }
     return counts
   }, [users])
 
-  const updateRole = async (user: UserRow, role: UserRole) => {
+  const updateRoles = async (user: UserRow, newRoles: UserRole[]) => {
     if (user.id === profile?.id) {
       toast.error('نقش حساب فعلی قابل تغییر نیست.')
       return
     }
     setSavingId(user.id)
+    const primaryRole = newRoles[0] || 'BUSINESS_USER'
+    
     if (isSupabaseConfigured) {
-      const { error } = await supabase.from('users').update({ role }).eq('id', user.id)
+      const { error } = await supabase.from('users').update({ role: primaryRole }).eq('id', user.id)
       if (error) {
         toast.error('تغییر نقش ذخیره نشد. سیاست‌های امنیتی پایگاه‌داده اعمال شده است.')
         setSavingId(null)
         return
       }
     }
-    setUsers((current) => current.map((item) => item.id === user.id ? { ...item, role } : item))
-    const newRoleDef = ALL_ROLES.find((r) => r.key === role)
-    toast.success(`نقش کاربر با موفقیت به «${newRoleDef?.persianLabel ?? role}» تغییر یافت.`)
+    setUsers((current) => current.map((item) => item.id === user.id ? { ...item, role: primaryRole, roles: newRoles } : item))
+    const roleLabels = newRoles.map((r) => ALL_ROLES.find((rd) => rd.key === r)?.persianLabel ?? r).join('، ')
+    toast.success(`نقش‌های کاربر با موفقیت به «${roleLabels}» تغییر یافت.`)
     setSavingId(null)
+    setEditingRoles(null)
   }
 
   const addUser = () => {
@@ -255,18 +389,23 @@ export default function AdminUserAccessPage() {
       toast.error('ایمیل کاربر را وارد کنید.')
       return
     }
+    if (newUserRoles.length === 0) {
+      toast.error('حداقل یک نقش انتخاب کنید.')
+      return
+    }
     if (!isSupabaseConfigured) {
       const newUser: UserRow = {
         id: 'mock-new-' + Date.now(),
         email: newUserEmail.trim(),
         phone: null,
-        role: newUserRole,
+        role: newUserRoles[0],
+        roles: newUserRoles,
         created_at: new Date().toISOString(),
       }
       setUsers((current) => [newUser, ...current])
       toast.success('کاربر جدید با موفقیت اضافه شد.')
       setNewUserEmail('')
-      setNewUserRole('BUSINESS_USER')
+      setNewUserRoles(['BUSINESS_USER'])
       setShowAddUser(false)
       return
     }
@@ -313,7 +452,7 @@ export default function AdminUserAccessPage() {
               </div>
               <h2 className="text-2xl font-bold text-white sm:text-3xl">کاربران و نقش‌ها</h2>
               <p className="mt-2 max-w-2xl text-sm leading-7 text-zinc-300">
-                مدیریت نقش‌های پلتفرم. تعیین کنید چه کسی ثبت می‌کند، چه کسی بازبینی می‌کند و چه کسی تأیید نهایی می‌دهد.
+                مدیریت نقش‌های پلتفرم. هر کاربر می‌تواند <span className="text-amber-300 font-semibold">چندین نقش</span> داشته باشد.
                 <br />
                 <span className="text-xs text-zinc-500">(اعضای شرکت‌ها در فضای کاری هر شرکت مدیریت می‌شوند)</span>
               </p>
@@ -378,11 +517,11 @@ export default function AdminUserAccessPage() {
               </div>
               <div>
                 <h3 className="font-bold text-white">افزودن کاربر جدید</h3>
-                <p className="text-xs text-zinc-400 mt-0.5">ایمیل و نقش مورد نظر را مشخص کنید</p>
+                <p className="text-xs text-zinc-400 mt-0.5">ایمیل و نقش‌های مورد نظر را مشخص کنید</p>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="sm:col-span-2">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
                 <label className="mb-1.5 block text-xs font-semibold text-zinc-400">ایمیل کاربر</label>
                 <input
                   type="email"
@@ -394,21 +533,16 @@ export default function AdminUserAccessPage() {
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-zinc-400">نقش</label>
-                <select
-                  value={newUserRole}
-                  onChange={(e) => setNewUserRole(e.target.value as UserRole)}
-                  className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none transition focus:border-amber-500"
-                >
-                  {ALL_ROLES.map((r) => (
-                    <option key={r.key} value={r.key}>{r.persianLabel}</option>
-                  ))}
-                </select>
+                <label className="mb-1.5 block text-xs font-semibold text-zinc-400">نقش‌ها (چند انتخابی)</label>
+                <MultiRoleSelector
+                  selectedRoles={newUserRoles}
+                  onChange={setNewUserRoles}
+                />
               </div>
             </div>
             <div className="flex gap-2 mt-4">
               <Button onClick={addUser} className="bg-amber-600 hover:bg-amber-500">افزودن کاربر</Button>
-              <Button variant="outline" onClick={() => { setShowAddUser(false); setNewUserEmail(''); setNewUserRole('BUSINESS_USER') }}>
+              <Button variant="outline" onClick={() => { setShowAddUser(false); setNewUserEmail(''); setNewUserRoles(['BUSINESS_USER']) }}>
                 انصراف
               </Button>
             </div>
@@ -424,7 +558,7 @@ export default function AdminUserAccessPage() {
                 <b>قاعده بازبینی:</b> ثبت‌کننده یک درخواست نمی‌تواند همان درخواست را بررسی کند. برای نمایش دکمه «شروع بازبینی» و تصمیم نهایی، با حساب مدیر، بازبین یا تأییدکننده دیگری وارد شوید.
               </p>
               <p className="mt-1 text-xs text-blue-200/60">
-                حساب‌های آزمایشی: admin@samaneh.ir (مدیر), manager@samaneh.ir (مدیر عملیاتی), registrar@samaneh.ir (ثبت‌کننده), reviewer@samaneh.ir (بازبین), approver@samaneh.ir (تأییدکننده), user@samaneh.ir (کاربر)
+                حساب‌های آزمایشی: admin@samaneh.ir (مدیر+عملیاتی), manager@samaneh.ir (مدیر+بازبین), registrar@samaneh.ir (ثبت‌کننده), reviewer@samaneh.ir (بازبین), approver@samaneh.ir (تأییدکننده+بازبین), user@samaneh.ir (کاربر)
               </p>
             </div>
           </div>
@@ -437,6 +571,9 @@ export default function AdminUserAccessPage() {
               <Shield className="h-5 w-5 text-amber-400" />
               تعریف نقش‌ها و سطوح دسترسی
             </h3>
+            <span className="text-xs text-zinc-500 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">
+              هر کاربر می‌تواند چند نقش داشته باشد
+            </span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {ALL_ROLES.map((role) => {
@@ -568,7 +705,7 @@ export default function AdminUserAccessPage() {
                 <Fingerprint className="h-4 w-4 text-amber-400" />
                 فهرست کاربران
               </h3>
-              <p className="mt-1 text-xs text-zinc-500">تغییر نقش هر کاربر مستقیماً در پروفایل امن سامانه اعمال می‌شود.</p>
+              <p className="mt-1 text-xs text-zinc-500">هر کاربر می‌تواند چندین نقش داشته باشد. روی «ویرایش نقش‌ها» کلیک کنید.</p>
             </div>
             <div className="relative">
               <Search className="absolute right-3 top-3 h-4 w-4 text-zinc-500" />
@@ -594,14 +731,15 @@ export default function AdminUserAccessPage() {
           ) : (
             <div className="divide-y divide-zinc-800">
               {filteredUsers.map((user) => {
-                const roleDef = getRoleDef(user.role)
-                const RoleIcon = roleDef.icon
+                const primaryRoleDef = getRoleDef(user.role)
+                const PrimaryIcon = primaryRoleDef.icon
                 const isSelf = user.id === profile?.id
+                const isEditing = editingRoles === user.id
                 return (
                   <div key={user.id} className="flex flex-col gap-4 p-5 transition hover:bg-zinc-900/40 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${roleDef.borderColor} ${roleDef.bgColor} ${roleDef.color}`}>
-                        <RoleIcon className="h-5 w-5" />
+                      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${primaryRoleDef.borderColor} ${primaryRoleDef.bgColor} ${primaryRoleDef.color}`}>
+                        <PrimaryIcon className="h-5 w-5" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
@@ -612,51 +750,89 @@ export default function AdminUserAccessPage() {
                             </span>
                           )}
                         </div>
-                        <div className="mt-1 flex items-center gap-3 text-xs text-zinc-500">
-                          <span>عضویت: {new Date(user.created_at).toLocaleDateString('fa-IR')}</span>
-                          <span className="text-zinc-700">•</span>
-                          <span className={roleDef.color}>{roleDef.persianLabel}</span>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          {user.roles.map((role) => {
+                            const roleDef = getRoleDef(role)
+                            return (
+                              <span
+                                key={role}
+                                className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-semibold ${roleDef.bgColor} ${roleDef.color} border ${roleDef.borderColor}`}
+                              >
+                                {roleDef.persianLabel}
+                              </span>
+                            )
+                          })}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          عضویت: {new Date(user.created_at).toLocaleDateString('fa-IR')}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <select
-                        disabled={savingId === user.id || isSelf}
-                        value={user.role}
-                        onChange={(event) => void updateRole(user, event.target.value as UserRole)}
-                        className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 outline-none focus:border-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {ALL_ROLES.map((r) => (
-                          <option key={r.key} value={r.key}>{r.persianLabel}</option>
-                        ))}
-                      </select>
-
-                      {!isSelf && (
-                        <>
-                          {confirmDelete === user.id ? (
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => deleteUser(user.id)}
-                                className="rounded-lg bg-red-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-red-500 transition"
-                              >
-                                حذف
-                              </button>
-                              <button
-                                onClick={() => setConfirmDelete(null)}
-                                className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-[10px] font-bold text-zinc-300 hover:bg-zinc-800 transition"
-                              >
-                                انصراف
-                              </button>
-                            </div>
-                          ) : (
+                      {isEditing ? (
+                        <div className="flex flex-col gap-2">
+                          <MultiRoleSelector
+                            selectedRoles={editRolesValue}
+                            onChange={setEditRolesValue}
+                            disabled={isSelf}
+                          />
+                          <div className="flex gap-2">
                             <button
-                              onClick={() => setConfirmDelete(user.id)}
-                              className="rounded-lg border border-red-900/60 px-2.5 py-1.5 text-[10px] font-semibold text-red-400 hover:bg-red-950/40 transition"
-                              title="حذف کاربر"
+                              onClick={() => void updateRoles(user, editRolesValue)}
+                              disabled={savingId === user.id}
+                              className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-500 transition disabled:opacity-50"
                             >
-                              <UserX className="h-3.5 w-3.5" />
+                              {savingId === user.id ? 'در حال ذخیره...' : 'ذخیره'}
                             </button>
+                            <button
+                              onClick={() => setEditingRoles(null)}
+                              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 transition"
+                            >
+                              انصراف
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => {
+                              setEditingRoles(user.id)
+                              setEditRolesValue(user.roles)
+                            }}
+                            disabled={isSelf}
+                            className="rounded-xl border border-amber-800/60 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-900/40 transition disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            ویرایش نقش‌ها
+                          </button>
+
+                          {!isSelf && (
+                            <>
+                              {confirmDelete === user.id ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => deleteUser(user.id)}
+                                    className="rounded-lg bg-red-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-red-500 transition"
+                                  >
+                                    حذف
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDelete(null)}
+                                    className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-[10px] font-bold text-zinc-300 hover:bg-zinc-800 transition"
+                                  >
+                                    انصراف
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmDelete(user.id)}
+                                  className="rounded-lg border border-red-900/60 px-2.5 py-1.5 text-[10px] font-semibold text-red-400 hover:bg-red-950/40 transition"
+                                  title="حذف کاربر"
+                                >
+                                  <UserX className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </>
                           )}
                         </>
                       )}
@@ -725,6 +901,7 @@ export default function AdminUserAccessPage() {
                 <li className="flex items-center gap-2"><Lock className="h-3 w-3 shrink-0 text-zinc-600" /> تغییر نقش حساب فعلی مجاز نیست.</li>
                 <li className="flex items-center gap-2"><Lock className="h-3 w-3 shrink-0 text-zinc-600" /> ثبت‌کننده نمی‌تواند درخواست خود را بازبینی کند.</li>
                 <li className="flex items-center gap-2"><Lock className="h-3 w-3 shrink-0 text-zinc-600" /> فقط مدیر پلتفرم مجاز به تغییر نقش سایر کاربران است.</li>
+                <li className="flex items-center gap-2"><Lock className="h-3 w-3 shrink-0 text-zinc-600" /> هر کاربر حداقل یک نقش و حداکثر تمام نقش‌ها را می‌تواند داشته باشد.</li>
                 <li className="flex items-center gap-2"><Lock className="h-3 w-3 shrink-0 text-zinc-600" /> کلیه تغییرات در Audit Log ثبت و قابل پیگیری است.</li>
               </ul>
             </div>
