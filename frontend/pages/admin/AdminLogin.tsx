@@ -146,14 +146,14 @@ export default function AdminLogin() {
               <button
                 type="button"
                 onClick={() => {
-                  setIdentifier('admin@samaneh.ir')
+                  setIdentifier('bahroz.mohaghegh@gmail.com')
                   setPassword('Admin@1234')
-                  toast.info('اطلاعات مدیر آزمایشی درج شد.')
+                  toast.info('اطلاعات مدیر اصلی درج شد.')
                 }}
                 className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-zinc-900 border border-amber-800/40 text-amber-400 hover:bg-amber-950/30 text-xs transition-colors"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                ورود سریع با حساب مدیر آزمایشی (Demo Admin)
+                ورود سریع با حساب مدیر اصلی
               </button>
             </div>
           )}

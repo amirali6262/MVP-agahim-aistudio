@@ -22,17 +22,27 @@ interface MockCred {
   id: string
 }
 
+// حساب‌های آزمایشی فقط برای تست در حالت Mock هستند
+// در محیط واقعی، از ایمیل واقعی خود در Supabase استفاده کنید
 const MOCK_USERS: Record<string, MockCred> = {
+  // حساب اصلی مدیر (با ایمیل واقعی کاربر)
+  'bahroz.mohaghegh@gmail.com': {
+    password: 'Admin@1234',
+    role: 'PLATFORM_ADMIN',
+    roles: ['PLATFORM_ADMIN', 'MANAGER'],
+    id: 'mock-admin-00000001',
+  },
+  // حساب‌های آزمایشی دیگر (فقط برای تست)
   'admin@samaneh.ir': {
     password: 'Admin@1234',
     role: 'PLATFORM_ADMIN',
-    roles: ['PLATFORM_ADMIN', 'MANAGER'],  // Multiple roles example
+    roles: ['PLATFORM_ADMIN', 'MANAGER'],
     id: 'mock-admin-00000001',
   },
   'manager@samaneh.ir': {
     password: 'Manager@1234',
     role: 'MANAGER',
-    roles: ['MANAGER', 'REVIEWER'],  // Multiple roles example
+    roles: ['MANAGER', 'REVIEWER'],
     id: 'mock-manager-00000005',
   },
   'registrar@samaneh.ir': {
@@ -50,7 +60,7 @@ const MOCK_USERS: Record<string, MockCred> = {
   'approver@samaneh.ir': {
     password: 'Approver@1234',
     role: 'APPROVER',
-    roles: ['APPROVER', 'REVIEWER'],  // Multiple roles example
+    roles: ['APPROVER', 'REVIEWER'],
     id: 'mock-approver-00000006',
   },
   'user@samaneh.ir': {
