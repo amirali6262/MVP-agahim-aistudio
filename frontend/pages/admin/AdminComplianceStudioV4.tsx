@@ -32,6 +32,7 @@ import {
   MessageSquare,
   UserCheck,
   Inbox,
+  Copy,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
@@ -298,6 +299,57 @@ export default function AdminComplianceStudio() {
       }
     } catch (err) {
       console.warn('Background obligation deletion error:', err)
+    }
+  }
+
+  const handleCloneObligation = async (item: CatalogItem) => {
+    const newTitle = window.prompt('عنوان تعهد جدید:', item.obligation.title + ' (کپی)')
+    if (!newTitle) return
+    const newCode = window.prompt('کد تعهد جدید:', item.obligation.code + '-copy')
+    if (!newCode) return
+    setBusy(true)
+    try {
+      if (isSupabaseConfigured) {
+        // For Supabase: clone via individual inserts
+        const { data: newObligation, error: obErr } = await supabase
+          .from('obligations')
+          .insert({ family_id: item.obligation.family_id, code: newCode, title: newTitle, summary: item.obligation.summary, authority_name: item.obligation.authority_name, official_action_url: item.obligation.official_action_url, is_active: true, created_by: 'admin' })
+          .select()
+          .single()
+        if (obErr) throw obErr
+        const latestVersion = item.versions[0]
+        if (latestVersion) {
+          const { data: newVersion, error: vErr } = await supabase
+            .from('obligation_versions')
+            .insert({ obligation_id: newObligation.id, version_number: 1, status: 'DRAFT', legal_reference: latestVersion.legal_reference, source_url: latestVersion.source_url, effective_from: latestVersion.effective_from, audience_summary: latestVersion.audience_summary, recurrence_rule: latestVersion.recurrence_rule, deadline_rule: latestVersion.deadline_rule, penalty_rule: latestVersion.penalty_rule, created_by: 'admin' })
+            .select()
+            .single()
+          if (vErr) throw vErr
+          // Clone rule sets
+          const { data: ruleSets } = await supabase.from('eligibility_rule_sets').select('*').eq('obligation_version_id', latestVersion.id)
+          if (ruleSets) {
+            for (const rs of ruleSets) {
+              const { data: newRs } = await supabase.from('eligibility_rule_sets').insert({ obligation_version_id: newVersion.id, priority: rs.priority, title: rs.title, outcome: rs.outcome, explanation: rs.explanation }).select().single()
+              if (newRs) {
+                const { data: conditions } = await supabase.from('eligibility_conditions').select('*').eq('rule_set_id', rs.id)
+                if (conditions) {
+                  const newConditions = conditions.map((c) => ({ rule_set_id: newRs.id, sequence: c.sequence, fact_key: c.fact_key, operator: c.operator, expected_value: c.expected_value }))
+                  if (newConditions.length) await supabase.from('eligibility_conditions').insert(newConditions)
+                }
+              }
+            }
+          }
+        }
+      } else {
+        const { mockStudioDb } = await import('../../lib/mockDb')
+        mockStudioDb.cloneObligation(item.obligation.id, newTitle, newCode)
+      }
+      toast.success(`تعهد «${newTitle}» با موفقیت کپی شد.`)
+      await loadCatalog()
+    } catch (err) {
+      toast.error('خطا در کپی تعهد: ' + (err as Error).message)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -1085,6 +1137,7 @@ export default function AdminComplianceStudio() {
                   <TableCell><div className="flex justify-center gap-2">
                     <Button size="sm" variant="outline" className="border-zinc-700 gap-1.5" onClick={() => openItem(item, 'VIEW')}><Eye className="h-3.5 w-3.5" />مشاهده</Button>
                     <Button size="sm" className="bg-amber-500 text-zinc-950 hover:bg-amber-400 gap-1.5" onClick={() => openItem(item, 'EDIT')}><Pencil className="h-3.5 w-3.5" />ویرایش</Button>
+                                        <Button size="sm" variant="outline" className="border-zinc-700 gap-1.5" onClick={() => void handleCloneObligation(item)}><Copy className="h-3.5 w-3.5" />کپی</Button>
                     <Button size="sm" variant="outline" className="border-red-900 text-red-400 hover:bg-red-950 gap-1.5" disabled={busy} onClick={() => handleDeleteObligationClick(item)}><Trash2 className="h-3.5 w-3.5" />حذف</Button>
                   </div></TableCell>
                 </TableRow>

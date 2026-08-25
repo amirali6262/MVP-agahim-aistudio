@@ -2321,6 +2321,58 @@ export const mockStudioDb = {
     return _studioObligations.length < initialLength
   },
 
+  cloneObligation(sourceObligationId: string, newTitle: string, newCode: string): { obligation: MockObligation; version: MockObligationVersion } | null {
+    requireMockData()
+    const sourceObligation = _studioObligations.find((o) => o.id === sourceObligationId)
+    if (!sourceObligation) return null
+    const now = new Date().toISOString()
+    const newObligationId = 'ob-' + Date.now()
+    const obligation: MockObligation = {
+      ...sourceObligation,
+      id: newObligationId,
+      code: newCode,
+      title: newTitle,
+      is_active: true,
+      created_by: 'admin',
+      created_at: now,
+      updated_at: now,
+    }
+    _studioObligations.unshift(obligation)
+    const sourceVersions = _studioVersions.filter((v) => v.obligation_id === sourceObligationId).sort((a, b) => b.version_number - a.version_number)
+    const sourceVersion = sourceVersions[0]
+    if (!sourceVersion) return { obligation, version: null as any }
+    const newVersionId = 'ver-' + Date.now()
+    const version: MockObligationVersion = {
+      ...sourceVersion,
+      id: newVersionId,
+      obligation_id: newObligationId,
+      version_number: 1,
+      status: 'DRAFT',
+      published_at: null,
+      published_by: null,
+      created_by: 'admin',
+      created_at: now,
+      updated_at: now,
+    }
+    _studioVersions.unshift(version)
+    const sourceTemplate = _studioTemplates.find((t) => t.obligation_version_id === sourceVersion.id)
+    if (sourceTemplate) {
+      const newTemplateId = 'wt-' + Date.now()
+      _studioTemplates.push({ ...sourceTemplate, id: newTemplateId, obligation_version_id: newVersionId, created_by: 'admin', created_at: now, updated_at: now })
+      _studioSteps.filter((s) => s.workflow_template_id === sourceTemplate.id).forEach((step) => {
+        _studioSteps.push({ ...step, id: 'ws-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), workflow_template_id: newTemplateId, form_schema: JSON.parse(JSON.stringify(step.form_schema)) })
+      })
+    }
+    _studioRuleSets.filter((r) => r.obligation_version_id === sourceVersion.id).forEach((ruleSet) => {
+      const newRuleSetId = 'rs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
+      _studioRuleSets.push({ ...ruleSet, id: newRuleSetId, obligation_version_id: newVersionId, created_at: now })
+      _studioConditions.filter((c) => c.rule_set_id === ruleSet.id).forEach((cond) => {
+        _studioConditions.push({ ...cond, id: 'cond-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), rule_set_id: newRuleSetId })
+      })
+    })
+    return { obligation, version }
+  },
+
   updateVersionPenalty(versionId: string, penaltyRule: any): boolean {
     requireMockData()
     const version = _studioVersions.find((item) => item.id === versionId)
