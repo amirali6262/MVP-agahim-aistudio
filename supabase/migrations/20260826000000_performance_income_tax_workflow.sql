@@ -692,9 +692,7 @@ DECLARE
 BEGIN
   WHILE days_added < days_to_add LOOP
     result_date := result_date + 1;
-    -- Skip Fridays and Saturdays (Iran weekend)
     IF EXTRACT(DOW FROM result_date) NOT IN (5, 6) THEN
-      -- Skip official holidays
       IF NOT EXISTS (
         SELECT 1 FROM iran_holidays 
         WHERE holiday_date = result_date 
@@ -718,13 +716,11 @@ CREATE OR REPLACE FUNCTION get_effective_service_date(
   viewed_date timestamptz
 ) RETURNS timestamptz AS $$
 BEGIN
-  -- If viewed within 10 days, use viewed date as actual service
   IF viewed_date IS NOT NULL AND 
      viewed_date <= upload_date + INTERVAL '10 days' THEN
     RETURN viewed_date;
   END IF;
   
-  -- Otherwise, day 11 is legal service date
   IF upload_date IS NOT NULL THEN
     RETURN upload_date + INTERVAL '11 days';
   END IF;
@@ -810,14 +806,4 @@ ON CONFLICT (code) DO UPDATE SET
   description_fa = EXCLUDED.description_fa,
   updated_at = now();
 
--- -----------------------------------------------------------------------------
--- 6. SEED DATA: DOCUMENT TYPES
--- -----------------------------------------------------------------------------
-
-INSERT INTO tax_document_types (code, title_fa, document_type, category, description_fa, is_mandatory) VALUES
-  ('TAX_AUDIT_REPORT', 'گزارش رسیدگی یا حسابرسی مالیاتی', 'tax_audit_report', 'سابقه', 'گزارش رسیدگی یا حسابرسی مالیاتی', true),
-  ('PERFORMANCE_TAX_ASSESSMENT_NOTICE', 'برگ تشخیص مالیات بر عملکرد', 'performance_tax_assessment_notice', 'اسناد رسمی', 'برگ تشخیص مالیات بر عملکرد', true),
-  ('ASSESSMENT_SERVICE_RECORD', 'سابقه ابلاغ برگ تشخیص', 'assessment_service_record', 'سابقه', 'ابلاغ برگ تشخیص و ثبت تاریخ و روش ابلاغ', true),
-  ('AUDIT_REPORT_DETAIL_REQUEST', 'درخواست مؤدی برای دریافت جزئیات گزارش', 'audit_report_detail_request', 'درخواست', 'درخواست مؤدی برای دریافت جزئیات گزارش مبنای تشخیص', false),
-  ('AUDIT_REPORT_DETAIL_RESPONSE', 'گزارش یا توضیحات ارائه‌شده توسط سازمان', 'audit_report_detail_response', 'پاسخ', 'گزارش یا توضیحات ارائه‌شده توسط سازمان', false),
-  ('ARTICLE_238_OBJECTION', 'اعتراض و درخواست رسیدگی مجدد موضوع ماده ۲۳۸', 'article_238_obje
+COMMIT;
