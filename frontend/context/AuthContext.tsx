@@ -7,7 +7,7 @@ import {
   isEmailIdentifier,
   normalizeIranPhone,
 } from '../lib/supabase'
-import type { AppUser } from '../lib/supabase'
+import type { AppUser, UserRole } from '../lib/supabase'
 
 type MockAuthModule = typeof import('../lib/mockAuth')
 
@@ -266,9 +266,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mockAuth) {
         const res = mockAuth.mockSignIn(trimmed, password)
         if (!res.error && res.session && res.profile) {
-          if (res.profile.role !== 'PLATFORM_ADMIN') {
+          const adminRoles: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
+          if (!adminRoles.includes(res.profile.role)) {
             mockAuth.clearMockSession()
-            return { error: 'دسترسی غیرمجاز. فقط مدیران پلتفرم مجاز به ورود هستند.' }
+            return { error: 'دسترسی غیرمجاز. فقط مدیران و اعضای تیم مدیریت مجاز به ورود هستند.' }
           }
           setSession(res.session)
           setProfile(res.profile)
@@ -290,7 +291,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const mockAuth = await loadMockAuth()
         if (mockAuth) {
           const res = mockAuth.mockSignIn(trimmed, password)
-          if (!res.error && res.session && res.profile && res.profile.role === 'PLATFORM_ADMIN') {
+          const adminRoles: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
+          if (!res.error && res.session && res.profile && adminRoles.includes(res.profile.role)) {
             setSession(res.session)
             setProfile(res.profile)
             return { error: null }
@@ -316,11 +318,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: 'پروفایل کاربری یافت نشد.' }
     }
 
-    if (nextProfile.role !== 'PLATFORM_ADMIN') {
+    const adminRoles: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
+    if (!adminRoles.includes(nextProfile.role)) {
       await supabase.auth.signOut()
       setSession(null)
       setProfile(null)
-      return { error: 'دسترسی غیرمجاز. فقط مدیران پلتفرم مجاز به ورود هستند.' }
+      return { error: 'دسترسی غیرمجاز. فقط مدیران و اعضای تیم مدیریت مجاز به ورود هستند.' }
     }
 
     setSession(data.session)

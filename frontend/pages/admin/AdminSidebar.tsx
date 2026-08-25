@@ -48,6 +48,7 @@ const CORE_MENU: MenuSection[] = [
     icon: LayoutDashboard,
     children: [
       { id: 'admin-dashboard', label: 'داشبورد مدیریت', path: '/admin/dashboard', active: true },
+      { id: 'user-access', label: 'کاربران و سطح دسترسی', path: '/admin/users', active: true },
     ],
   },
   {
