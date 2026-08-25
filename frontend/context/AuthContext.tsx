@@ -267,7 +267,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = mockAuth.mockSignIn(trimmed, password)
         if (!res.error && res.session && res.profile) {
           const adminRoles: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
-          if (!adminRoles.includes(res.profile.role)) {
+          const userRoles = res.profile.roles ?? [res.profile.role]
+          if (!userRoles.some((r) => adminRoles.includes(r))) {
             mockAuth.clearMockSession()
             return { error: 'دسترسی غیرمجاز. فقط مدیران و اعضای تیم مدیریت مجاز به ورود هستند.' }
           }
@@ -292,7 +293,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (mockAuth) {
           const res = mockAuth.mockSignIn(trimmed, password)
           const adminRoles: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
-          if (!res.error && res.session && res.profile && adminRoles.includes(res.profile.role)) {
+          const userRoles: UserRole[] = res.profile?.roles ?? (res.profile?.role ? [res.profile.role] : [])
+          if (!res.error && res.session && res.profile && userRoles.some((r) => adminRoles.includes(r))) {
             setSession(res.session)
             setProfile(res.profile)
             return { error: null }
@@ -319,7 +321,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const adminRoles: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
-    if (!adminRoles.includes(nextProfile.role)) {
+    const userRoles = nextProfile.roles ?? [nextProfile.role]
+    if (!userRoles.some((r) => adminRoles.includes(r))) {
       await supabase.auth.signOut()
       setSession(null)
       setProfile(null)

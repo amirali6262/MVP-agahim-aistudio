@@ -34,6 +34,7 @@ export type UserRole = 'PLATFORM_ADMIN' | 'BUSINESS_USER' | 'REGISTRAR' | 'REVIE
 
 export type AppUser = Pick<Tables<'users'>, 'id' | 'email' | 'phone' | 'created_at'> & {
   role: UserRole
+  roles?: UserRole[]  // Support for multiple roles
 }
 
 export type Tenant = Pick<
@@ -62,6 +63,9 @@ export interface WorkflowStepField {
   required?: boolean
   options?: string[]
   placeholder?: string
+  cols?: 1 | 2 | 3 | 4  // تعداد ستون‌ها (پیش‌فرض: 1)
+  helpText?: string     // راهنمای فیلد
+  defaultValue?: string  // مقدار پیش‌فرض
 }
 
 export interface WorkflowStep {

@@ -31,13 +31,19 @@ export default function ProtectedRoute({ children, requireRole, redirectTo }: Pr
   }
 
   if (requireRole) {
-    // For admin roles, allow any of the admin-level roles
+    // Check if user has any of the required roles (supports multiple roles)
+    const userRoles: UserRole[] = profile?.roles ?? (profile?.role ? [profile.role] : [])
+    
     if (requireRole === 'PLATFORM_ADMIN') {
-      if (!profile || !ADMIN_ROLES.includes(profile.role)) {
+      // For admin routes, check if user has any admin-level role
+      if (!profile || !userRoles.some((r) => ADMIN_ROLES.includes(r))) {
         return <Navigate to="/login" replace />
       }
-    } else if (profile?.role !== requireRole) {
-      return <Navigate to="/login" replace />
+    } else {
+      // For specific role requirement, check if user has that role
+      if (!profile || !userRoles.includes(requireRole)) {
+        return <Navigate to="/login" replace />
+      }
     }
   }
 
