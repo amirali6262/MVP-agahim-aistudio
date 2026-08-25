@@ -141,22 +141,7 @@ export default function AdminLogin() {
           {!recoveryMode && <Button type="button" variant="outline" disabled={submitting} onClick={() => void handleResetPassword()} className="w-full gap-2 border-amber-800/70 text-amber-300 hover:bg-amber-950/40"><KeyRound className="h-4 w-4" />فراموشی رمز عبور مدیر</Button>}
 
           {/* Quick Demo Fill */}
-          {!recoveryMode && isMockAuthEnabled && (
-            <div className="mt-2 pt-4 border-t border-zinc-800 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIdentifier('bahroz.mohaghegh@gmail.com')
-                  setPassword('Admin@1234')
-                  toast.info('اطلاعات مدیر اصلی درج شد.')
-                }}
-                className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-zinc-900 border border-amber-800/40 text-amber-400 hover:bg-amber-950/30 text-xs transition-colors"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                ورود سریع با حساب مدیر اصلی
-              </button>
-            </div>
-          )}
+          {/* No demo buttons - use real Supabase credentials */}
 
           {/* User Portal Link */}
           <div className="pt-2 text-center border-t border-zinc-800/60 mt-1">
