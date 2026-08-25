@@ -321,8 +321,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const adminRoles: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
-    const userRoles = nextProfile.roles ?? [nextProfile.role]
-    if (!userRoles.some((r) => adminRoles.includes(r))) {
+    // Check roles array first, then fall back to single role field
+    let userRoles: UserRole[] = []
+    if (nextProfile.roles && nextProfile.roles.length > 0) {
+      userRoles = nextProfile.roles
+    } else if (nextProfile.role) {
+      userRoles = [nextProfile.role]
+    }
+    
+    if (userRoles.length === 0 || !userRoles.some((r) => adminRoles.includes(r))) {
       await supabase.auth.signOut()
       setSession(null)
       setProfile(null)
