@@ -369,35 +369,19 @@ export default function ObjectionTemplatesPage() {
     if (!isSupabaseConfigured) {
       setTemplates(mockTemplates)
       return
-    }
-
-    // When Supabase is configured, also fetch from the database
+    }      // When Supabase is configured, also fetch from the independent objection stages table
     try {
-      const { data: templates, error: tplErr } = await supabase
-        .from('workflow_templates')
-        .select('id, title')
-        .order('created_at', { ascending: false })
+      const { data: stages } = await (supabase as any)
+        .from('tax_objection_stages')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true })
 
-      if (tplErr || !templates || templates.length === 0) {
-        setTemplates(mockTemplates)
-        return
-      }
-
-      const allTemplates: ObjectionTemplate[] = []
-
-      for (const tpl of templates) {
-        const { data: steps } = await supabase
-          .from('workflow_steps')
-          .select('*')
-          .eq('workflow_template_id', tpl.id)
-          .order('sequence', { ascending: true })
-
-        if (!steps || steps.length === 0) continue
-
-        const mappedSteps: ObjectionStep[] = steps.map((s: any) => {
+      if (stages && stages.length > 0) {
+        const mappedSteps: ObjectionStep[] = stages.map((s: any) => {
           const formFields: WorkflowStepField[] =
             s.form_schema?.fields?.map((f: any) => ({
-              id: f.id || s.id + '-' + f.key,
+              id: f.key || s.id + '-field',
               label: f.label || f.key,
               key: f.key,
               type: f.type || 'text',
@@ -407,45 +391,78 @@ export default function ObjectionTemplatesPage() {
             })) ?? []
 
           // Map actor role to StepActor
-          const actorRole = (s.actor_role_code || s.actor || '') as string
+          const actorRole = (s.actor_role_code || '') as string
           let actor: StepActor = 'TAX_AUTHORITY'
           if (actorRole.includes('taxpayer') || actorRole === 'TAXPAYER') actor = 'TAXPAYER'
           else if (actorRole.includes('divan') || actorRole === 'COURT_DIVAN') actor = 'COURT_DIVAN'
 
-          // Map step nature from phase_code and step_type
+          // Map step type to ObjectionStepNature
           let stepNature: ObjectionStepNature = 'MANDATORY'
-          const phase = (s.phase_code || '') as string
           const stepType = (s.step_type || '') as string
-          if (stepType.includes('CONDITIONAL') || stepType.includes('EXPERT')) stepNature = 'CONDITIONAL_EXPERT'
-          else if (phase.includes('FINAL') || stepType.includes('FINAL_NOTICE')) stepNature = 'FINAL_NOTICE_ISSUANCE'
-          else if (phase.includes('NEXT') || stepType.includes('NEXT_STAGE')) stepNature = 'NEXT_STAGE'
-          else if (phase.includes('SETTLE') || stepType.includes('SETTLEMENT')) stepNature = 'SETTLEMENT_END'
-          else if (phase.includes('AGREE') || stepType.includes('AGREEMENT')) stepNature = 'AGREEMENT_END'
-          else if (phase.includes('EXPIRE') || stepType.includes('EXPIRED')) stepNature = 'EXPIRED_END'
+          if (stepType === 'CONDITIONAL_EXPERT') stepNature = 'CONDITIONAL_EXPERT'
+          else if (stepType === 'EXPIRED_END') stepNature = 'EXPIRED_END'
+          else if (stepType === 'NEXT_STAGE') stepNature = 'NEXT_STAGE'
+          else if (stepType === 'DEADLINE') stepNature = 'MANDATORY'
+          else if (stepType === 'OPTIONAL') stepNature = 'MANDATORY'
 
           return {
             id: s.id,
-            title: s.title || s.code,
-            base_event: 'تاریخ ابلاغ برگ/اختیاریه',
-            gap_value: 30,
-            gap_unit: 'روز',
+            title: s.title_fa || s.code,
+            base_event: s.base_event || 'تاریخ ابلاغ برگ/اختیاریه',
+            gap_value: s.gap_value ?? 30,
+            gap_unit: s.gap_unit || 'روز',
             step_nature: stepNature,
             actor,
-            note: s.user_guidance_fa || s.admin_guidance_fa || '',
+            note: s.user_guidance_fa || s.description_fa || '',
             fields: formFields,
           }
         })
 
-        allTemplates.push({
-          id: 'db-' + tpl.id,
-          template_name: tpl.title,
+        // Group by phase_code to create separate templates per phase
+        const phaseMap = new Map<string, { title: string; steps: ObjectionStep[] }>()
+        for (const s of stages) {
+          const phase = s.phase_code || 'PHASE_1'
+          if (!phaseMap.has(phase)) {
+            const phaseNames: Record<string, string> = {
+              PHASE_1: 'فاز ۱: تهیه گزارش و صدور برگ تشخیص',
+              PHASE_2: 'فاز ۲: قبول و پرداخت',
+              PHASE_3: 'فاز ۳: اعتراض ماده ۲۳۸',
+              PHASE_4: 'فاز ۴: پایان مهلت و ارجاع',
+              PHASE_5: 'فاز ۵: قطعیت و پرداخت',
+            }
+            phaseMap.set(phase, { title: phaseNames[phase] || phase, steps: [] })
+          }
+        }
+
+        for (const step of mappedSteps) {
+          const stage = (stages as any[]).find((s: any) => s.id === step.id)
+          const phase = (stage?.phase_code || 'PHASE_1')
+          phaseMap.get(phase)?.steps.push(step)
+        }
+
+        const dbTemplates: ObjectionTemplate[] = Array.from(phaseMap.entries()).map(
+          ([phase, { title, steps }]) => ({
+            id: `db-phase-${phase}`,
+            template_name: title,
+            is_base_template: true,
+            steps,
+            created_at: new Date().toISOString(),
+          })
+        )
+
+        // Also create one combined template with all steps
+        const combinedTemplate: ObjectionTemplate = {
+          id: 'db-combined-pit',
+          template_name: 'مالیات بر عملکرد ـ از تهیه گزارش رسیدگی تا قطعیت مالیات یا ارجاع به هیأت حل اختلاف مالیاتی بدوی',
           is_base_template: true,
           steps: mappedSteps,
           created_at: new Date().toISOString(),
-        })
-      }
+        }
 
-      setTemplates([...allTemplates, ...mockTemplates])
+        setTemplates([combinedTemplate, ...dbTemplates, ...mockTemplates])
+      } else {
+        setTemplates(mockTemplates)
+      }
     } catch {
       setTemplates(mockTemplates)
     }
