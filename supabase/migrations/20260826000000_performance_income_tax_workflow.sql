@@ -649,6 +649,15 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
+-- The reference workflow stores deterministic rule keys in
+-- condition_expression. Event codes remain supported for integrations.
+ALTER TABLE workflow_transitions DROP CONSTRAINT workflow_transitions_event_check;
+ALTER TABLE workflow_transitions ADD CONSTRAINT workflow_transitions_event_check CHECK (
+  trigger_type <> 'SYSTEM_EVENT'
+  OR nullif(btrim(event_code), '') IS NOT NULL
+  OR nullif(btrim(condition_expression), '') IS NOT NULL
+);
+
 -- 3.3 Extend case_deadlines
 DO $$ BEGIN
   ALTER TABLE case_deadlines ADD COLUMN tax_case_id uuid REFERENCES tax_cases(id);
@@ -676,6 +685,22 @@ DO $$ BEGIN
   ALTER TABLE notifications ADD COLUMN actor_role_code text;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
+
+-- Trusted migrations may own reference definitions without impersonating an
+-- application user. Existing client RLS policies still require created_by to
+-- equal auth.uid() for interactive inserts.
+ALTER TABLE obligation_families ALTER COLUMN created_by DROP NOT NULL;
+ALTER TABLE obligations ALTER COLUMN created_by DROP NOT NULL;
+ALTER TABLE obligation_versions ALTER COLUMN created_by DROP NOT NULL;
+ALTER TABLE workflow_templates ALTER COLUMN created_by DROP NOT NULL;
+ALTER TABLE eligibility_rule_sets ALTER COLUMN created_by DROP NOT NULL;
+
+ALTER TABLE obligation_versions DROP CONSTRAINT obligation_versions_publication_check;
+ALTER TABLE obligation_versions ADD CONSTRAINT obligation_versions_publication_check CHECK (
+  (status = 'PUBLISHED' AND published_at IS NOT NULL AND effective_from IS NOT NULL
+    AND (published_by IS NOT NULL OR created_by IS NULL))
+  OR (status <> 'PUBLISHED' AND published_by IS NULL AND published_at IS NULL)
+);
 
 -- -----------------------------------------------------------------------------
 -- 4. HELPER FUNCTIONS

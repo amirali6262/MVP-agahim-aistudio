@@ -12,8 +12,14 @@ BEGIN;
 -- -----------------------------------------------------------------------------
 
 INSERT INTO tax_document_types (code, title_fa, document_type, category, description_fa, is_mandatory) VALUES
+  ('TAX_AUDIT_REPORT', 'گزارش رسیدگی یا حسابرسی مالیاتی', 'tax_audit_report', 'گزارش', 'گزارش نهایی و تأییدشده مبنای تشخیص', true),
+  ('PERFORMANCE_TAX_ASSESSMENT_NOTICE', 'برگ تشخیص مالیات بر عملکرد', 'performance_tax_assessment_notice', 'اسناد رسمی', 'برگ تشخیص صادرشده و قابل ابلاغ', true),
+  ('ASSESSMENT_SERVICE_RECORD', 'سابقه ابلاغ برگ تشخیص', 'assessment_service_record', 'ابلاغ', 'نوع، روش، تاریخ مؤثر و مستند اعتبار ابلاغ', true),
+  ('AUDIT_REPORT_DETAIL_REQUEST', 'درخواست دریافت جزئیات گزارش مبنای تشخیص', 'audit_report_detail_request', 'درخواست', 'درخواست اختیاری مؤدی که مهلت اعتراض را متوقف نمی‌کند', false),
+  ('AUDIT_REPORT_DETAIL_RESPONSE', 'پاسخ جزئیات گزارش مبنای تشخیص', 'audit_report_detail_response', 'پاسخ', 'گزارش یا توضیحات ارائه‌شده توسط سازمان', false),
+  ('ARTICLE_238_OBJECTION', 'اعتراض و درخواست رسیدگی مجدد موضوع ماده ۲۳۸', 'article_238_objection', 'اعتراض', 'اعتراض معتبر الکترونیکی، حضوری، پستی یا روش قانونی دیگر', true),
   ('OBJECTION_EVIDENCE', 'اسناد و مدارک اعتراض', 'objection_evidence', 'مدارک', 'اسناد و مدارک پشتیبان اعتراض', false),
-  ('ARTICLE_238_INTERNAL_REFerral', 'ارجاع داخلی اعتراض', 'article_238_internal_referral', 'ارجاع', 'ارجاع داخلی اعتراض برای رسیدگی مجدد', true),
+  ('ARTICLE_238_INTERNAL_REFERRAL', 'ارجاع داخلی اعتراض', 'article_238_internal_referral', 'ارجاع', 'ارجاع داخلی اعتراض برای رسیدگی مجدد', true),
   ('REEXAMINATION_ORDER', 'قرار بررسی، تحقیق یا کارشناسی مجدد', 'reexamination_order', 'قرار', 'قرار بررسی، تحقیق یا کارشناسی مجدد', false),
   ('REEXAMINATION_EXECUTION_REPORT', 'گزارش اجرای قرار', 'reexamination_execution_report', 'گزارش', 'گزارش اجرای قرار کارشناسی', false),
   ('ARTICLE_238_REVIEW_RESULT', 'نتیجه رسیدگی مجدد موضوع ماده ۲۳۸', 'article_238_review_result', 'نتیجه', 'نتیجه رسیدگی مجدد موضوع ماده ۲۳۸', true),
@@ -56,11 +62,11 @@ INSERT INTO tax_legal_references (code, title_fa, source_type, source_number, ar
   ('VAT_ART_50', 'ماده ۵۰ قانون مالیات بر ارزش افزوده', 'law', NULL, 'ماده ۵۰', 'اصلاح ماده ۲۴۴', 'https://qavanin.ir/Law/TreeText?ApproveStateNo=&IDS=17874811672232780652', true, NULL),
   
   -- دستورالعمل‌ها
-  ('DIR_238_EXEC', 'دستورالعمل اجرایی ماده ۲۳۸', 'directive', '200/10238/150446/ص', NULL, 'دستورالعمل اجرایی ماده ۲۳۸ مورخ ۱۴۰۰/۰۹/۲۱', 'https://thdorsan.com/law-doc/اجرایی-ماده-ق-م-م-200-10238-150446-ص', true, '1400-09-21'),
-  ('DIR_238_EXEC_AMENDMENT', 'اصلاحیه دستورالعمل اجرایی ماده ۲۳۸', 'directive', '84380', NULL, 'اصلاحیه مورخ ۱۴۰۲/۰۵/۱۴', 'https://thdorsan.com/law-doc/اصلاحیه-دستورالعمل-اجرایی-ق-م-م-84380', true, '1402-05-14'),
-  ('DIR_238_EXEC_AMENDMENT2', 'اصلاح پاراگراف آخر دستورالعمل ماده ۲۳۸', 'directive', '155345', NULL, 'اصلاح مورخ ۱۴۰۲/۰۸/۰۷', NULL, true, '1402-08-07'),
-  ('DIR_ELECTRONIC_SERVICE', 'دستورالعمل ابلاغ الکترونیکی اوراق مالیاتی', 'directive', '200/1401/531', NULL, 'دستورالعمل ابلاغ الکترونیکی و اصلاحات آن', NULL, true, '1401-01-01'),
-  ('DIR_EXEC_531', 'ترتیبات اجرایی', 'directive', '200/1400/531', NULL, 'ترتیبات اجرایی مورخ ۱۴۰۰/۱۱/۱۲ فقط در بخش‌های معتبر', NULL, true, '1400-11-12'),
+  ('DIR_238_EXEC', 'دستورالعمل اجرایی ماده ۲۳۸', 'directive', '200/10238/150446/ص', NULL, 'دستورالعمل اجرایی ماده ۲۳۸ مورخ ۱۴۰۰/۰۹/۲۱', 'https://thdorsan.com/law-doc/اجرایی-ماده-ق-م-م-200-10238-150446-ص', true, '2021-12-12'),
+  ('DIR_238_EXEC_AMENDMENT', 'اصلاحیه دستورالعمل اجرایی ماده ۲۳۸', 'directive', '84380', NULL, 'اصلاحیه مورخ ۱۴۰۲/۰۵/۱۴', 'https://thdorsan.com/law-doc/اصلاحیه-دستورالعمل-اجرایی-ق-م-م-84380', true, '2023-08-05'),
+  ('DIR_238_EXEC_AMENDMENT2', 'اصلاح پاراگراف آخر دستورالعمل ماده ۲۳۸', 'directive', '155345', NULL, 'اصلاح مورخ ۱۴۰۲/۰۸/۰۷', NULL, true, '2023-10-29'),
+  ('DIR_ELECTRONIC_SERVICE', 'دستورالعمل ابلاغ الکترونیکی اوراق مالیاتی', 'directive', '200/1401/531', NULL, 'دستورالعمل ابلاغ الکترونیکی و اصلاحات آن', NULL, true, '2022-03-21'),
+  ('DIR_EXEC_531', 'ترتیبات اجرایی', 'directive', '200/1400/531', NULL, 'ترتیبات اجرایی مورخ ۱۴۰۰/۱۱/۱۲ فقط در بخش‌های معتبر', NULL, true, '2022-02-01'),
   
   -- آرای دیوان
   ('DIVAN_ELECTRONIC_ONLY', 'رأی ابطال محدودیت ثبت صرفاً الکترونیکی اعتراض', 'judicial_precedent', NULL, NULL, 'آرای دیوان عدالت اداری مبنی بر ابطال مقرراتی که ثبت اعتراض را فقط به پنجره الکترونیکی محدود می‌کرد', 'https://qavanin.ir/Law/TreeText/?IDS=3236148830899601480', true, NULL)
@@ -74,31 +80,9 @@ ON CONFLICT (code) DO UPDATE SET
   is_active = EXCLUDED.is_active,
   updated_at = now();
 
--- -----------------------------------------------------------------------------
--- 8. SEED DATA: IRAN HOLIDAYS (_sample - should be complete)
--- -----------------------------------------------------------------------------
-
-INSERT INTO iran_holidays (holiday_date, title_fa, is_recurring, category) VALUES
-  ('2026-03-21', 'نوروز', true, 'official'),
-  ('2026-03-22', 'نوروز', true, 'official'),
-  ('2026-03-23', 'نوروز', true, 'official'),
-  ('2026-03-24', 'نوروز', true, 'official'),
-  ('2026-04-01', 'روز جمهوری اسلامی', true, 'official'),
-  ('2026-04-02', 'روز طبیعت', true, 'official'),
-  ('2026-06-14', 'شهادت امام علی', true, 'official'),
-  ('2026-06-24', 'عید فطر', false, 'official'),
-  ('2026-08-05', 'شهادت امام جعفر صادق', true, 'official'),
-  ('2026-08-26', 'عید قربان', false, 'official'),
-  ('2026-09-02', 'عید سعید غدیر خم', false, 'official'),
-  ('2026-10-24', 'تاسوعا', false, 'official'),
-  ('2026-10-25', 'عاشورا', false, 'official'),
-  ('2026-12-01', 'اربع حسینی', false, 'official'),
-  ('2027-01-20', 'رحلت پیامبر', false, 'official'),
-  ('2027-01-22', 'شهادت امام حسن', false, 'official'),
-  ('2027-01-28', 'شهادت امام رضا', false, 'official')
-ON CONFLICT (holiday_date) DO UPDATE SET
-  title_fa = EXCLUDED.title_fa,
-  category = EXCLUDED.category;
+-- Holidays are deliberately not guessed or seeded from a sample calendar.
+-- Operations must import the authoritative annual closure calendar before
+-- enabling automatic deadline execution for that year.
 
 -- -----------------------------------------------------------------------------
 -- 9. SEED DATA: WORKFLOW TEMPLATE & STEPS FOR PERFORMANCE INCOME TAX
@@ -106,28 +90,43 @@ ON CONFLICT (holiday_date) DO UPDATE SET
 
 -- First, create the obligation family for direct taxes
 INSERT INTO obligation_families (id, code, title, domain, description, is_active, created_by) VALUES
-  ('a0000001-0000-0000-0000-000000000001', 'DIRECT_TAXES', 'مالیات‌های مستقیم', 'tax', 'مالیات‌های مستقیم شامل مالیات بر عملکرد، مالیات بر ارث و غیره', true, '00000000-0000-0000-0000-000000000005')
+  ('a0000001-0000-0000-0000-000000000001', 'DIRECT_TAXES', 'مالیات‌های مستقیم', 'TAX', 'مالیات‌های مستقیم شامل مالیات بر عملکرد، مالیات بر ارث و غیره', true, NULL)
 ON CONFLICT (code) DO UPDATE SET
   title = EXCLUDED.title,
   updated_at = now();
 
 -- Create the obligation for performance income tax
 INSERT INTO obligations (id, code, title, family_id, authority_name, summary, is_active, created_by) VALUES
-  ('b0000001-0000-0000-0000-000000000001', 'performance_income_tax', 'مالیات بر عملکرد اشخاص حقوقی', 'a0000001-0000-0000-0000-000000000001', 'سازمان امور مالیاتی کشور', 'مالیات بر عملکرد اشخاص حقوقی - از تهیه گزارش رسیدگی تا قطعیت مالیات یا ارجاع اختلاف به هیأت حل اختلاف', true, '00000000-0000-0000-0000-000000000005')
+  ('b0000001-0000-0000-0000-000000000001', 'PERFORMANCE_INCOME_TAX', 'مالیات بر عملکرد', 'a0000001-0000-0000-0000-000000000001', 'سازمان امور مالیاتی کشور', 'مسیر مشترک اشخاص حقیقی و حقوقی از تهیه گزارش رسیدگی تا قطعیت یا ارجاع اختلاف به هیأت بدوی؛ شناسه دامنه: performance_income_tax', true, NULL)
 ON CONFLICT (code) DO UPDATE SET
   title = EXCLUDED.title,
   updated_at = now();
 
 -- Create obligation version
 INSERT INTO obligation_versions (id, obligation_id, version_number, status, effective_from, legal_reference, source_url, created_by) VALUES
-  ('c0000001-0000-0000-0000-000000000001', 'b0000001-0000-0000-0000-000000000001', 1, 'PUBLISHED', '2026-01-01', 'قانون مالیات‌های مستقیم - مواد ۲۳۷ تا ۲۶۱', NULL, '00000000-0000-0000-0000-000000000005')
+  ('c0000001-0000-0000-0000-000000000001', 'b0000001-0000-0000-0000-000000000001', 1, 'DRAFT', '2026-01-01', 'قانون مالیات‌های مستقیم - مواد ۲۰۳، ۲۰۸، ۲۱۰، ۲۱۹، ۲۲۹، ۲۳۷ تا ۲۳۹ و ۲۴۴', 'https://qavanin.ir/Law/TreeText?ApproveStateNo=&IDS=892583840653829785', NULL)
 ON CONFLICT (id) DO UPDATE SET
   status = EXCLUDED.status,
   updated_at = now();
 
+-- The judicial path is shared in v1.0.0; eligibility keeps natural and legal
+-- taxpayers independently addressable for future variations.
+INSERT INTO eligibility_rule_sets
+  (id,obligation_version_id,priority,title,outcome,explanation,created_by)
+VALUES
+  ('c1000001-0000-0000-0000-000000000001','c0000001-0000-0000-0000-000000000001',1,'شخص حقوقی دارای پرونده مالیات بر عملکرد','ELIGIBLE','مسیر رسیدگی و اعتراض مالیات بر عملکرد برای شخص حقوقی فعال است.',NULL),
+  ('c1000001-0000-0000-0000-000000000002','c0000001-0000-0000-0000-000000000001',2,'شخص حقیقی دارای پرونده مالیات بر عملکرد','ELIGIBLE','مسیر رسیدگی و اعتراض مالیات بر عملکرد برای شخص حقیقی فعال است.',NULL)
+ON CONFLICT (id) DO UPDATE SET title=excluded.title,outcome=excluded.outcome,explanation=excluded.explanation;
+
+INSERT INTO eligibility_conditions (id,rule_set_id,sequence,fact_key,operator,expected_value)
+VALUES
+  ('c2000001-0000-0000-0000-000000000001','c1000001-0000-0000-0000-000000000001',1,'ENTITY_TYPE','EQ','"حقوقی"'),
+  ('c2000001-0000-0000-0000-000000000002','c1000001-0000-0000-0000-000000000002',1,'ENTITY_TYPE','EQ','"حقیقی"')
+ON CONFLICT (id) DO UPDATE SET expected_value=excluded.expected_value;
+
 -- Create workflow template
 INSERT INTO workflow_templates (id, obligation_version_id, title, created_by) VALUES
-  ('d0000001-0000-0000-0000-000000000001', 'c0000001-0000-0000-0000-000000000001', 'فرایند مالیات بر عملکرد - از تهیه گزارش رسیدگی تا قطعیت', '00000000-0000-0000-0000-000000000005')
+  ('d0000001-0000-0000-0000-000000000001', 'c0000001-0000-0000-0000-000000000001', 'فرایند مالیات بر عملکرد نسخه 1.0.0 - تا قطعیت یا ارجاع به هیأت بدوی', NULL)
 ON CONFLICT (id) DO UPDATE SET
   title = EXCLUDED.title;
 
@@ -149,7 +148,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "calculated_tax", "label": "مالیات محاسبه‌شده", "type": "number", "required": true},
    {"key": "penalties", "label": "جرائم", "type": "number", "required": false},
    {"key": "reasons_and_documents", "label": "دلایل و مستندات", "type": "text", "required": true},
-   {"key": "attachments", "label": "پیوست‌ها", "type": "file", "required": false},
+   {"key": "attachments", "label": "پیوست‌ها", "type": "text", "required": false},
    {"key": "signers", "label": "امضاکنندگان", "type": "text", "required": true}
  ]}',
  'PHASE_1', 'tax_audit_unit', 'سازمان امور مالیاتی', 'audit', false, true,
@@ -195,7 +194,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "recipient_name", "label": "شخص دریافت‌کننده", "type": "text", "required": true},
    {"key": "recipient_role", "label": "سمت دریافت‌کننده", "type": "text", "required": false},
    {"key": "destination_address", "label": "نشانی یا حساب کاربری مقصد", "type": "text", "required": true},
-   {"key": "service_document", "label": "مستند ابلاغ", "type": "file", "required": false},
+   {"key": "service_document", "label": "مستند ابلاغ", "type": "text", "required": false},
    {"key": "is_valid", "label": "وضعیت صحت ابلاغ", "type": "checkbox", "required": true},
    {"key": "validity_reason", "label": "علت ابلاغ قانونی", "type": "text", "required": false}
  ]}',
@@ -214,7 +213,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "requested_items", "label": "اقلام درخواستی", "type": "text", "required": true},
    {"key": "taxpayer_notes", "label": "توضیحات مؤدی", "type": "text", "required": false},
    {"key": "response_date", "label": "تاریخ پاسخ", "type": "date", "required": false},
-   {"key": "report_file", "label": "فایل گزارش", "type": "file", "required": false},
+   {"key": "report_file", "label": "فایل گزارش", "type": "text", "required": false},
    {"key": "organization_notes", "label": "توضیحات سازمان", "type": "text", "required": false},
    {"key": "responder_name", "label": "نام پاسخ‌دهنده", "type": "text", "required": false},
    {"key": "not_provided_items", "label": "اقلام ارائه‌نشده", "type": "text", "required": false},
@@ -233,7 +232,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "decision", "label": "تصمیم مؤدی", "type": "select", "options": ["قبول کتبی", "پرداخت مالیات", "ترتیب پرداخت", "ثبت اعتراض", "عدم اقدام"], "required": true},
    {"key": "decision_date", "label": "تاریخ تصمیم", "type": "date", "required": true},
    {"key": "written_acceptance", "label": "متن اعلام قبول", "type": "text", "required": false},
-   {"key": "signed_document", "label": "سند امضاشده", "type": "file", "required": false}
+   {"key": "signed_document", "label": "سند امضاشده", "type": "text", "required": false}
  ]}',
  'PHASE_1', 'taxpayer', NULL, 'decision', false, true,
  ARRAY['PIT-003'],
@@ -249,7 +248,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "acceptance_method", "label": "روش قبول", "type": "select", "options": ["الکترونیکی", "حضوری", "پستی"], "required": true},
    {"key": "acceptance_scope", "label": "دامنه قبول", "type": "select", "options": ["کامل", "جزئی"], "required": true},
    {"key": "acceptance_text", "label": "متن اعلام قبول", "type": "text", "required": true},
-   {"key": "signed_document", "label": "سند امضاشده", "type": "file", "required": false},
+   {"key": "signed_document", "label": "سند امضاشده", "type": "text", "required": false},
    {"key": "registrar", "label": "ثبت‌کننده", "type": "text", "required": true}
  ]}',
  'PHASE_2', 'taxpayer', NULL, 'acceptance', false, true,
@@ -312,7 +311,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "reasons", "label": "دلایل", "type": "text", "required": true},
    {"key": "legal_articles", "label": "مواد قانونی مورد استناد", "type": "text", "required": false},
    {"key": "demand", "label": "خواسته مؤدی", "type": "text", "required": true},
-   {"key": "attachments", "label": "پیوست‌ها", "type": "file", "required": false},
+   {"key": "attachments", "label": "پیوست‌ها", "type": "text", "required": false},
    {"key": "tracking_number", "label": "شماره رهگیری", "type": "text", "required": true}
  ]}',
  'PHASE_3', 'taxpayer', NULL, 'objection', false, true,
@@ -392,7 +391,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "confirmed_items", "label": "موارد تأییدشده", "type": "text", "required": false},
    {"key": "rejected_items", "label": "موارد ردشده", "type": "text", "required": false},
    {"key": "document_deficiencies", "label": "نقص مدارک", "type": "text", "required": false},
-   {"key": "attachments", "label": "پیوست‌ها", "type": "file", "required": false},
+   {"key": "attachments", "label": "پیوست‌ها", "type": "text", "required": false},
    {"key": "executor_name_title", "label": "نام و سمت مجری", "type": "text", "required": true}
  ]}',
  'PHASE_3', 'tax_reexamination_expert', 'سازمان امور مالیاتی', 'execution', true, true,
@@ -415,7 +414,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "resolved_amount", "label": "مبلغ رفع اختلاف‌شده", "type": "number", "required": false},
    {"key": "remaining_disputed", "label": "مبلغ باقی‌مانده مورد اختلاف", "type": "number", "required": false},
    {"key": "overall_result", "label": "نتیجه کلی", "type": "select", "options": ["رد کامل تشخیص", "پذیرش کامل اعتراض", "تعدیل تشخیص", "تأیید تشخیص", "نتیجه ترکیبی", "نقص روند"], "required": true},
-   {"key": "result_document", "label": "سند نتیجه رسیدگی", "type": "file", "required": false},
+   {"key": "result_document", "label": "سند نتیجه رسیدگی", "type": "text", "required": false},
    {"key": "result_notification_date", "label": "تاریخ اعلام نتیجه به مؤدی", "type": "date", "required": false}
  ]}',
  'PHASE_3', 'article_238_responsible_officer', 'سازمان امور مالیاتی', 'final_review', false, true,
@@ -433,7 +432,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "viewed_status", "label": "وضعیت مشاهده", "type": "checkbox", "required": false},
    {"key": "sms_notification", "label": "پیامک اطلاع‌رسانی", "type": "text", "required": false},
    {"key": "last_opinion_date", "label": "آخرین زمان اعلام نظر مؤدی", "type": "date", "required": false},
-   {"key": "result_file", "label": "فایل نتیجه", "type": "file", "required": false}
+   {"key": "result_file", "label": "فایل نتیجه", "type": "text", "required": false}
  ]}',
  'PHASE_3', 'tax_notification_unit', 'سازمان امور مالیاتی', 'notification', false, true,
  ARRAY['PIT-025'],
@@ -452,7 +451,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "rejected_items", "label": "اقلام ردشده", "type": "text", "required": false},
    {"key": "remaining_disputed", "label": "مبلغ باقی‌مانده مورد اختلاف", "type": "number", "required": false},
    {"key": "notes", "label": "توضیحات", "type": "text", "required": false},
-   {"key": "acceptance_document", "label": "سند قبول یا رد", "type": "file", "required": false},
+   {"key": "acceptance_document", "label": "سند قبول یا رد", "type": "text", "required": false},
    {"key": "is_within_deadline", "label": "داخل یا خارج از مهلت", "type": "checkbox", "required": true}
  ]}',
  'PHASE_3', 'taxpayer', NULL, 'decision', false, true,
@@ -475,6 +474,28 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
  ARRAY['performance_tax_final_notice', 'first_instance_board_referral'],
  'موتور خودکار پایان مهلت را کنترل می‌کند. اگر ابلاغ واقعی و عدم اعتراض باشد، قطعیت ایجاد می‌شود.'),
 
+-- PIT-031: عدم اعتراض پس از ابلاغ واقعی
+('e0000001-0000-0000-0000-000000000031', 'd0000001-0000-0000-0000-000000000001', 31, 'PIT-031', 'عدم اعتراض پس از ابلاغ واقعی', 'PLATFORM_ADMIN', false,
+ '{"fields":[
+   {"key":"effective_service_date","label":"تاریخ ابلاغ واقعی","type":"date","required":true},
+   {"key":"deadline_end","label":"پایان مهلت اعتراض","type":"date","required":true},
+   {"key":"finalization_reason","label":"علت قطعیت","type":"select","options":["no_timely_objection_after_actual_service"],"required":true}
+ ]}',
+ 'PHASE_4','system_automation','پلتفرم','system',true,false,
+ ARRAY['PIT-030'],ARRAY['deadline_expiry_record'],ARRAY['performance_tax_final_notice'],
+ 'عدم اقدام پس از ابلاغ واقعی می‌تواند مأخذ را قطعی کند؛ پرداخت مرحله‌ای مستقل است.'),
+
+-- PIT-032: در حکم معترض پس از ابلاغ قانونی
+('e0000001-0000-0000-0000-000000000032', 'd0000001-0000-0000-0000-000000000001', 32, 'PIT-032', 'در حکم معترض پس از ابلاغ قانونی', 'PLATFORM_ADMIN', false,
+ '{"fields":[
+   {"key":"effective_service_date","label":"تاریخ ابلاغ قانونی","type":"date","required":true},
+   {"key":"article_239_note_applies","label":"شمول تبصره ماده ۲۳۹","type":"checkbox","required":true},
+   {"key":"referral_reason","label":"علت ارجاع","type":"select","options":["article_239_deemed_objection_after_legal_service"],"required":true}
+ ]}',
+ 'PHASE_4','system_automation','پلتفرم','system',true,false,
+ ARRAY['PIT-030'],ARRAY['deadline_expiry_record'],ARRAY['first_instance_board_referral'],
+ 'سکوت پس از ابلاغ قانونی موجب قطعیت خودکار نیست و پرونده در حکم اعتراض به هیأت بدوی ارجاع می‌شود.'),
+
 -- PIT-040: تهیه ارجاع به هیأت بدوی
 ('e0000001-0000-0000-0000-000000000040', 'd0000001-0000-0000-0000-000000000001', 40, 'PIT-040', 'تهیه ارجاع به هیأت حل اختلاف بدوی', 'PLATFORM_ADMIN', false,
  '{"fields": [
@@ -490,7 +511,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "article_238_result", "label": "نتیجه رسیدگی ماده ۲۳۸", "type": "text", "required": true},
    {"key": "expertise_report", "label": "گزارش اجرای قرار", "type": "text", "required": false},
    {"key": "objection_document", "label": "اعتراض مؤدی", "type": "text", "required": false},
-   {"key": "documents", "label": "اسناد و مدارک", "type": "file", "required": false},
+   {"key": "documents", "label": "اسناد و مدارک", "type": "text", "required": false},
    {"key": "service_type", "label": "نوع ابلاغ برگ تشخیص", "type": "select", "options": ["واقعی", "قانونی"], "required": true},
    {"key": "representative_choice", "label": "انتخاب نماینده بند ۳ ماده ۲۴۴", "type": "text", "required": false},
    {"key": "is_complete", "label": "وضعیت کامل بودن پرونده", "type": "checkbox", "required": true},
@@ -519,7 +540,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "overpayment", "label": "اضافه‌پرداخت", "type": "number", "required": false},
    {"key": "payment_status", "label": "وضعیت پرداخت", "type": "select", "options": ["پرداخت نشده", "پرداخت شده", "ترتیب پرداخت", "بدون مانده"], "required": true},
    {"key": "document_id", "label": "شناسه سند", "type": "text", "required": true},
-   {"key": "final_notice_file", "label": "فایل برگ قطعی", "type": "file", "required": false}
+   {"key": "final_notice_file", "label": "فایل برگ قطعی", "type": "text", "required": false}
  ]}',
  'PHASE_5', 'tax_finalization_collection_unit', 'سازمان امور مالیاتی', 'document_issuance', false, true,
  ARRAY['PIT-012', 'PIT-040'],
@@ -534,7 +555,7 @@ INSERT INTO workflow_steps (id, workflow_template_id, sequence, code, title, act
    {"key": "payment_type", "label": "نوع پرداخت", "type": "select", "options": ["پرداخت کامل", "ترتیب پرداخت", "تقسیط"], "required": true},
    {"key": "paid_amount", "label": "مبلغ پرداخت‌شده", "type": "number", "required": false},
    {"key": "payment_date", "label": "تاریخ پرداخت", "type": "date", "required": false},
-   {"key": "payment_receipt", "label": "رسید پرداخت", "type": "file", "required": false},
+   {"key": "payment_receipt", "label": "رسید پرداخت", "type": "text", "required": false},
    {"key": "overpayment_detected", "label": "اضافه‌پرداخت تشخیص داده شد", "type": "checkbox", "required": false},
    {"key": "overpayment_amount", "label": "مبلغ اضافه‌پرداخت", "type": "number", "required": false}
  ]}',
@@ -600,7 +621,7 @@ INSERT INTO workflow_transitions (id, workflow_template_id, from_step_id, to_ste
 -- PIT-005 → PIT-030: پایان مهلت (خودکار)
 ('f0000001-0000-0000-0000-000000000008', 'd0000001-0000-0000-0000-000000000001',
  'e0000001-0000-0000-0000-000000000005', 'e0000001-0000-0000-0000-000000000030',
- 'T008', 'مهلت تمام شد → کنترل خودکار', 'TIMEOUT', 'DEADLINE_EXPIRED', NULL, 1,
+ 'T008', 'مهلت تمام شد → کنترل خودکار', 'USER_ACTION', 'DEADLINE_EXPIRED', NULL, 1,
  'مهلت ۳۰ روزه تمام شده و مؤدی اقدامی نکرده است.', 'ماده ۲۳۸ و ۲۳۹', 'timeout_30_days'),
 
 -- PIT-010 → PIT-012: قبول کتبی → قطعیت
@@ -696,25 +717,37 @@ INSERT INTO workflow_transitions (id, workflow_template_id, from_step_id, to_ste
 -- PIT-027 → PIT-040: عدم پاسخ → ارجاع به هیأت
 ('f0000001-0000-0000-0000-000000000024', 'd0000001-0000-0000-0000-000000000001',
  'e0000001-0000-0000-0000-000000000027', 'e0000001-0000-0000-0000-000000000040',
- 'T024', 'عدم پاسخ مؤدی → ارجاع به هیأت', 'TIMEOUT', 'NO_RESPONSE', NULL, 1,
+ 'T024', 'عدم پاسخ مؤدی → ارجاع به هیأت', 'USER_ACTION', 'NO_RESPONSE', NULL, 1,
  'مؤدی پاسخ نداده و اختلاف به هیأت ارجاع می‌شود. سکوت به معنی قبول نیست.', NULL, 'taxpayer_decision == NO_RESPONSE'),
 
 -- PIT-030 → PIT-051: ابلاغ واقعی + عدم اعتراض → قطعیت
 ('f0000001-0000-0000-0000-000000000025', 'd0000001-0000-0000-0000-000000000001',
- 'e0000001-0000-0000-0000-000000000030', 'e0000001-0000-0000-0000-000000000050',
- 'T025', 'مهلت تمام + ابلاغ واقعی → قطعیت', 'TIMEOUT', 'ACTUAL_SERVICE_NO_OBJECTION', NULL, 1,
+ 'e0000001-0000-0000-0000-000000000030', 'e0000001-0000-0000-0000-000000000031',
+ 'T025', 'مهلت تمام + ابلاغ واقعی → قطعیت', 'USER_ACTION', 'ACTUAL_SERVICE_NO_OBJECTION', NULL, 1,
  'ابلاغ واقعی بوده و مؤدی اعتراض نکرده. برگ تشخیص قطعی می‌شود.', 'ماده ۲۳۹', 'service_type == ACTUAL AND no_valid_objection'),
 
 -- PIT-030 → PIT-040: ابلاغ قانونی مشمول تبصره ۲۳۹ → در حکم معترض
 ('f0000001-0000-0000-0000-000000000026', 'd0000001-0000-0000-0000-000000000001',
- 'e0000001-0000-0000-0000-000000000030', 'e0000001-0000-0000-0000-000000000040',
- 'T026', 'ابلاغ قانونی + عدم اقدام → در حکم معترض', 'TIMEOUT', 'LEGAL_SERVICE_DEEMED_OBJECTION', NULL, 1,
+ 'e0000001-0000-0000-0000-000000000030', 'e0000001-0000-0000-0000-000000000032',
+ 'T026', 'ابلاغ قانونی + عدم اقدام → در حکم معترض', 'USER_ACTION', 'LEGAL_SERVICE_DEEMED_OBJECTION', NULL, 1,
  'ابلاغ قانونی مشمول تبصره ماده ۲۳۹ و مؤدی اقدامی نکرده. در حکم معترض است.', 'تبصره ماده ۲۳۹', 'service_type == LEGAL AND article_239_note_applies'),
+
+-- PIT-031 → PIT-050: قطعیت پس از ابلاغ واقعی
+('f0000001-0000-0000-0000-000000000032', 'd0000001-0000-0000-0000-000000000001',
+ 'e0000001-0000-0000-0000-000000000031', 'e0000001-0000-0000-0000-000000000050',
+ 'T032', 'ثبت علت قطعیت → صدور برگ قطعی', 'SYSTEM_EVENT', 'ACTUAL_SERVICE_FINALIZED', NULL, 1,
+ 'علت قطعیت ثبت شده و پرداخت مستقل از صدور برگ قطعی باقی می‌ماند.', 'ماده ۲۳۹', 'finalization_reason == NO_TIMELY_OBJECTION_AFTER_ACTUAL_SERVICE'),
+
+-- PIT-032 → PIT-040: در حکم معترض به هیأت بدوی
+('f0000001-0000-0000-0000-000000000033', 'd0000001-0000-0000-0000-000000000001',
+ 'e0000001-0000-0000-0000-000000000032', 'e0000001-0000-0000-0000-000000000040',
+ 'T033', 'در حکم معترض → تهیه ارجاع هیأت بدوی', 'SYSTEM_EVENT', 'DEEMED_OBJECTION_REFERRAL', NULL, 1,
+ 'فقط مسیر ارجاع فعال است و قطعیت ناشی از سکوت ممنوع است.', 'تبصره ماده ۲۳۹', 'deemed_objector_due_to_legal_service'),
 
 -- PIT-040 → Terminal: ارجاع به هیأت بدوی (نقطه خروج)
 ('f0000001-0000-0000-0000-000000000027', 'd0000001-0000-0000-0000-000000000001',
  'e0000001-0000-0000-0000-000000000040', NULL,
- 'T027', 'ارجاع به هیأت بدوی (نقطه خروج)', 'USER_ACTION', 'REFERRED_TO_BOARD', 'referred_to_first_instance_board', 1,
+ 'T027', 'ارجاع به هیأت بدوی (نقطه خروج)', 'USER_ACTION', 'REFERRED_TO_BOARD', 'COMPLETED', 1,
  'پرونده به هیأت حل اختلاف مالیاتی بدوی ارجاع شد.', 'ماده ۲۴۴', 'referral_completed'),
 
 -- PIT-050 → PIT-051: برگ قطعی صادر شد → مهلت پرداخت
@@ -726,24 +759,29 @@ INSERT INTO workflow_transitions (id, workflow_template_id, from_step_id, to_ste
 -- PIT-051 → Terminal: پرداخت کامل
 ('f0000001-0000-0000-0000-000000000029', 'd0000001-0000-0000-0000-000000000001',
  'e0000001-0000-0000-0000-000000000051', NULL,
- 'T029', 'پرداخت کامل → پایان', 'USER_ACTION', 'FULL_PAYMENT', 'paid', 1,
+ 'T029', 'پرداخت کامل → پایان', 'USER_ACTION', 'FULL_PAYMENT', 'COMPLETED', 1,
  'مالیات قطعی کامل پرداخت شد.', NULL, 'payment_type == FULL AND balance_due == 0'),
 
 -- PIT-051 → Terminal: بدون مانده
 ('f0000001-0000-0000-0000-000000000030', 'd0000001-0000-0000-0000-000000000001',
  'e0000001-0000-0000-0000-000000000051', NULL,
- 'T030', 'بدون مانده → پایان', 'SYSTEM_EVENT', 'NO_BALANCE', 'no_payment_required', 1,
+ 'T030', 'بدون مانده → پایان', 'SYSTEM_EVENT', 'NO_BALANCE', 'COMPLETED', 1,
  'مانده قابل پرداخت صفر است.', NULL, 'balance_due == 0'),
 
 -- PIT-051 → Terminal: اضافه‌پرداخت
 ('f0000001-0000-0000-0000-000000000031', 'd0000001-0000-0000-0000-000000000001',
  'e0000001-0000-0000-0000-000000000051', NULL,
- 'T031', 'اضافه‌پرداخت → پایان', 'SYSTEM_EVENT', 'OVERPAYMENT', 'overpayment_detected', 1,
+ 'T031', 'اضافه‌پرداخت → پایان', 'SYSTEM_EVENT', 'OVERPAYMENT', 'COMPLETED', 1,
  'پرداخت‌های قبلی بیشتر از مالیات قطعی است.', NULL, 'paid_amount > final_tax')
 
 ON CONFLICT (id) DO UPDATE SET
   title = EXCLUDED.title,
   trigger_type = EXCLUDED.trigger_type,
   outcome_code = EXCLUDED.outcome_code;
+
+UPDATE obligation_versions
+SET status = 'PUBLISHED', published_at = COALESCE(published_at, now()), updated_at = now()
+WHERE id = 'c0000001-0000-0000-0000-000000000001'
+  AND status <> 'PUBLISHED';
 
 COMMIT;
