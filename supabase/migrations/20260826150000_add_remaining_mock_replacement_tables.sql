@@ -202,6 +202,9 @@ CREATE TABLE IF NOT EXISTS objection_step_transitions (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Ensure tenant_id exists on deadline_extensions (created earlier without it by 20260825160000)
+ALTER TABLE deadline_extensions ADD COLUMN IF NOT EXISTS tenant_id uuid REFERENCES tenants(id) ON DELETE CASCADE;
+
 -- Enable RLS on new tables
 ALTER TABLE obligation_families ENABLE ROW LEVEL SECURITY;
 ALTER TABLE obligation_definitions ENABLE ROW LEVEL SECURITY;
