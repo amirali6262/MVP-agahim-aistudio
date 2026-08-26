@@ -134,6 +134,13 @@ ON CONFLICT (workflow_code, code) DO UPDATE SET
   is_active = EXCLUDED.is_active,
   updated_at = now();
 
+-- Ensure the unique key required by ON CONFLICT exists even if the table was created earlier without it.
+DO $$ BEGIN
+  ALTER TABLE public.tax_stage_transitions
+    ADD CONSTRAINT uq_tax_stage_transitions_from_to_trigger UNIQUE (from_stage_code, to_stage_code, trigger_type);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 INSERT INTO public.tax_stage_transitions
   (from_stage_code, to_stage_code, trigger_type, condition_description, legal_basis, display_order, is_active)
 VALUES
