@@ -361,13 +361,13 @@ export default function ObjectionTemplatesPage() {
   }
 
   const loadData = async () => {
-    // Always load mock data (works in both modes)
-    const mockTemplates = await fetchObjectionTemplates()
-    const mockObligations = await fetchObligations()
-    setAllObligations(mockObligations)
+    // Load real objection templates and obligations from Supabase (fail-closed when not configured)
+    const objectionTemplates = await fetchObjectionTemplates()
+    const obligations = await fetchObligations()
+    setAllObligations(obligations)
 
     if (!isSupabaseConfigured) {
-      setTemplates(mockTemplates)
+      setTemplates(objectionTemplates)
       return
     }      // When Supabase is configured, also fetch from the independent objection stages table
     try {
@@ -459,12 +459,12 @@ export default function ObjectionTemplatesPage() {
           created_at: new Date().toISOString(),
         }
 
-        setTemplates([combinedTemplate, ...dbTemplates, ...mockTemplates])
+        setTemplates([combinedTemplate, ...dbTemplates, ...objectionTemplates])
       } else {
-        setTemplates(mockTemplates)
+        setTemplates(objectionTemplates)
       }
     } catch {
-      setTemplates(mockTemplates)
+      setTemplates(objectionTemplates)
     }
   }
 
