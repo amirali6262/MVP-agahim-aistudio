@@ -36,7 +36,7 @@ import {
   TableRow,
 } from '../../../lib/shadcn/table'
 import JalaliDatePicker from '../../../components/JalaliDatePicker'
-import { mockCommercialBooksDb } from '../../../lib/mockDb'
+import { fetchCommercialBookPeriods, createCommercialBookPeriod, updateCommercialBookPeriod, deleteCommercialBookPeriod } from '../../../lib/supabaseDb'
 import type { CommercialBookPeriod } from '../../../lib/supabase'
 
 // Helper component for searchable Fiscal Year selection (1403 to 1600)
@@ -128,6 +128,7 @@ export function SearchableYearSelect({
 }
 
 export default function CommercialBooksAdminPage() {
+  const tenantId = ''
   const [fiscalYearFilter, setFiscalYearFilter] = useState('1404')
   const [periods, setPeriods] = useState<CommercialBookPeriod[]>([])
   const [modalOpen, setModalOpen] = useState(false)
@@ -150,8 +151,9 @@ export default function CommercialBooksAdminPage() {
   // Preview file modal
   const [previewAttachment, setPreviewAttachment] = useState<{ url: string; name: string } | null>(null)
 
-  const loadPeriods = () => {
-    const list = mockCommercialBooksDb.getAll(fiscalYearFilter === 'ALL' ? undefined : fiscalYearFilter)
+  const loadPeriods = async () => {
+    const allList = await fetchCommercialBookPeriods(tenantId)
+    const list = fiscalYearFilter === 'ALL' ? allList : allList.filter((p) => p.title?.includes(fiscalYearFilter))
     setPeriods(list)
   }
 
@@ -213,15 +215,15 @@ export default function CommercialBooksAdminPage() {
     setAttachmentUrl('')
   }
 
-  const handleDelete = (id: string, itemTitle: string) => {
+  const handleDelete = async (id: string, itemTitle: string) => {
     if (confirm(`آیا از حذف دوره "${itemTitle}" اطمینان دارید؟`)) {
-      mockCommercialBooksDb.delete(id)
+      await deleteCommercialBookPeriod(id)
       toast.success('دوره با موفقیت حذف گردید.')
       loadPeriods()
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) {
       toast.error('عنوان دوره الزامی است.')
@@ -248,10 +250,10 @@ export default function CommercialBooksAdminPage() {
     }
 
     if (editingPeriod) {
-      mockCommercialBooksDb.update(editingPeriod.id, payload)
+      await updateCommercialBookPeriod(editingPeriod.id, payload)
       toast.success('تغییرات دوره و بخشنامه تمدید با موفقیت ذخیره گردید.')
     } else {
-      mockCommercialBooksDb.create(payload)
+      await createCommercialBookPeriod(payload)
       toast.success('دوره مهلت جدید سامانه دفاتر تجاری با موفقیت اضافه شد.')
     }
 

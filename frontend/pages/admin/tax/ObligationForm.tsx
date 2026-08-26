@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '../../../lib/shadcn/select'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
-import { mockObligationsDb, mockObjectionTemplatesDb } from '../../../lib/mockDb'
+import { fetchObligations, createObligation, updateObligation, fetchObjectionTemplates } from '../../../lib/supabaseDb'
 import type { Obligation, ObjectionTemplate } from '../../../lib/supabase'
 
 // ---------------------------------------------------------------------------
@@ -101,9 +101,11 @@ export default function ObligationForm({ obligation, defaultType = 'TAX_CORPORAT
   const [templates, setTemplates] = useState<ObjectionTemplate[]>([])
 
   useEffect(() => {
-    // Load objection templates for dropdown
-    const fetched = mockObjectionTemplatesDb.getAll()
-    setTemplates(fetched)
+    let active = true
+    void fetchObjectionTemplates().then((fetched) => {
+      if (active) setTemplates(fetched)
+    })
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
@@ -185,10 +187,10 @@ export default function ObligationForm({ obligation, defaultType = 'TAX_CORPORAT
     setSubmitting(true)
 
     if (isEdit && obligation) {
-      const result = mockObligationsDb.update(obligation.id, payload)
+      const result = await updateObligation(obligation.id, payload)
       if (!result) { toast.error('خطا: تکلیف یافت نشد.'); setSubmitting(false); return }
     } else {
-      mockObligationsDb.insert({ ...payload, workflow_steps: [], penalties: [] })
+      await createObligation({ ...payload, workflow_steps: [], penalties: [] })
     }
     toast.success(isEdit ? 'تکلیف با موفقیت ویرایش شد.' : 'تکلیف با موفقیت ثبت شد.')
     setSubmitting(false)

@@ -26,7 +26,8 @@ import {
 } from '../lib/shadcn/select'
 import JalaliDatePicker from './JalaliDatePicker'
 import DeleteGuardModal from './DeleteGuardModal'
-import { mockFiscalYearsDb, type TenantFiscalYear } from '../lib/mockDb'
+import { fetchFiscalYears, createFiscalYear, updateFiscalYear, deleteFiscalYear } from '../lib/supabaseDb'
+import type { TenantFiscalYear } from '../lib/supabaseDb'
 
 interface Props {
   tenantId: string
@@ -52,8 +53,8 @@ export default function CompanyFiscalYear({ tenantId, tenantName }: Props) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<TenantFiscalYear | null>(null)
 
-  const loadData = () => {
-    const list = mockFiscalYearsDb.getForTenant(tenantId)
+  const loadData = async () => {
+    const list = await fetchFiscalYears(tenantId)
     setFiscalYears(list)
   }
 
@@ -91,7 +92,7 @@ export default function CompanyFiscalYear({ tenantId, tenantName }: Props) {
     setIsModalOpen(true)
   }
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) {
       toast.error('لطفاً عنوان سال مالی را وارد کنید.')
@@ -103,7 +104,7 @@ export default function CompanyFiscalYear({ tenantId, tenantName }: Props) {
     }
 
     if (modalMode === 'ADD') {
-      mockFiscalYearsDb.create({
+      await createFiscalYear({
         tenant_id: tenantId,
         title: title.trim(),
         start_date: startDate,
@@ -112,7 +113,7 @@ export default function CompanyFiscalYear({ tenantId, tenantName }: Props) {
       })
       toast.success(`دوره ${title} با موفقیت تعریف گردید.`)
     } else if (modalMode === 'EDIT' && selectedId) {
-      mockFiscalYearsDb.update(selectedId, {
+      await updateFiscalYear(selectedId, {
         title: title.trim(),
         start_date: startDate,
         end_date: endDate,
@@ -125,9 +126,9 @@ export default function CompanyFiscalYear({ tenantId, tenantName }: Props) {
     loadData()
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (deleteTarget) {
-      mockFiscalYearsDb.delete(deleteTarget.id)
+      await deleteFiscalYear(deleteTarget.id)
       toast.success(`سال مالی "${deleteTarget.title}" حذف شد.`)
       setDeleteModalOpen(false)
       setDeleteTarget(null)

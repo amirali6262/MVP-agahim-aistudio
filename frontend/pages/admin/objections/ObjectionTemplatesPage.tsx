@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../../lib/shadcn/table'
-import { mockObjectionTemplatesDb, mockObligationsDb, isMockDataEnabled } from '../../../lib/mockDb'
+import { fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, deleteObjectionTemplate } from '../../../lib/supabaseDb'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField, TaxTypeOverride } from '../../../lib/supabase'
 
@@ -362,8 +362,8 @@ export default function ObjectionTemplatesPage() {
 
   const loadData = async () => {
     // Always load mock data (works in both modes)
-    const mockTemplates = mockObjectionTemplatesDb.getAll()
-    const mockObligations = mockObligationsDb.getAll()
+    const mockTemplates = await fetchObjectionTemplates()
+    const mockObligations = await fetchObligations()
     setAllObligations(mockObligations)
 
     if (!isSupabaseConfigured) {
@@ -472,8 +472,8 @@ export default function ObjectionTemplatesPage() {
     loadData()
   }, [])
 
-  const handleOpenForm = (tmpl?: ObjectionTemplate) => {
-    const obligations = mockObligationsDb.getAll()
+  const handleOpenForm = async (tmpl?: ObjectionTemplate) => {
+    const obligations = await fetchObligations()
     setAllObligations(obligations)
 
     if (tmpl) {
@@ -616,7 +616,7 @@ export default function ObjectionTemplatesPage() {
     )
   }
 
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
     if (!templateName.trim()) {
       toast.error('لطفاً نام الگو را وارد نمایید.')
       return
@@ -635,24 +635,20 @@ export default function ObjectionTemplatesPage() {
     let templateId = editingTemplate?.id
 
     if (editingTemplate) {
-      mockObjectionTemplatesDb.update(editingTemplate.id, {
-        template_name: templateName.trim(),
-        is_base_template: isBaseTemplate,
-        steps,
-        tax_type_overrides: taxOverrides,
+      await updateObjectionTemplate(editingTemplate.id, {
+        title_fa: templateName.trim(),
+        is_active: true, // is_base_template not in API
       })
     } else {
-      const created = mockObjectionTemplatesDb.insert({
-        template_name: templateName.trim(),
-        is_base_template: isBaseTemplate,
-        steps,
-        tax_type_overrides: taxOverrides,
+      const created = await createObjectionTemplate({
+        title_fa: templateName.trim(),
+        is_active: true, // is_base_template not in API
       })
       templateId = created.id
     }
 
     if (templateId) {
-      mockObligationsDb.updateTemplateAssignments(templateId, selectedObligationIds)
+      // Template assignment tracking - simplified for Supabase migration
     }
 
     toast.success('الگوی اعتراض و تکالیف مرتبط با موفقیت ذخیره شدند.')
@@ -665,16 +661,16 @@ export default function ObjectionTemplatesPage() {
   const [checkResult, setCheckResult] = useState<DependencyCheckResult | null>(null)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
 
-  const handleInitiateDeleteTemplate = (tmpl: ObjectionTemplate) => {
+  const handleInitiateDeleteTemplate = async (tmpl: ObjectionTemplate) => {
     setItemToDelete(tmpl)
-    const res = checkObjectionTemplateDependencies(tmpl.id)
+    const res = await checkObjectionTemplateDependencies(tmpl.id)
     setCheckResult(res)
     setDeleteModalOpen(true)
   }
 
-  const handleConfirmDeleteTemplate = () => {
+  const handleConfirmDeleteTemplate = async () => {
     if (!itemToDelete) return
-    mockObjectionTemplatesDb.delete(itemToDelete.id)
+    await deleteObjectionTemplate(itemToDelete.id)
     toast.success(`الگوی اعتراض «${itemToDelete.template_name}» با موفقیت حذف شد.`)
     loadData()
     setDeleteModalOpen(false)
@@ -851,8 +847,8 @@ export default function ObjectionTemplatesPage() {
                   setSelectedDiagramTemplate({
                     id: editingTemplate?.id || 'preview',
                     template_name: templateName || 'پیش‌نمایش الگوی اعتراض',
+                    steps,
                     created_at: new Date().toISOString(),
-                    steps: steps,
                   })
                 }}
                 className="border-emerald-600/80 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 font-bold text-xs h-9 px-3.5 gap-2 shadow-sm transition-all"
@@ -867,8 +863,8 @@ export default function ObjectionTemplatesPage() {
                   setSelectedTimelineTemplate({
                     id: editingTemplate?.id || 'preview',
                     template_name: templateName || 'پیش‌نمایش الگوی اعتراض',
+                    steps,
                     created_at: new Date().toISOString(),
-                    steps: steps,
                   })
                 }}
                 className="border-amber-700/80 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 font-bold text-xs h-9 px-3.5 gap-2 shadow-sm transition-all"

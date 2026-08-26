@@ -13,12 +13,18 @@ import {
   Users,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { mockObligationsDb, mockObjectionTemplatesDb, mockDeadlineExtensionsDb } from '../../lib/mockDb'
+import { useState, useEffect } from 'react'
+import { fetchObligations, fetchObjectionTemplates, fetchDeadlineExtensions } from '../../lib/supabaseDb'
 
 export default function AdminDashboard() {
-  const obligations = mockObligationsDb.getAll()
-  const objectionTemplates = mockObjectionTemplatesDb.getAll()
-  const extensions = mockDeadlineExtensionsDb.getAll()
+  const [obligations, setObligations] = useState<any[]>([])
+  const [objectionTemplates, setObjectionTemplates] = useState<any[]>([])
+  const [extensions, setExtensions] = useState<any[]>([])
+  useEffect(() => {
+    fetchObligations().then(setObligations)
+    fetchObjectionTemplates().then(setObjectionTemplates)
+    fetchDeadlineExtensions().then(setExtensions)
+  }, [])
 
   const stats = [
     { label: 'کل تکالیف تعریف‌شده', value: obligations.length, icon: Layers, color: 'text-amber-400', bg: 'bg-amber-950/40 border-amber-800/60' },

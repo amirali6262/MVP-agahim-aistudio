@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BellRing, CalendarClock, CheckCircle2, ExternalLink, Loader2, Plus, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { isSupabaseConfigured, supabase } from '../../lib/supabase'
-import { mockStudioDb } from '../../lib/mockDb'
 import type { Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -39,40 +38,15 @@ export default function AdminCircularCenter() {
   const [showCircularForm, setShowCircularForm] = useState(false)
   const [showDeadlineForm, setShowDeadlineForm] = useState(false)
 
-  const loadFromMock = useCallback(() => {
-    const mockObs = mockStudioDb.getObligations()
-    const mockVers = mockStudioDb.getVersions()
-    const obMap = new Map(mockObs.map((o) => [o.id, o]))
-
-    const opts: VersionOption[] = mockVers.flatMap((v) => {
-      const ob = obMap.get(v.obligation_id) || mockObs[0]
-      return ob ? [{ version: v as any, obligation: ob as any }] : []
-    })
-
-    setVersionOptions(opts)
-    setCirculars(mockStudioDb.getCirculars() as any)
-    setCases([
-      {
-        id: 'case-demo-1',
-        company_id: 'cmp-1',
-        obligation_version_id: 'ver-corp-tax-1403',
-        period_key: 'عملکرد سال ۱۴۰۲',
-        status: 'IN_PROGRESS',
-        current_step_id: 'ws-1',
-        opened_at: new Date().toISOString(),
-        closed_at: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } as any,
-    ])
-  }, [])
-
   const load = useCallback(async () => {
     setLoading(true)
     try {
       if (!isSupabaseConfigured) {
-        loadFromMock()
+        setCirculars([])
+        setVersionOptions([])
+        setCases([])
         setLoading(false)
+        toast.error('اتصال به پایگاه‌داده برقرار نیست. بخشنامه‌ها و مهلت‌های واقعی بارگذاری نشدند.')
         return
       }
 
@@ -83,16 +57,10 @@ export default function AdminCircularCenter() {
         supabase.from('compliance_cases').select('*').in('status', ['OPEN', 'IN_PROGRESS', 'BLOCKED']).order('opened_at', { ascending: false }),
       ])
 
-      let loadedCircs: Circular[] = circularResult.data ?? []
-      let loadedVers: Version[] = versionResult.data ?? []
-      let loadedObs: Obligation[] = obligationResult.data ?? []
-      let loadedCases: ComplianceCase[] = casesResult.data ?? []
-
-      if (loadedVers.length === 0 || loadedObs.length === 0) {
-        loadFromMock()
-        setLoading(false)
-        return
-      }
+      const loadedCircs: Circular[] = circularResult.data ?? []
+      const loadedVers: Version[] = versionResult.data ?? []
+      const loadedObs: Obligation[] = obligationResult.data ?? []
+      const loadedCases: ComplianceCase[] = casesResult.data ?? []
 
       const obligations = new Map(loadedObs.map((item) => [item.id, item]))
       const opts = loadedVers.flatMap((version) => {
@@ -100,25 +68,18 @@ export default function AdminCircularCenter() {
         return obligation ? [{ version, obligation }] : []
       })
 
-      if (opts.length === 0) {
-        loadFromMock()
-        setLoading(false)
-        return
-      }
-
-      if (loadedCircs.length === 0) {
-        loadedCircs = mockStudioDb.getCirculars() as any
-      }
-
       setCirculars(loadedCircs)
       setVersionOptions(opts)
       setCases(loadedCases)
       setLoading(false)
     } catch {
-      loadFromMock()
+      setCirculars([])
+      setVersionOptions([])
+      setCases([])
       setLoading(false)
+      toast.error('بارگذاری بخشنامه‌ها و مهلت‌ها انجام نشد. وضعیت اتصال پایگاه‌داده را بررسی کنید.')
     }
-  }, [loadFromMock])
+  }, [])
 
   useEffect(() => { void load() }, [load])
 
@@ -126,13 +87,19 @@ export default function AdminCircularCenter() {
     if (!window.confirm('آیا منبع رسمی و متن خلاصه را بررسی کرده‌اید؟ پس از انتشار، بخشنامه قفل و برای شرکت‌های مشمول اعلان می‌شود.')) return
     setBusy(true)
     try {
-      if (isSupabaseConfigured) {
-        const { error } = await supabase.rpc('publish_circular_and_notify', {
-          requested_circular_id: circularId,
-          requested_action_url: '/panel/dashboard',
-        })
-        if (error) {
-          await supabase.from('legal_circulars').update({ status: 'PUBLISHED' }).eq('id', circularId)
+      if (!isSupabaseConfigured) {
+        toast.error('اتصال به پایگاه‌داده برقرار نیست. بخشنامه منتشر نشد.')
+        return
+      }
+      const { error: rpcError } = await supabase.rpc('publish_circular_and_notify', {
+        requested_circular_id: circularId,
+        requested_action_url: '/panel/dashboard',
+      })
+      if (rpcError) {
+        const { error: updateError } = await supabase.from('legal_circulars').update({ status: 'PUBLISHED' }).eq('id', circularId)
+        if (updateError) {
+          toast.error('انتشار بخشنامه انجام نشد. وضعیت سرویس و سیاست‌های امنیتی را بررسی کنید.')
+          return
         }
       }
 
@@ -141,10 +108,7 @@ export default function AdminCircularCenter() {
       )
       toast.success('بخشنامه با موفقیت منتشر شد و برای شرکت‌های مشمول ارسال گردید.')
     } catch {
-      setCirculars((prev) =>
-        prev.map((c) => (c.id === circularId ? { ...c, status: 'PUBLISHED' } : c)),
-      )
-      toast.success('بخشنامه منتشر شد.')
+      toast.error('انتشار بخشنامه با خطا متوقف شد. وضعیت پایگاه‌داده را بررسی کنید.')
     } finally {
       setBusy(false)
     }
@@ -153,18 +117,18 @@ export default function AdminCircularCenter() {
   const runScheduler = async () => {
     setBusy(true)
     try {
-      if (isSupabaseConfigured) {
-        const { data, error } = await supabase.rpc('schedule_deadline_notifications', {})
-        if (error) {
-          toast.success('بررسی و زمان‌بندی یادآوری‌های سررسید با موفقیت انجام شد.')
-        } else {
-          toast.success(`${data || 'کلیه'} یادآوری جدید ساخته شد. اجرای روزانه نیز فعال است.`)
-        }
-      } else {
-        toast.success('یادآوری‌های سررسید برای کلیه شرکت‌های مشمول ثبت و زمان‌بندی شد.')
+      if (!isSupabaseConfigured) {
+        toast.error('اتصال به پایگاه‌داده برقرار نیست. اجرای یادآوری‌ها ممکن نیست.')
+        return
       }
+      const { data, error } = await supabase.rpc('schedule_deadline_notifications', {})
+      if (error) {
+        toast.error('اجرای زمان‌بندی یادآوری‌ها انجام نشد. وضعیت سرویس را بررسی کنید.')
+        return
+      }
+      toast.success(`${data || 'کلیه'} یادآوری جدید ساخته شد. اجرای روزانه نیز فعال است.`)
     } catch {
-      toast.success('یادآوری‌های سررسید با موفقیت بررسی و ثبت شد.')
+      toast.error('اجرای زمان‌بندی یادآوری‌ها با خطا متوقف شد.')
     } finally {
       setBusy(false)
     }
@@ -241,42 +205,28 @@ function CircularForm({ options, onSaved }: { options: VersionOption[]; onSaved:
     }
 
     try {
-      if (isSupabaseConfigured) {
-        const { error } = await supabase.from('legal_circulars').insert({
-          obligation_version_id: versionId,
-          title: title.trim(),
-          circular_number: number.trim() || undefined,
-          source_url: sourceUrl.trim(),
-          issued_on: issuedOn,
-          summary: summary.trim(),
-          status: 'DRAFT',
-        })
-        if (error) {
-          mockStudioDb.addCircular({
-            obligation_version_id: versionId,
-            title: title.trim(),
-            circular_number: number.trim(),
-            source_url: sourceUrl.trim(),
-            issued_on: issuedOn,
-            summary: summary.trim(),
-          })
-        }
-      } else {
-        mockStudioDb.addCircular({
-          obligation_version_id: versionId,
-          title: title.trim(),
-          circular_number: number.trim(),
-          source_url: sourceUrl.trim(),
-          issued_on: issuedOn,
-          summary: summary.trim(),
-        })
+      if (!isSupabaseConfigured) {
+        toast.error('اتصال به پایگاه‌داده برقرار نیست. پیش‌نویس بخشنامه ثبت نشد.')
+        return
+      }
+      const { error } = await supabase.from('legal_circulars').insert({
+        obligation_version_id: versionId,
+        title: title.trim(),
+        circular_number: number.trim() || undefined,
+        source_url: sourceUrl.trim(),
+        issued_on: issuedOn,
+        summary: summary.trim(),
+        status: 'DRAFT',
+      })
+      if (error) {
+        toast.error('ثبت پیش‌نویس بخشنامه انجام نشد. سیاست‌های امنیتی پایگاه‌داده را بررسی کنید.')
+        return
       }
 
       toast.success('پیش‌نویس بخشنامه با موفقیت ثبت شد.')
       await onSaved()
     } catch {
-      toast.success('پیش‌نویس بخشنامه ثبت شد.')
-      await onSaved()
+      toast.error('ثبت پیش‌نویس بخشنامه با خطا متوقف شد.')
     }
   }
 
@@ -326,26 +276,26 @@ function DeadlineForm({ cases, circulars, onSaved }: { cases: ComplianceCase[]; 
       return
     }
     try {
-      if (isSupabaseConfigured) {
-        const { error } = await supabase.rpc('set_case_deadline', {
-          requested_case_id: caseId,
-          requested_workflow_step_id: selectedCase?.current_step_id ?? 'ws-1',
-          requested_deadline_type: type,
-          requested_due_at: new Date(dueAt).toISOString(),
-          requested_source_circular_id: type === 'EXTENSION' ? circularId : undefined,
-          requested_reason: reason.trim() || undefined,
-        })
-        if (error) {
-          toast.success('مهلت جدید برای پرونده با موفقیت ثبت شد.')
-          await onSaved()
-          return
-        }
+      if (!isSupabaseConfigured) {
+        toast.error('اتصال به پایگاه‌داده برقرار نیست. مهلت ثبت نشد.')
+        return
+      }
+      const { error } = await supabase.rpc('set_case_deadline', {
+        requested_case_id: caseId,
+        requested_workflow_step_id: selectedCase?.current_step_id ?? 'ws-1',
+        requested_deadline_type: type,
+        requested_due_at: new Date(dueAt).toISOString(),
+        requested_source_circular_id: type === 'EXTENSION' ? circularId : undefined,
+        requested_reason: reason.trim() || undefined,
+      })
+      if (error) {
+        toast.error('ثبت مهلت انجام نشد. سیاست‌های امنیتی پایگاه‌داده را بررسی کنید.')
+        return
       }
       toast.success('مهلت ثبت شد.')
       await onSaved()
     } catch {
-      toast.success('مهلت ثبت شد.')
-      await onSaved()
+      toast.error('ثبت مهلت با خطا متوقف شد.')
     }
   }
 
