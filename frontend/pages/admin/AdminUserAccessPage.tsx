@@ -314,15 +314,9 @@ export default function AdminUserAccessPage() {
   const loadUsers = useCallback(async () => {
     setLoading(true)
     if (!isSupabaseConfigured) {
-      setUsers([
-        { id: 'mock-admin-00000001', email: 'admin@samaneh.ir', phone: null, role: 'PLATFORM_ADMIN', roles: ['PLATFORM_ADMIN', 'MANAGER'], created_at: '2024-01-01T00:00:00Z' },
-        { id: 'mock-manager-00000005', email: 'manager@samaneh.ir', phone: null, role: 'MANAGER', roles: ['MANAGER', 'REVIEWER'], created_at: '2024-01-06T00:00:00Z' },
-        { id: 'mock-registrar-00000003', email: 'registrar@samaneh.ir', phone: null, role: 'REGISTRAR', roles: ['REGISTRAR'], created_at: '2024-01-02T00:00:00Z' },
-        { id: 'mock-reviewer-00000004', email: 'reviewer@samaneh.ir', phone: null, role: 'REVIEWER', roles: ['REVIEWER'], created_at: '2024-01-03T00:00:00Z' },
-        { id: 'mock-approver-00000006', email: 'approver@samaneh.ir', phone: null, role: 'APPROVER', roles: ['APPROVER', 'REVIEWER'], created_at: '2024-01-07T00:00:00Z' },
-        { id: 'mock-user-00000002', email: 'user@samaneh.ir', phone: null, role: 'BUSINESS_USER', roles: ['BUSINESS_USER'], created_at: '2024-01-04T00:00:00Z' },
-      ])
+      setUsers([])
       setLoading(false)
+      toast.error('اتصال به پایگاه‌داده برقرار نیست. فهرست کاربران واقعی بارگذاری نشد.')
       return
     }
     const { data, error } = await supabase.from('users').select('id,email,phone,role,created_at').order('created_at', { ascending: false })
@@ -369,13 +363,16 @@ export default function AdminUserAccessPage() {
     setSavingId(user.id)
     const primaryRole = newRoles[0] || 'BUSINESS_USER'
     
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.from('users').update({ role: primaryRole }).eq('id', user.id)
-      if (error) {
-        toast.error('تغییر نقش ذخیره نشد. سیاست‌های امنیتی پایگاه‌داده اعمال شده است.')
-        setSavingId(null)
-        return
-      }
+    if (!isSupabaseConfigured) {
+      toast.error('اتصال به پایگاه‌داده برقرار نیست. تغییر نقش ذخیره نشد.')
+      setSavingId(null)
+      return
+    }
+    const { error } = await supabase.from('users').update({ role: primaryRole }).eq('id', user.id)
+    if (error) {
+      toast.error('تغییر نقش ذخیره نشد. سیاست‌های امنیتی پایگاه‌داده اعمال شده است.')
+      setSavingId(null)
+      return
     }
     setUsers((current) => current.map((item) => item.id === user.id ? { ...item, role: primaryRole, roles: newRoles } : item))
     const roleLabels = newRoles.map((r) => ALL_ROLES.find((rd) => rd.key === r)?.persianLabel ?? r).join('، ')
@@ -394,27 +391,28 @@ export default function AdminUserAccessPage() {
       return
     }
     if (!isSupabaseConfigured) {
-      const newUser: UserRow = {
-        id: 'mock-new-' + Date.now(),
-        email: newUserEmail.trim(),
-        phone: null,
-        role: newUserRoles[0],
-        roles: newUserRoles,
-        created_at: new Date().toISOString(),
-      }
-      setUsers((current) => [newUser, ...current])
-      toast.success('کاربر جدید با موفقیت اضافه شد.')
-      setNewUserEmail('')
-      setNewUserRoles(['BUSINESS_USER'])
-      setShowAddUser(false)
+      toast.error('اتصال به پایگاه‌داده برقرار نیست. افزودن کاربر فقط با اتصال واقعی ممکن است.')
       return
     }
     toast.info('افزودن کاربر در حالت اتصال واقعی پایگاه‌داده امکان‌پذیر است.')
   }
 
-  const deleteUser = (userId: string) => {
+  const deleteUser = async (userId: string) => {
     if (userId === profile?.id) {
       toast.error('حذف حساب فعلی مجاز نیست.')
+      return
+    }
+    if (!isSupabaseConfigured) {
+      toast.error('اتصال به پایگاه‌داده برقرار نیست. کاربر حذف نشد.')
+      setConfirmDelete(null)
+      return
+    }
+    setSavingId(userId)
+    const { error } = await supabase.from('users').delete().eq('id', userId)
+    setSavingId(null)
+    if (error) {
+      toast.error('حذف کاربر انجام نشد. سیاست‌های امنیتی پایگاه‌داده اعمال شده است.')
+      setConfirmDelete(null)
       return
     }
     setUsers((current) => current.filter((u) => u.id !== userId))
@@ -557,9 +555,7 @@ export default function AdminUserAccessPage() {
               <p>
                 <b>قاعده بازبینی:</b> ثبت‌کننده یک درخواست نمی‌تواند همان درخواست را بررسی کند. برای نمایش دکمه «شروع بازبینی» و تصمیم نهایی، با حساب مدیر، بازبین یا تأییدکننده دیگری وارد شوید.
               </p>
-              <p className="mt-1 text-xs text-blue-200/60">
-                حساب‌های آزمایشی: admin@samaneh.ir (مدیر+عملیاتی), manager@samaneh.ir (مدیر+بازبین), registrar@samaneh.ir (ثبت‌کننده), reviewer@samaneh.ir (بازبین), approver@samaneh.ir (تأییدکننده+بازبین), user@samaneh.ir (کاربر)
-              </p>
+
             </div>
           </div>
         </section>

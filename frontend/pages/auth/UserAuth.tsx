@@ -1,12 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Eye, EyeOff, Building2, Shield, Sparkles, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, Building2, Shield, KeyRound } from 'lucide-react'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
 import { useAuth } from '../../context/AuthContext'
-import { isMockAuthEnabled } from '../../lib/supabase'
 
 interface Props {
   mode: 'login' | 'register'
@@ -251,23 +250,6 @@ export default function UserAuth({ mode }: Props) {
 
           {!isRegister && !recoveryMode && <Button type="button" variant="outline" disabled={submitting} onClick={() => void handleResetPassword()} className="w-full gap-2 border-emerald-800/70 text-emerald-300 hover:bg-emerald-950/40"><KeyRound className="h-4 w-4" />فراموشی رمز عبور</Button>}
 
-          {/* Quick Demo Fill if Mock Auth is enabled */}
-          {isMockAuthEnabled && !isRegister && !recoveryMode && (
-            <div className="mt-2 pt-4 border-t border-zinc-800 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIdentifier('user@samaneh.ir')
-                  setPassword('User@1234')
-                  toast.info('اطلاعات کاربر آزمایشی درج شد.')
-                }}
-                className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-zinc-900 border border-emerald-800/40 text-emerald-400 hover:bg-emerald-950/30 text-xs transition-colors"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                ورود سریع با حساب کاربری آزمایشی (Demo User)
-              </button>
-            </div>
-          )}
 
           {/* Admin link */}
           <div className="pt-2 text-center border-t border-zinc-800/60 mt-1">

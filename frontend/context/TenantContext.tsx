@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { useAuth } from './AuthContext'
-import { isMockAuthEnabled, isSupabaseConfigured, supabase } from '../lib/supabase'
+import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import type { Tenant, UserTenantWithTenant } from '../lib/supabase'
 
 interface TenantContextValue {

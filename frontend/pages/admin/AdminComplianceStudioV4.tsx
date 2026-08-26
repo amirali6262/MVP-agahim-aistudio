@@ -36,7 +36,6 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { studioDb } from '../../lib/supabaseDb'
 import type { Json, Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -97,10 +96,6 @@ const noValueOperators = new Set(['IS_TRUE', 'IS_FALSE', 'IS_NULL', 'NOT_NULL'])
 const numericFacts = new Set(['EMPLOYEE_COUNT', 'ANNUAL_REVENUE', 'BRANCH_COUNT'])
 const booleanFacts = new Set(['HAS_ACTIVE_CONTRACTS', 'PAYS_SALARIES'])
 const arrayFacts = new Set(['ACTIVITY_CODES', 'CONTRACT_TYPES'])
-const mockDeletedObligationIds = new Set<string>()
-const mockDeletedStepIds = new Set<string>()
-const mockDeletedRuleIds = new Set<string>()
-const mockDeletedTransitionIds = new Set<string>()
 
 const OBLIGATION_TYPE_OPTIONS = [
   ['TAX_CORPORATE', 'مالیات بر عملکرد اشخاص حقوقی'],
@@ -232,19 +227,15 @@ export default function AdminComplianceStudio() {
     const item = deleteObligationGuard.item
     if (!item) return
     
-    // Close modal immediately and update state optimistically
     const targetObligationId = item.obligation.id
     const targetTitle = item.obligation.title
-    mockDeletedObligationIds.add(targetObligationId)
-    setCatalog((prev) => prev.filter((cat) => cat.obligation.id !== targetObligationId))
-    setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false })
-    if (selectedCatalogItem?.obligation.id === targetObligationId) {
-      setSelectedVersionId(null)
-      setMode('LIST')
-    }
-    toast.success(`تعهد «${targetTitle}» با موفقیت حذف شد.`)
 
-    // Background sync with Supabase (with timeout guard)
+    if (!isSupabaseConfigured) {
+      toast.error('برای حذف تعهد اتصال Supabase الزامی است.')
+      return
+    }
+
+    // Delete in Supabase before updating the local view.
     try {
       if (isSupabaseConfigured) {
         const versionIds = item.versions.map((v) => v.id)
@@ -341,8 +332,7 @@ export default function AdminComplianceStudio() {
           }
         }
       } else {
-        const { studioDb } = await import('../../lib/supabaseDb')
-        studioDb.cloneObligation(item.obligation.id, newTitle, newCode)
+        throw new Error('برای کپی تعهد اتصال Supabase الزامی است.')
       }
       toast.success(`تعهد «${newTitle}» با موفقیت کپی شد.`)
       await loadCatalog()
@@ -357,19 +347,9 @@ export default function AdminComplianceStudio() {
     setLoading(true)
 
     if (!isSupabaseConfigured) {
-      const familyRows = studioDb.getFamilies()
-      const obligationRows = studioDb.getObligations().filter((item) => !mockDeletedObligationIds.has(item.id))
-      const versionRows = studioDb.getVersions()
-      setFamilies(familyRows)
-      const cat = obligationRows.map((obligation) => ({
-        obligation,
-        family: familyRows.find((family) => family.id === obligation.family_id) ?? null,
-        versions: versionRows.filter((version) => version.obligation_id === obligation.id),
-      }))
-      setCatalog(cat)
-      if (!selectedVersionId && versionRows.length > 0) {
-        setSelectedVersionId(versionRows[0].id)
-      }
+      toast.error('برای مشاهده کاتالوگ اتصال Supabase الزامی است.')
+      setFamilies([])
+      setCatalog([])
       setLoading(false)
       return
     }
@@ -388,7 +368,6 @@ export default function AdminComplianceStudio() {
       const versionRows = versionResult.data ?? []
       setFamilies(familyRows)
       const cat = (obligationResult.data ?? [])
-        .filter((obligation) => !mockDeletedObligationIds.has(obligation.id))
         .map((obligation) => ({
           obligation,
           family: familyRows.find((family) => family.id === obligation.family_id) ?? null,
@@ -414,7 +393,8 @@ export default function AdminComplianceStudio() {
       return
     }
     if (!isSupabaseConfigured) {
-      setReviewRequests((current) => current.filter((item) => item.obligation_version_id === selectedVersionId))
+      toast.error('برای مشاهده سوابق بازبینی اتصال Supabase الزامی است.')
+      setReviewRequests([])
       return
     }
     const { data, error } = await supabase
@@ -440,17 +420,11 @@ export default function AdminComplianceStudio() {
     }
 
     if (!isSupabaseConfigured) {
-      const tmpl = studioDb.getWorkflowTemplate(selectedVersionId)
-      const st = tmpl ? studioDb.getWorkflowSteps(tmpl.id) : []
-      const rl = studioDb.getRuleSets(selectedVersionId)
-      setSteps(st)
-      setRules(rl)
+      toast.error('برای مشاهده تعریف فرایند اتصال Supabase الزامی است.')
+      setSteps([])
+      setRules([])
       setTransitions([])
-      const condMap: Record<string, any[]> = {}
-      rl.forEach((r: any) => {
-        condMap[r.id] = studioDb.getConditions(r.id)
-      })
-      setRuleConditions(condMap)
+      setRuleConditions({})
       return
     }
 
@@ -464,18 +438,7 @@ export default function AdminComplianceStudio() {
       setPenaltySchemaReady(!isMissingSchemaObject(penaltyProbe.error))
       setTransitionSchemaReady(!isMissingSchemaObject(transitionProbe.error))
       if (templateResult.error || rulesResult.error) {
-        const tmpl = studioDb.getWorkflowTemplate(selectedVersionId)
-        const st = tmpl ? studioDb.getWorkflowSteps(tmpl.id) : []
-        const rl = studioDb.getRuleSets(selectedVersionId)
-        setSteps(st)
-        setRules(rl)
-        setTransitions([])
-        const condMap: Record<string, any[]> = {}
-        rl.forEach((r: any) => {
-          condMap[r.id] = studioDb.getConditions(r.id)
-        })
-        setRuleConditions(condMap)
-        return
+        throw templateResult.error ?? rulesResult.error
       }
 
       let fetchedSteps: WorkflowStep[] = []
@@ -485,17 +448,18 @@ export default function AdminComplianceStudio() {
           supabase.from('workflow_steps').select('*').eq('workflow_template_id', templateResult.data.id).order('sequence'),
           supabase.from('workflow_transitions').select('*').eq('workflow_template_id', templateResult.data.id).order('priority'),
         ])
-        fetchedSteps = (stepsResult.data ?? []).filter((s: any) => !mockDeletedStepIds.has(s.id))
+        if (stepsResult.error) throw stepsResult.error
+        fetchedSteps = stepsResult.data ?? []
         if (isMissingSchemaObject(transitionResult.error)) {
           setTransitionSchemaReady(false)
           fetchedTransitions = []
         } else {
           setTransitionSchemaReady(true)
-          fetchedTransitions = (transitionResult.data ?? []).filter((t: any) => !mockDeletedTransitionIds.has(t.id))
+          fetchedTransitions = transitionResult.data ?? []
           if (transitionResult.error) toast.error(transitionResult.error.message)
         }
       }
-      const fetchedRules = (rulesResult.data ?? []).filter((r: any) => !mockDeletedRuleIds.has(r.id))
+      const fetchedRules = rulesResult.data ?? []
 
       setSteps(fetchedSteps)
       setRules(fetchedRules)
@@ -517,18 +481,12 @@ export default function AdminComplianceStudio() {
         }
       }
       setRuleConditions(condMap)
-    } catch {
-      const tmpl = studioDb.getWorkflowTemplate(selectedVersionId)
-      const st = tmpl ? studioDb.getWorkflowSteps(tmpl.id).filter((s) => !mockDeletedStepIds.has(s.id)) : []
-      const rl = studioDb.getRuleSets(selectedVersionId).filter((r) => !mockDeletedRuleIds.has(r.id))
-      setSteps(st)
-      setRules(rl)
+    } catch (error) {
+      toast.error(errorMessage(error, 'دریافت تعریف فرایند از Supabase ناموفق بود.'))
+      setSteps([])
+      setRules([])
       setTransitions([])
-      const condMap: Record<string, any[]> = {}
-      rl.forEach((r: any) => {
-        condMap[r.id] = studioDb.getConditions(r.id)
-      })
-      setRuleConditions(condMap)
+      setRuleConditions({})
     }
   }, [selectedVersionId])
 
@@ -539,33 +497,29 @@ export default function AdminComplianceStudio() {
       return
     }
 
-    // 1. Immediately close modal and update state optimistically
     const targetRuleId = rule.id
     const targetTitle = rule.title
-    mockDeletedRuleIds.add(targetRuleId)
-    studioDb.deleteRuleSet(targetRuleId)
-    setRules((prev) => prev.filter((r) => r.id !== targetRuleId))
-    setRuleConditions((prev) => {
-      const next = { ...prev }
-      delete next[targetRuleId]
-      return next
-    })
-    if (editingRule?.id === targetRuleId) setEditingRule(null)
-    setDeleteRuleGuard({ isOpen: false, rule: null, isDeleting: false })
-    toast.success(`قاعده «${targetTitle}» با موفقیت حذف شد.`)
+    if (!isSupabaseConfigured) {
+      toast.error('برای حذف قاعده اتصال Supabase الزامی است.')
+      return
+    }
 
-    // 2. Safe background sync with Supabase
     try {
-      if (isSupabaseConfigured) {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-        const syncDelete = async () => {
-          await supabase.from('eligibility_conditions').delete().eq('rule_set_id', targetRuleId)
-          await supabase.from('eligibility_rule_sets').delete().eq('id', targetRuleId)
-        }
-        await Promise.race([syncDelete(), timeoutPromise]).catch(() => {})
-      }
+      const conditionsResult = await supabase.from('eligibility_conditions').delete().eq('rule_set_id', targetRuleId)
+      if (conditionsResult.error) throw conditionsResult.error
+      const ruleResult = await supabase.from('eligibility_rule_sets').delete().eq('id', targetRuleId)
+      if (ruleResult.error) throw ruleResult.error
+      setRules((prev) => prev.filter((r) => r.id !== targetRuleId))
+      setRuleConditions((prev) => {
+        const next = { ...prev }
+        delete next[targetRuleId]
+        return next
+      })
+      if (editingRule?.id === targetRuleId) setEditingRule(null)
+      setDeleteRuleGuard({ isOpen: false, rule: null, isDeleting: false })
+      toast.success(`قاعده «${targetTitle}» با موفقیت حذف شد.`)
     } catch (err) {
-      console.warn('Background rule delete error:', err)
+      toast.error(errorMessage(err, 'حذف قاعده انجام نشد.'))
     }
   }
 
@@ -576,29 +530,25 @@ export default function AdminComplianceStudio() {
       return
     }
 
-    // 1. Immediately close modal and update state optimistically
     const targetStepId = step.id
     const targetTitle = step.title
-    mockDeletedStepIds.add(targetStepId)
-    studioDb.deleteWorkflowStep(targetStepId)
-    setSteps((prev) => prev.filter((s) => s.id !== targetStepId))
-    setTransitions((prev) => prev.filter((t) => t.from_step_id !== targetStepId && t.to_step_id !== targetStepId))
-    if (editingStep?.id === targetStepId) setEditingStep(null)
-    setDeleteStepGuard({ isOpen: false, step: null, dependencies: [], isDeleting: false })
-    toast.success(`مرحله «${targetTitle}» با موفقیت حذف شد.`)
+    if (!isSupabaseConfigured) {
+      toast.error('برای حذف مرحله اتصال Supabase الزامی است.')
+      return
+    }
 
-    // 2. Safe background sync with Supabase
     try {
-      if (isSupabaseConfigured) {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-        const syncDelete = async () => {
-          await supabase.from('workflow_transitions').delete().or(`from_step_id.eq.${targetStepId},to_step_id.eq.${targetStepId}`)
-          await supabase.from('workflow_steps').delete().eq('id', targetStepId)
-        }
-        await Promise.race([syncDelete(), timeoutPromise]).catch(() => {})
-      }
+      const transitionsResult = await supabase.from('workflow_transitions').delete().or(`from_step_id.eq.${targetStepId},to_step_id.eq.${targetStepId}`)
+      if (transitionsResult.error) throw transitionsResult.error
+      const stepResult = await supabase.from('workflow_steps').delete().eq('id', targetStepId)
+      if (stepResult.error) throw stepResult.error
+      setSteps((prev) => prev.filter((s) => s.id !== targetStepId))
+      setTransitions((prev) => prev.filter((t) => t.from_step_id !== targetStepId && t.to_step_id !== targetStepId))
+      if (editingStep?.id === targetStepId) setEditingStep(null)
+      setDeleteStepGuard({ isOpen: false, step: null, dependencies: [], isDeleting: false })
+      toast.success(`مرحله «${targetTitle}» با موفقیت حذف شد.`)
     } catch (err) {
-      console.warn('Background step delete error:', err)
+      toast.error(errorMessage(err, 'حذف مرحله انجام نشد.'))
     }
   }
 
@@ -611,14 +561,7 @@ export default function AdminComplianceStudio() {
         return
       }
       if (!isSupabaseConfigured) {
-        const counts = Object.fromEntries(versionIds.map((versionId) => {
-          const template = studioDb.getWorkflowTemplate(versionId)
-          return [versionId, {
-            rules: studioDb.getRuleSets(versionId).length,
-            steps: template ? studioDb.getWorkflowSteps(template.id).length : 0,
-          }]
-        }))
-        if (!cancelled) setDefinitionCounts(counts)
+        if (!cancelled) setDefinitionCounts({})
         return
       }
       const [rulesResult, templatesResult] = await Promise.all([
@@ -786,48 +729,6 @@ export default function AdminComplianceStudio() {
         }
       }
 
-      // Also register in mock DB
-      studioDb.addRuleSet({
-        obligation_version_id: selectedVersionId,
-        priority: 1,
-        title: 'مشمولیت عام کلیه شرکت‌ها و اشخاص حقوقی ثبت‌شده در ایران',
-        outcome: 'ELIGIBLE',
-        explanation: 'طبق ماده ۱۱۰ قانون مالیات‌های مستقیم، کلیه اشخاص حقوقی مکلفند اظهارنامه و ترازنامه و حساب سود و زیان را حداکثر تا چهار ماه پس از سال مالیاتی تسلیم نمایند.',
-        conditions: [
-          { fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' },
-          { fact: 'TAX_REGISTRATION_STATUS', operator: 'IN', expected: ['ACTIVE', 'REGISTERED', 'فعال', 'ثبت‌شده'] },
-        ],
-      })
-      studioDb.addRuleSet({
-        obligation_version_id: selectedVersionId,
-        priority: 2,
-        title: 'شرکت‌های دارای معافیت قانونی یا مشمول نرخ صفر (دانش‌بنیان، مناطق آزاد و ماده ۱۳۲)',
-        outcome: 'ELIGIBLE',
-        explanation: 'طبق تبصره ۱ ماده ۱۴۶ مکرر ق.م.م، برخورداری از هرگونه نرخ صفر و معافیت‌های قانونی منوط به تسلیم به موقع اظهارنامه مالیاتی است.',
-        conditions: [
-          { fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' },
-        ],
-      })
-
-      const stepsData = [
-        { seq: 1, code: 'CLOSE_BOOKS_AND_CHECKLIST', title: '۱. بستن حساب‌ها، تحریر و پلمپ دفاتر قانونی و تطبیق صورتحساب‌های سامانه مؤدیان', actor: 'USER' },
-        { seq: 2, code: 'SUBMIT_CORPORATE_TAX_RETURN', title: '۲. بارگذاری صورت‌های مالی، ثبت الکترونیکی اظهارنامه در my.tax.gov.ir و اخذ کد رهگیری', actor: 'USER' },
-        { seq: 3, code: 'PAY_DECLARED_TAX', title: '۳. پرداخت مالیات ابرازی یا تقسیط قبوض مالیاتی (موضوع ماده ۱۹۰ ق.م.م)', actor: 'USER' },
-        { seq: 4, code: 'RECORD_ASSESSMENT_NOTICE', title: '۴. دریافت و ثبت برگ تشخیص صادره از ممیزی اداره امور مالیاتی', actor: 'AUTHORITY' },
-        { seq: 5, code: 'FINAL_SETTLEMENT_OR_APPEAL', title: '۵. تعیین تکلیف (تمکین و اخذ برگ قطعی / ثبت اعتراض و لایحه ماده ۲۳۸ ق.م.م)', actor: 'USER' },
-      ]
-
-      for (const s of stepsData) {
-        if (false) studioDb.addWorkflowStep({
-          obligation_version_id: selectedVersionId,
-          sequence: s.seq,
-          code: s.code,
-          title: s.title,
-          actor: s.actor,
-          form_schema: { fields: [] },
-        })
-      }
-
       toast.success('داده‌های کامل و استاندارد نسخه ۱ (قواعد و ۵ مرحله قانونی) با موفقیت ثبت شد.')
       await loadCatalog()
       await loadDefinition()
@@ -858,23 +759,7 @@ export default function AdminComplianceStudio() {
         })
         if (error) throw error
       } else {
-        studioDb.transitionVersionStatus(selectedVersionId, 'REVIEW')
-        const now = new Date().toISOString()
-        setReviewRequests((current) => [
-          {
-            id: `mock-review-${Date.now()}`,
-            obligation_version_id: selectedVersionId,
-            status: 'REQUESTED',
-            submitted_by: 'mock-admin',
-            submitted_at: now,
-            reviewer_id: null,
-            reviewed_at: null,
-            decision_note: null,
-            created_at: now,
-            updated_at: now,
-          },
-          ...current.filter((item) => item.obligation_version_id !== selectedVersionId || !['REQUESTED', 'IN_REVIEW'].includes(item.status)),
-        ])
+        throw new Error('برای ثبت درخواست بازبینی اتصال Supabase الزامی است.')
       }
       toast.success('درخواست بازبینی ثبت شد و در کارتابل بازبین قرار گرفت.')
       await Promise.all([loadCatalog(), loadDefinition(), loadReviewRequests()])
@@ -897,13 +782,7 @@ export default function AdminComplianceStudio() {
         const { error } = await supabase.rpc('start_obligation_review', { requested_review_id: request.id })
         if (error) throw error
       } else {
-        const now = new Date().toISOString()
-        setReviewRequests((current) => current.map((item) => item.id === request.id ? {
-          ...item,
-          status: 'IN_REVIEW',
-          reviewer_id: 'mock-reviewer',
-          updated_at: now,
-        } : item))
+        throw new Error('برای شروع بازبینی اتصال Supabase الزامی است.')
       }
       toast.success('درخواست بازبینی به کارتابل شما منتقل شد.')
       await loadReviewRequests()
@@ -933,15 +812,7 @@ export default function AdminComplianceStudio() {
         })
         if (error) throw error
       } else {
-        studioDb.transitionVersionStatus(request.obligation_version_id, 'DRAFT')
-        const now = new Date().toISOString()
-        setReviewRequests((current) => current.map((item) => item.id === request.id ? {
-          ...item,
-          status: 'WITHDRAWN',
-          reviewed_at: now,
-          decision_note: 'درخواست توسط ثبت‌کننده برای اصلاح به پیش‌نویس بازگردانده شد.',
-          updated_at: now,
-        } : item))
+        throw new Error('برای بازگرداندن درخواست بازبینی اتصال Supabase الزامی است.')
       }
       toast.success('درخواست بازبینی به پیش‌نویس برگشت و امکان اصلاح فعال شد.')
       await Promise.all([loadCatalog(), loadDefinition(), loadReviewRequests()])
@@ -975,16 +846,7 @@ export default function AdminComplianceStudio() {
           : await supabase.rpc('reject_obligation_review', { requested_review_id: request.id, requested_note: note })
         if (error) throw error
       } else {
-        studioDb.transitionVersionStatus(request.obligation_version_id, decision === 'approve' ? 'TESTING' : 'DRAFT')
-        const now = new Date().toISOString()
-        setReviewRequests((current) => current.map((item) => item.id === request.id ? {
-          ...item,
-          status: decision === 'approve' ? 'APPROVED' : 'REJECTED',
-          reviewer_id: 'mock-reviewer',
-          reviewed_at: now,
-          decision_note: note,
-          updated_at: now,
-        } : item))
+        throw new Error('برای ثبت تصمیم بازبینی اتصال Supabase الزامی است.')
       }
       toast.success(decision === 'approve' ? 'بازبینی تأیید شد و نسخه وارد آزمایش شد.' : 'بازبینی رد شد و نسخه برای اصلاح به پیش‌نویس برگشت.')
       await Promise.all([loadCatalog(), loadDefinition(), loadReviewRequests()])
@@ -1006,7 +868,7 @@ export default function AdminComplianceStudio() {
         })
         if (error) throw error
       } else {
-        studioDb.transitionVersionStatus(selectedVersionId, targetStatus)
+        throw new Error('برای تغییر وضعیت نسخه اتصال Supabase الزامی است.')
       }
 
       toast.success(successMessage)
@@ -1030,7 +892,7 @@ export default function AdminComplianceStudio() {
         })
         if (error) throw error
       } else {
-        studioDb.publishVersion(selectedVersionId)
+        throw new Error('برای انتشار نسخه اتصال Supabase الزامی است.')
       }
 
       toast.success('نسخه منتشر شد و برای تشخیص شرکت‌ها قابل استفاده است.')
@@ -1522,11 +1384,7 @@ function BasicIdentityForm({
         if (obligationResult.error) throw obligationResult.error
         if (versionResult.error) throw versionResult.error
       } else {
-        const mockObligation = studioDb.getObligations().find((row) => row.id === item.obligation.id)
-        const mockVersion = studioDb.getVersions().find((row) => row.id === version.id)
-        if (!mockObligation || !mockVersion) throw new Error('تعهد یا نسخه مورد نظر پیدا نشد.')
-        Object.assign(mockObligation, obligationPatch, { updated_at: new Date().toISOString() })
-        Object.assign(mockVersion, versionPatch, { updated_at: new Date().toISOString() })
+        throw new Error('برای ذخیره اطلاعات اتصال Supabase الزامی است.')
       }
       setDirty(false)
       toast.success('اطلاعات پایه و زمان‌بندی تعهد ذخیره شد.')
@@ -1722,10 +1580,7 @@ function ClassificationModal({
         const { error } = await supabase.from('obligation_versions').update({ recurrence_rule: recurrencePatch }).eq('id', version.id)
         if (error) throw error
       } else {
-        const mockVersion = studioDb.getVersions().find((row) => row.id === version.id)
-        if (!mockVersion) throw new Error('نسخه پیدا نشد.')
-        mockVersion.recurrence_rule = recurrencePatch
-        mockVersion.updated_at = new Date().toISOString()
+        throw new Error('برای ذخیره طبقه‌بندی اتصال Supabase الزامی است.')
       }
       toast.success('تنظیمات طبقه‌بندی و مسئولیت ذخیره شد.')
       setDirty(false)
@@ -1925,11 +1780,7 @@ function RecurrenceModal({
         }).eq('id', version.id)
         if (error) throw error
       } else {
-        const mockVersion = studioDb.getVersions().find((row) => row.id === version.id)
-        if (!mockVersion) throw new Error('نسخه پیدا نشد.')
-        mockVersion.recurrence_rule = recurrencePatch
-        mockVersion.deadline_rule = deadlinePatch
-        mockVersion.updated_at = new Date().toISOString()
+        throw new Error('برای ذخیره تناوب و مهلت اتصال Supabase الزامی است.')
       }
       toast.success('تنظیمات تناوب و مهلت قانونی ذخیره شد.')
       setDirty(false)
@@ -2079,14 +1930,7 @@ function ScopeModal({
         if (obRes.error) throw obRes.error
         if (verRes.error) throw verRes.error
       } else {
-        const mockObligation = studioDb.getObligations().find((row) => row.id === item.obligation.id)
-        const mockVersion = studioDb.getVersions().find((row) => row.id === version.id)
-        if (!mockObligation || !mockVersion) throw new Error('تعهد پیدا نشد.')
-        mockObligation.is_active = isActive
-        mockObligation.updated_at = new Date().toISOString()
-        mockVersion.audience_summary = audienceSummary.trim() || undefined
-        mockVersion.recurrence_rule = recurrencePatch
-        mockVersion.updated_at = new Date().toISOString()
+        throw new Error('برای ذخیره دامنه و وضعیت اتصال Supabase الزامی است.')
       }
       toast.success('دامنه و وضعیت تعهد ذخیره شد.')
       setDirty(false)
@@ -2974,10 +2818,7 @@ function PenaltyForm({ version, multiPenaltyTableReady, onSaved }: { version: Ve
       const { error } = await supabase.from('obligation_versions').update({ penalty_rule: rule }).eq('id', version.id)
       if (error) { toast.error(error.message); return }
     } else {
-      const mockVersion = studioDb.getVersions().find((item) => item.id === version.id)
-      if (!mockVersion) return toast.error('نسخه تعهد پیدا نشد.')
-      mockVersion.penalty_rule = rule
-      mockVersion.updated_at = new Date().toISOString()
+      return toast.error('برای ذخیره جریمه اتصال Supabase الزامی است.')
     }
     toast.success(`${items.length.toLocaleString('fa-IR')} جریمه برای تعهد ذخیره شد.`)
     setOpen(false)
@@ -3107,7 +2948,7 @@ function FamilyManager({
 
           if (error) throw error
         } else {
-          studioDb.updateFamily(editingFamily.id, updatePayload)
+          throw new Error('برای ویرایش گروه اتصال Supabase الزامی است.')
         }
 
         toast.success(`گروه «${title.trim()}» با موفقیت به‌روزرسانی شد.`)
@@ -3130,7 +2971,7 @@ function FamilyManager({
 
           if (error) throw error
         } else {
-          studioDb.createFamily(newPayload)
+          throw new Error('برای ایجاد گروه اتصال Supabase الزامی است.')
         }
 
         toast.success(`گروه جدید «${title.trim()}» با موفقیت ثبت شد.`)
@@ -3185,10 +3026,7 @@ function FamilyManager({
 
         if (error) throw error
       } else {
-        const result = studioDb.deleteFamily(family.id)
-        if (!result.success) {
-          throw new Error(result.error || 'حذف گروه انجام نشد.')
-        }
+        throw new Error('برای حذف گروه اتصال Supabase الزامی است.')
       }
 
       toast.success(`گروه «${family.title}» با موفقیت حذف شد.`)
@@ -3676,20 +3514,7 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
     const deadlineRule: Json = { base_event: baseEvent, time_gap_value: timeGapValue ? Number(timeGapValue) : null, time_gap_unit: timeGapUnit || null }
 
     if (!isSupabaseConfigured) {
-      const { version } = studioDb.createDraft({
-        requested_family_id: familyId,
-        requested_code: normalizedCode,
-        requested_title: title.trim(),
-        requested_official_action_url: actionUrl.trim() || undefined,
-        requested_legal_reference: legalReference.trim() || undefined,
-        requested_source_url: sourceUrl.trim() || undefined,
-        requested_effective_from: effectiveFrom || undefined,
-        requested_recurrence_rule: recurrenceRule,
-        requested_deadline_rule: deadlineRule,
-        requested_penalty_rule: penaltyRule,
-      })
-      toast.success('پیش‌نویس تعهد ثبت شد.')
-      await onSaved(version.id)
+      toast.error('برای ثبت پیش‌نویس اتصال Supabase الزامی است.')
       return
     }
 
@@ -3712,7 +3537,6 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
       toast.success('پیش‌نویس تعهد ثبت شد.')
       await onSaved(data.id)
     } catch (error) {
-      toast.error(studioMutationError(error, 'ثبت پیش‌نویس تعهد انجام نشد.'))
       toast.error(errorMessage(error, 'ثبت پیش‌نویس تعهد انجام نشد.'))
     }
   }
@@ -3841,25 +3665,7 @@ function EligibilityRuleForm({
 
     if (editingRule) {
       if (!isSupabaseConfigured) {
-        studioDb.updateRuleSet(editingRule.id, {
-          priority: currentPriority,
-          title: title.trim(),
-          outcome,
-          explanation: explanation.trim(),
-          conditions: conditions.map((c) => ({
-            fact: c.fact,
-            operator: c.operator,
-            expected: numericFacts.has(c.fact)
-              ? Number(c.expected)
-              : c.operator === 'IN'
-                ? c.expected.split(',').map((v) => v.trim()).filter(Boolean)
-                : c.expected.trim(),
-          })),
-        })
-        toast.success(`قاعده «${title.trim()}» با موفقیت ویرایش شد.`)
-        setOpen(false)
-        onCancelEdit?.()
-        await onSaved()
+        toast.error('برای ویرایش قاعده اتصال Supabase الزامی است.')
         return
       }
 
@@ -3912,52 +3718,13 @@ function EligibilityRuleForm({
     }
 
     if (!isSupabaseConfigured) {
-      studioDb.addRuleSet({
-        obligation_version_id: versionId,
-        priority: currentPriority,
-        title: title.trim(),
-        outcome,
-        explanation: explanation.trim(),
-        conditions: conditions.map((c) => ({
-          fact: c.fact,
-          operator: c.operator,
-          expected: numericFacts.has(c.fact)
-            ? Number(c.expected)
-            : c.operator === 'IN'
-              ? c.expected.split(',').map((v) => v.trim()).filter(Boolean)
-              : c.expected.trim(),
-        })),
-      })
-      toast.success('قاعده تشخیص ثبت شد.')
-      setOpen(false)
-      setTitle('')
-      setExplanation('')
-      await onSaved()
+      toast.error('برای ثبت قاعده اتصال Supabase الزامی است.')
       return
     }
 
     try {
       const { data: rule, error } = await supabase.from('eligibility_rule_sets').insert({ obligation_version_id: versionId, priority: currentPriority, title: title.trim(), outcome, explanation: explanation.trim() }).select().single()
-      if (error) {
-        studioDb.addRuleSet({
-          obligation_version_id: versionId,
-          priority: currentPriority,
-          title: title.trim(),
-          outcome,
-          explanation: explanation.trim(),
-          conditions: conditions.map((c) => ({
-            fact: c.fact,
-            operator: c.operator,
-            expected: c.expected.trim(),
-          })),
-        })
-        toast.success('قاعده تشخیص ثبت شد.')
-        setOpen(false)
-        setTitle('')
-        setExplanation('')
-        await onSaved()
-        return
-      }
+      if (error) throw error
       const rows = conditions.map((condition, index) => {
         let expectedValue: Json | undefined
         if (!noValueOperators.has(condition.operator)) {
@@ -3982,24 +3749,8 @@ function EligibilityRuleForm({
       setTitle('')
       setExplanation('')
       await onSaved()
-    } catch {
-      studioDb.addRuleSet({
-        obligation_version_id: versionId,
-        priority: currentPriority,
-        title: title.trim(),
-        outcome,
-        explanation: explanation.trim(),
-        conditions: conditions.map((c) => ({
-          fact: c.fact,
-          operator: c.operator,
-          expected: c.expected.trim(),
-        })),
-      })
-      toast.success('قاعده تشخیص ثبت شد.')
-      setOpen(false)
-      setTitle('')
-      setExplanation('')
-      await onSaved()
+    } catch (error) {
+      toast.error(errorMessage(error, 'ثبت قاعده انجام نشد.'))
     }
   }
 
@@ -4122,18 +3873,7 @@ function WorkflowStepForm({
 
     if (editingStep) {
       if (!isSupabaseConfigured) {
-        studioDb.updateWorkflowStep(editingStep.id, {
-          sequence: currentSequence,
-          code: normalizeCode(code),
-          title: title.trim(),
-          actor,
-          instructions: instructions.trim() || null,
-          form_schema: { fields },
-        })
-        toast.success(`مرحله «${title.trim()}» با موفقیت ویرایش شد.`)
-        setOpen(false)
-        onCancelEdit?.()
-        await onSaved()
+        toast.error('برای ویرایش مرحله اتصال Supabase الزامی است.')
         return
       }
 
@@ -4163,23 +3903,7 @@ function WorkflowStepForm({
     }
 
     if (!isSupabaseConfigured) {
-      studioDb.addWorkflowStep({
-        obligation_version_id: version.id,
-        sequence: currentSequence,
-        code: normalizeCode(code),
-        title: title.trim(),
-        actor,
-        instructions: instructions.trim() || undefined,
-        form_schema: { fields },
-      })
-      toast.success('مرحله ثبت شد.')
-      setOpen(false)
-      setTitle('')
-      setCode('')
-      setInstructions('')
-      setFieldLabel('')
-      setFieldKey('')
-      await onSaved()
+      toast.error('برای ثبت مرحله اتصال Supabase الزامی است.')
       return
     }
 
@@ -4203,15 +3927,7 @@ function WorkflowStepForm({
         })
         if (result.error) throw result.error
       } else {
-        studioDb.addWorkflowStep({
-          obligation_version_id: version.id,
-          sequence: currentSequence,
-          code: normalizeCode(code),
-          title: title.trim(),
-          actor,
-          instructions: instructions.trim() || undefined,
-          form_schema: { fields },
-        })
+        throw new Error('قالب فرایند در Supabase پیدا نشد.')
       }
       toast.success('مرحله ثبت شد.')
       setOpen(false)
@@ -4221,24 +3937,8 @@ function WorkflowStepForm({
       setFieldLabel('')
       setFieldKey('')
       await onSaved()
-    } catch {
-      studioDb.addWorkflowStep({
-        obligation_version_id: version.id,
-        sequence: currentSequence,
-        code: normalizeCode(code),
-        title: title.trim(),
-        actor,
-        instructions: instructions.trim() || undefined,
-        form_schema: { fields },
-      })
-      toast.success('مرحله ثبت شد.')
-      setOpen(false)
-      setTitle('')
-      setCode('')
-      setInstructions('')
-      setFieldLabel('')
-      setFieldKey('')
-      await onSaved()
+    } catch (error) {
+      toast.error(errorMessage(error, 'ثبت مرحله انجام نشد.'))
     }
   }
 

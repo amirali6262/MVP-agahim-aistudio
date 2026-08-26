@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import { studioDb } from '../../lib/supabaseDb'
 import type { Json, Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -185,21 +184,13 @@ export default function WorkflowStepFormV2({
     }
 
     try {
+      if (!isSupabaseConfigured) {
+        throw new Error('اتصال به پایگاه‌داده برقرار نیست. عملیات مرحله انجام نشد.')
+      }
       if (editingStep) {
-        if (!isSupabaseConfigured) {
-          studioDb.updateWorkflowStep(editingStep.id, stepPayload)
-        } else {
-          const { error } = await supabase.from('workflow_steps').update(stepPayload as any).eq('id', editingStep.id)
-          if (error) throw error
-        }
+        const { error } = await supabase.from('workflow_steps').update(stepPayload as any).eq('id', editingStep.id)
+        if (error) throw error
         toast.success(`مرحله «${title.trim()}» با موفقیت ویرایش شد.`)
-      } else if (!isSupabaseConfigured) {
-        studioDb.addWorkflowStep({
-          obligation_version_id: version.id,
-          ...stepPayload,
-          instructions: instructions.trim() || undefined,
-        })
-        toast.success('مرحله ثبت شد.')
       } else {
         const templateResult = await supabase
           .from('workflow_templates')

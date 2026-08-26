@@ -18,9 +18,6 @@ export const isSupabaseConfigured = Boolean(
   !supabasePublishableKey.includes('placeholder')
 )
 
-export const isMockAuthEnabled =
-  import.meta.env['VITE_ENABLE_MOCK_AUTH'] === 'true'
-
 export const supabase = createClient<Database>(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabasePublishableKey || 'placeholder-publishable-key'

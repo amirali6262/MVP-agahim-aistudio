@@ -789,11 +789,11 @@ export const studioDb = {
   getConditions: (_ruleSetId: string): any[] => [],
   getCirculars: (): any[] => [],
   // Compatibility methods deliberately fail closed; no in-memory records are created.
-  createDraft: (_params: any): never => { throw new Error('Supabase connection is required to create a draft.') },
+  createDraft: (_params: any): { version: { id: string } } => { throw new Error('Supabase connection is required to create a draft.') },
   cloneObligation: (_sourceId: string, _newTitle: string, _newCode: string): never => { throw new Error('Supabase connection is required to clone an obligation.') },
   createFamily: (_data: any): never => { throw new Error('Supabase connection is required to create an obligation family.') },
   updateFamily: (_id: string, _data: any): never => { throw new Error('Supabase connection is required to update an obligation family.') },
-  deleteFamily: (_id: string): never => { throw new Error('Supabase connection is required to delete an obligation family.') },
+  deleteFamily: (_id: string): { success: boolean; error?: string } => { throw new Error('Supabase connection is required to delete an obligation family.') },
   deleteObligation: (_id: string): never => { throw new Error('Supabase connection is required to delete an obligation.') },
   updateVersionPenalty: (_versionId: string, _penaltyRule: any): never => { throw new Error('Supabase connection is required to update a penalty rule.') },
   publishVersion: (_versionId: string): never => { throw new Error('Supabase connection is required to publish a version.') },
