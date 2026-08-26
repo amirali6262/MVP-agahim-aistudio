@@ -103,34 +103,9 @@ export default function CompanyMembersPage() {
     setLoading(true)
 
     if (!isSupabaseConfigured) {
-      // Mock data for demo
-      setMembers([
-        {
-          id: 'mock-mem-1',
-          user_id: 'mock-user-00000002',
-          tenant_id: tenantId,
-          role: 'OWNER',
-          created_at: '2024-01-01T00:00:00Z',
-          users: { email: 'user@samaneh.ir', phone: null },
-        },
-        {
-          id: 'mock-mem-2',
-          user_id: 'mock-user-00000003',
-          tenant_id: tenantId,
-          role: 'ADMIN',
-          created_at: '2024-01-02T00:00:00Z',
-          users: { email: 'admin@company.ir', phone: null },
-        },
-        {
-          id: 'mock-mem-3',
-          user_id: 'mock-user-00000004',
-          tenant_id: tenantId,
-          role: 'MEMBER',
-          created_at: '2024-01-03T00:00:00Z',
-          users: { email: 'member@company.ir', phone: null },
-        },
-      ])
+      setMembers([])
       setLoading(false)
+      toast.error('اتصال به پایگاه‌داده برقرار نیست. اعضای واقعی شرکت بارگذاری نشدند.')
       return
     }
 
@@ -185,11 +160,7 @@ export default function CompanyMembersPage() {
     setSavingId(member.id)
 
     if (!isSupabaseConfigured) {
-      setMembers((current) =>
-        current.map((m) => (m.id === member.id ? { ...m, role: newRole } : m))
-      )
-      const roleDef = MEMBER_ROLES.find((r) => r.key === newRole)
-      toast.success(`نقش کاربر با موفقیت به «${roleDef?.persianLabel ?? newRole}» تغییر یافت.`)
+      toast.error('اتصال به پایگاه‌داده برقرار نیست. تغییر نقش ذخیره نشد.')
       setSavingId(null)
       return
     }
@@ -220,9 +191,8 @@ export default function CompanyMembersPage() {
     }
 
     if (!isSupabaseConfigured) {
-      setMembers((current) => current.filter((m) => m.id !== member.id))
+      toast.error('اتصال به پایگاه‌داده برقرار نیست. عضو حذف نشد.')
       setConfirmRemove(null)
-      toast.success('عضو با موفقیت حذف شد.')
       return
     }
 
@@ -243,19 +213,7 @@ export default function CompanyMembersPage() {
     }
 
     if (!isSupabaseConfigured) {
-      const newMember: MemberRow = {
-        id: 'mock-mem-' + Date.now(),
-        user_id: 'mock-new-' + Date.now(),
-        tenant_id: tenantId ?? '',
-        role: newMemberRole,
-        created_at: new Date().toISOString(),
-        users: { email: newMemberEmail.trim(), phone: null },
-      }
-      setMembers((current) => [newMember, ...current])
-      toast.success('عضو جدید با موفقیت اضافه شد.')
-      setNewMemberEmail('')
-      setNewMemberRole('MEMBER')
-      setShowAddMember(false)
+      toast.error('اتصال به پایگاه‌داده برقرار نیست. افزودن عضو فقط با اتصال واقعی ممکن است.')
       return
     }
 

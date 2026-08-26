@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookOpenCheck, ExternalLink, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
-import { mockStudioDb } from '../../../lib/mockDb'
+import { fetchObligationFamilies, fetchStudioObligations, fetchObligationVersions } from '../../../lib/supabaseDb'
 import type { Json, Tables } from '../../../lib/database.types'
 import { Button } from '../../../lib/shadcn/button'
 
@@ -32,9 +32,9 @@ export default function TaxCorporatePage({ type = 'TAX_CORPORATE' }: { type?: st
     setLoadError('')
     try {
       if (!isSupabaseConfigured) {
-        const families = mockStudioDb.getFamilies() as Family[]
-        const obligations = mockStudioDb.getObligations() as Obligation[]
-        const versions = mockStudioDb.getVersions() as Version[]
+        const families = await fetchObligationFamilies() as Family[]
+        const obligations = await fetchStudioObligations() as Obligation[]
+        const versions = await fetchObligationVersions() as Version[]
         setItems(buildPublishedItems(obligations, versions, families))
         return
       }

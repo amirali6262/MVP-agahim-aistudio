@@ -6,7 +6,6 @@ import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
 import { useAuth } from '../../context/AuthContext'
-import { isMockAuthEnabled } from '../../lib/supabase'
 
 export default function AdminLogin() {
   const { signInAdmin, requestPasswordReset, updatePassword } = useAuth()

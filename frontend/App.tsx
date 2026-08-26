@@ -11,6 +11,7 @@ import AdminLayout from './pages/admin/AdminLayout'
 import AdminLogin from './pages/admin/AdminLogin'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import { ComplianceStudioRoute } from './pages/admin/AdminComplianceStudio'
+import TaxProcessCatalogPage from './pages/admin/TaxProcessCatalogPage'
 import AdminCircularCenter from './pages/admin/AdminCircularCenter'
 import TaxCorporatePage from './pages/admin/tax/TaxCorporatePage'
 import CommercialBooksAdminPage from './pages/admin/books/CommercialBooksAdminPage'
@@ -114,6 +115,15 @@ export default function App() {
               element={
                 <AdminPage>
                   <ComplianceStudioRoute />
+                </AdminPage>
+              }
+            />
+
+            <Route
+              path="/admin/processes"
+              element={
+                <AdminPage>
+                  <TaxProcessCatalogPage />
                 </AdminPage>
               }
             />

@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS tax_stage_transitions (
   legal_basis text,
   display_order integer DEFAULT 0,
   is_active boolean DEFAULT true,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(from_stage_code, to_stage_code, trigger_type)
 );
 
 -- 3. RLS policies

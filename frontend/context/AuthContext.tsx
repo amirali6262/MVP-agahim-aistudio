@@ -3,21 +3,10 @@ import type { Session } from '@supabase/supabase-js'
 import {
   supabase,
   isSupabaseConfigured,
-  isMockAuthEnabled,
   isEmailIdentifier,
   normalizeIranPhone,
 } from '../lib/supabase'
 import type { AppUser, UserRole } from '../lib/supabase'
-
-type MockAuthModule = typeof import('../lib/mockAuth')
-
-let mockAuthModulePromise: Promise<MockAuthModule> | null = null
-
-async function loadMockAuth(): Promise<MockAuthModule | null> {
-  if (!isMockAuthEnabled) return null
-  mockAuthModulePromise ??= import('../lib/mockAuth')
-  return mockAuthModulePromise
-}
 
 function translateAuthError(message: string): string {
   if (!message) return 'خطایی در احراز هویت رخ داده است.'
@@ -90,43 +79,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false
 
-    const restoreMockIfAvailable = async () => {
-      const mockAuth = await loadMockAuth()
-      if (cancelled || !mockAuth) return false
-      const stored = mockAuth.restoreMockSession()
-      if (stored) {
-        setSession(stored.session)
-        setProfile(stored.profile)
-        return true
-      }
-      return false
-    }
-
     if (!isSupabaseConfigured) {
-      if (!isMockAuthEnabled) {
-        setSession(null)
-        setProfile(null)
-        setLoading(false)
-        return
-      }
-
-      void restoreMockIfAvailable().finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-      return () => {
-        cancelled = true
-      }
+      setSession(null)
+      setProfile(null)
+      setLoading(false)
+      return
     }
 
     const applyValidatedSession = async (nextSession: Session | null) => {
       if (!nextSession?.user) {
         if (!cancelled) {
-          const restoredMock = await restoreMockIfAvailable()
-          if (!restoredMock && !cancelled) {
-            setSession(null)
-            setProfile(null)
-          }
+          setSession(null)
+          setProfile(null)
         }
         return
       }
@@ -188,44 +152,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (identifier: string, password: string): Promise<{ error: string | null }> => {
     const trimmed = identifier.trim()
-    const isDemoAccount = trimmed.toLowerCase() === 'user@samaneh.ir'
 
-    if (!isSupabaseConfigured || isDemoAccount) {
-      const mockAuth = await loadMockAuth()
-      if (mockAuth) {
-        const res = mockAuth.mockSignIn(trimmed, password)
-        if (!res.error && res.session && res.profile) {
-          if (res.profile.role !== 'BUSINESS_USER') {
-            mockAuth.clearMockSession()
-            return { error: 'برای ورود با حساب مدیریت از صفحه ورود مدیر پلتفرم استفاده کنید.' }
-          }
-          setSession(res.session)
-          setProfile(res.profile)
-          return { error: null }
-        }
-        if (!isSupabaseConfigured) {
-          return { error: res.error ? translateAuthError(res.error) : 'خطا در ورود' }
-        }
-      } else if (!isSupabaseConfigured) {
-        return { error: AUTH_CONFIG_ERROR }
-      }
+    if (!isSupabaseConfigured) {
+      return { error: AUTH_CONFIG_ERROR }
     }
 
     const creds = buildCredentials(trimmed, password)
     const { data, error } = await supabase.auth.signInWithPassword(creds)
     if (error) {
-      // If Supabase failed and mockAuth is enabled, try mock credentials as graceful fallback
-      if (isMockAuthEnabled) {
-        const mockAuth = await loadMockAuth()
-        if (mockAuth) {
-          const res = mockAuth.mockSignIn(trimmed, password)
-          if (!res.error && res.session && res.profile && res.profile.role === 'BUSINESS_USER') {
-            setSession(res.session)
-            setProfile(res.profile)
-            return { error: null }
-          }
-        }
-      }
       return { error: translateAuthError(error.message) }
     }
 
@@ -259,48 +193,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInAdmin = async (identifier: string, password: string): Promise<{ error: string | null }> => {
     const trimmed = identifier.trim()
-    const isDemoAccount = trimmed.toLowerCase() === 'admin@samaneh.ir'
 
-    if (!isSupabaseConfigured || isDemoAccount) {
-      const mockAuth = await loadMockAuth()
-      if (mockAuth) {
-        const res = mockAuth.mockSignIn(trimmed, password)
-        if (!res.error && res.session && res.profile) {
-          const adminRoles: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
-          const userRoles = res.profile.roles ?? [res.profile.role]
-          if (!userRoles.some((r) => adminRoles.includes(r))) {
-            mockAuth.clearMockSession()
-            return { error: 'دسترسی غیرمجاز. فقط مدیران و اعضای تیم مدیریت مجاز به ورود هستند.' }
-          }
-          setSession(res.session)
-          setProfile(res.profile)
-          return { error: null }
-        }
-        if (!isSupabaseConfigured) {
-          return { error: res.error ? translateAuthError(res.error) : 'خطا در ورود' }
-        }
-      } else if (!isSupabaseConfigured) {
-        return { error: AUTH_CONFIG_ERROR }
-      }
+    if (!isSupabaseConfigured) {
+      return { error: AUTH_CONFIG_ERROR }
     }
 
     const creds = buildCredentials(trimmed, password)
     const { data, error } = await supabase.auth.signInWithPassword(creds)
     if (error) {
-      // If Supabase failed and mockAuth is enabled, try mock credentials as fallback
-      if (isMockAuthEnabled) {
-        const mockAuth = await loadMockAuth()
-        if (mockAuth) {
-          const res = mockAuth.mockSignIn(trimmed, password)
-          const adminRoles: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER']
-          const userRoles: UserRole[] = res.profile?.roles ?? (res.profile?.role ? [res.profile.role] : [])
-          if (!res.error && res.session && res.profile && userRoles.some((r) => adminRoles.includes(r))) {
-            setSession(res.session)
-            setProfile(res.profile)
-            return { error: null }
-          }
-        }
-      }
       return { error: translateAuthError(error.message) }
     }
 
@@ -344,16 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (identifier: string, password: string): Promise<{ error: string | null; requiresEmailConfirmation?: boolean }> => {
     const trimmed = identifier.trim()
     if (!isSupabaseConfigured) {
-      const mockAuth = await loadMockAuth()
-      if (!mockAuth) return { error: AUTH_CONFIG_ERROR }
-
-      const res = mockAuth.mockSignUp(trimmed, password)
-      if (res.error || !res.session || !res.profile) {
-        return { error: res.error ? translateAuthError(res.error) : 'خطا در ثبت‌نام' }
-      }
-      setSession(res.session)
-      setProfile(res.profile)
-      return { error: null }
+      return { error: AUTH_CONFIG_ERROR }
     }
 
     const creds = buildCredentials(trimmed, password)
@@ -385,8 +276,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    const mockAuth = await loadMockAuth()
-    if (mockAuth) mockAuth.clearMockSession()
     if (isSupabaseConfigured) {
       try {
         await supabase.auth.signOut()

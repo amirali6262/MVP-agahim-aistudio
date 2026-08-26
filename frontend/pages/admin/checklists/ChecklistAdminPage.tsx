@@ -18,8 +18,9 @@ import { Button } from '../../../lib/shadcn/button'
 import { Input } from '../../../lib/shadcn/input'
 import { Label } from '../../../lib/shadcn/label'
 import { Badge } from '../../../lib/shadcn/badge'
-import { mockChecklistsDb } from '../../../lib/mockDb'
-import type { ChecklistTemplate, ChecklistSection, ChecklistItem, ChecklistImportance } from '../../../lib/supabase'
+import { fetchChecklistTemplates, createChecklistTemplate, updateChecklistTemplate, deleteChecklistTemplate } from '../../../lib/supabaseDb'
+import type { ChecklistSection, ChecklistItem, ChecklistImportance } from '../../../lib/supabase'
+import type { ChecklistTemplate } from '../../../lib/supabaseDb'
 
 export default function ChecklistAdminPage() {
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([])
@@ -34,8 +35,8 @@ export default function ChecklistAdminPage() {
   const [fiscalYear, setFiscalYear] = useState('1403')
   const [sections, setSections] = useState<ChecklistSection[]>([])
 
-  const loadTemplates = () => {
-    const list = mockChecklistsDb.getAllTemplates()
+  const loadTemplates = async () => {
+    const list = await fetchChecklistTemplates()
     setTemplates(list)
     if (list.length > 0 && !selectedTemplate) {
       setSelectedTemplate(list[0])
@@ -79,9 +80,9 @@ export default function ChecklistAdminPage() {
     setModalOpen(true)
   }
 
-  const handleDeleteTemplate = (id: string, itemTitle: string) => {
+  const handleDeleteTemplate = async (id: string, itemTitle: string) => {
     if (confirm(`آیا از حذف چک‌لیست "${itemTitle}" اطمینان دارید؟`)) {
-      mockChecklistsDb.deleteTemplate(id)
+      await deleteChecklistTemplate(id)
       toast.success('چک‌لیست با موفقیت حذف شد.')
       loadTemplates()
       if (selectedTemplate?.id === id) {
@@ -143,7 +144,7 @@ export default function ChecklistAdminPage() {
     setSections(updated)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) { toast.error('عنوان چک‌لیست الزامی است.'); return }
 
@@ -157,10 +158,10 @@ export default function ChecklistAdminPage() {
     }
 
     if (editingTemplate) {
-      mockChecklistsDb.updateTemplate(editingTemplate.id, payload)
+      await updateChecklistTemplate(editingTemplate.id, payload)
       toast.success('چک‌لیست با موفقیت بروزرسانی شد.')
     } else {
-      mockChecklistsDb.createTemplate(payload)
+      await createChecklistTemplate(payload)
       toast.success('چک‌لیست جدید با موفقیت طراحی و ذخیره گردید.')
     }
 
@@ -305,7 +306,7 @@ export default function ChecklistAdminPage() {
                     </h3>
 
                     <div className="flex flex-col gap-2">
-                      {sec.items.map((item) => (
+                      {sec.items.map((item: ChecklistItem) => (
                         <div
                           key={item.id}
                           className="flex items-start justify-between gap-3 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800/60 hover:border-zinc-700 transition-all text-xs"

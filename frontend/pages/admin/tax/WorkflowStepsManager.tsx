@@ -5,7 +5,7 @@ import { Button } from '../../../lib/shadcn/button'
 import { Input } from '../../../lib/shadcn/input'
 import { Label } from '../../../lib/shadcn/label'
 import { isSupabaseConfigured } from '../../../lib/supabase'
-import { mockObligationsDb } from '../../../lib/mockDb'
+import { updateObligation } from '../../../lib/supabaseDb'
 import type { Obligation, WorkflowStep, WorkflowStepField } from '../../../lib/supabase'
 import { cn } from '../../../lib/shadcn/utils'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
@@ -279,7 +279,7 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
 
     if (!isSupabaseConfigured) {
       // Mock path
-      const result = mockObligationsDb.update(obligation.id, { workflow_steps: clean })
+      const result = await updateObligation(obligation.id, { workflow_steps: clean })
       if (!result) {
         toast.error('خطا: تکلیف یافت نشد.')
         setSubmitting(false)

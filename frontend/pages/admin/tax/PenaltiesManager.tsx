@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../../lib/shadcn/select'
-import { mockObligationsDb } from '../../../lib/mockDb'
+import { updateObligation } from '../../../lib/supabaseDb'
 import type { Obligation, PenaltyItem } from '../../../lib/supabase'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import type { DependencyCheckResult } from '../../../lib/dependencyChecker'
@@ -84,9 +84,9 @@ export default function PenaltiesManager({ obligation, onBack, onSaved }: Props)
     )
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true)
-    const updated = mockObligationsDb.update(obligation.id, { penalties })
+    const updated = await updateObligation(obligation.id, { penalties })
     if (updated) {
       toast.success('جرایم با موفقیت ذخیره شدند.')
       onSaved()
