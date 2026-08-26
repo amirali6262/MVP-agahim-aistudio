@@ -57,6 +57,7 @@ const CORE_MENU: MenuSection[] = [
     icon: Workflow,
     children: [
       { id: 'compliance-studio', label: 'استودیوی تعهدات و مراحل', path: '/admin/studio', active: true },
+      { id: 'tax-processes', label: 'فرایندهای دادرسی مالیاتی', path: '/admin/processes', active: true },
       { id: 'circular-center', label: 'مرکز مهلت و بخشنامه', path: '/admin/circulars', active: true },
     ],
   },
