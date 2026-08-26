@@ -63,7 +63,7 @@ jobs:
         run: supabase migration list --linked
 
       - name: Preview pending migrations
-        run: supabase db push --dry-run --linked
+        run: supabase db push --dry-run --include-all --linked
 
       - name: Require explicit apply confirmation
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'apply'
@@ -78,7 +78,7 @@ jobs:
 
       - name: Apply pending migrations
         if: github.event_name == 'push' || inputs.mode == 'apply'
-        run: supabase db push --linked
+        run: supabase db push --include-all --linked
 
       - name: Verify migration parity
         if: github.event_name == 'push' || inputs.mode == 'apply'
