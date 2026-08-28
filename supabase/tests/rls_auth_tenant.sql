@@ -214,9 +214,13 @@ select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-0000000
 
 do $$
 begin
-  if (select count(*) from public.users) <> 1
-     or (select role from public.users) <> 'PLATFORM_ADMIN' then
-    raise exception 'platform admin own-profile policy failed';
+  if (select count(*) from public.users) <> 6
+     or not exists (
+       select 1 from public.users
+       where id = '10000000-0000-0000-0000-000000000005'
+         and role = 'PLATFORM_ADMIN'
+     ) then
+    raise exception 'platform admin user-directory policy failed';
   end if;
   if (select count(*) from public.tenants) <> 0 then
     raise exception 'platform admin bypassed tenant membership RLS';
