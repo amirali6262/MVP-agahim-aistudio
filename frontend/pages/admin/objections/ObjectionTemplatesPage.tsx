@@ -371,13 +371,22 @@ export default function ObjectionTemplatesPage() {
       console.warn('[ObjectionTemplatesPage] custom templates:', error)
       toast.error('بارگذاری الگوهای سفارشی انجام نشد؛ مراحل قانونی موجود نمایش داده می‌شوند.')
     }
-    const obligations = await fetchObligations()
+    let obligations: Obligation[] = []
+    try {
+      obligations = await fetchObligations()
+    } catch (error) {
+      console.warn('[ObjectionTemplatesPage] obligations:', error)
+    }
     setAllObligations(obligations)
 
     if (!isSupabaseConfigured) {
       setTemplates(objectionTemplates)
       return
-    }      // When Supabase is configured, also fetch from the independent objection stages table
+    }
+
+    // When Supabase is configured, also fetch from the independent objection stages table.
+    // This query is optional: if the table does not exist or returns no rows,
+    // the custom objection templates are still shown.
     try {
       const { data: stages, error: stagesError } = await (supabase as any)
         .from('tax_objection_stages')
@@ -385,9 +394,11 @@ export default function ObjectionTemplatesPage() {
         .eq('is_active', true)
         .order('display_order', { ascending: true })
 
-      if (stagesError) throw new Error(stagesError.message)
+      if (stagesError) {
+        console.warn('[ObjectionTemplatesPage] tax_objection_stages query error:', stagesError.message)
+      }
 
-      if (stages && stages.length > 0) {
+      if (!stagesError && stages && stages.length > 0) {
         const mappedSteps: ObjectionStep[] = stages.map((s: any) => {
           const formFields: WorkflowStepField[] =
             s.form_schema?.fields?.map((f: any) => ({
