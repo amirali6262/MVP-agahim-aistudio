@@ -7,6 +7,9 @@ import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
 import { useAuth } from '../../context/AuthContext'
 
+const isMockAuthEnabled =
+  import.meta.env.DEV && import.meta.env['VITE_ENABLE_MOCK_AUTH'] === 'true'
+
 export default function AdminLogin() {
   const { signInAdmin, requestPasswordReset, updatePassword } = useAuth()
   const navigate = useNavigate()
