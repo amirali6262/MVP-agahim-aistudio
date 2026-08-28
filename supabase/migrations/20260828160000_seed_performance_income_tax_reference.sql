@@ -17,16 +17,17 @@ insert into public.obligation_versions
   (id, obligation_id, version_number, status, legal_reference, audience_summary,
    effective_from, published_at, created_by)
 values ('c0000001-0000-0000-0000-000000000003', (select id from public.obligations where code='PERFORMANCE_INCOME_TAX'), 1,
-  'PUBLISHED', 'قانون مالیات‌های مستقیم', 'مودیان مشمول مالیات بر عملکرد', '2021-12-12', now(), null)
-on conflict (obligation_id, version_number) do update set
-  status='PUBLISHED', effective_from=excluded.effective_from,
-  published_at=coalesce(public.obligation_versions.published_at, excluded.published_at), updated_at=now();
+  'DRAFT', 'قانون مالیات‌های مستقیم', 'مودیان مشمول مالیات بر عملکرد', '2021-12-12', null, null)
+on conflict (obligation_id, version_number) do nothing;
 
 insert into public.workflow_templates (id, obligation_version_id, title, created_by)
-values ('d0000001-0000-0000-0000-000000000001',
-  (select v.id from public.obligation_versions v join public.obligations o on o.id=v.obligation_id
-   where o.code='PERFORMANCE_INCOME_TAX' and v.version_number=1),
-  'فرایند مرجع مالیات بر عملکرد', null)
+select 'd0000001-0000-0000-0000-000000000001', v.id,
+  'فرایند مرجع مالیات بر عملکرد', null
+from public.obligation_versions v
+join public.obligations o on o.id=v.obligation_id
+where o.code='PERFORMANCE_INCOME_TAX'
+  and v.version_number=1
+  and v.status='DRAFT'
 on conflict (obligation_version_id) do update set title=excluded.title, updated_at=now();
 
 with required_steps(code, seq, title, actor_role, actor) as (values
@@ -60,6 +61,13 @@ select ('e0000001-0000-0000-0000-' || lpad(seq::text,12,'0'))::uuid,
   'd0000001-0000-0000-0000-000000000001', seq, code, title, actor, '{}'::jsonb,
   '{"fields":[]}'::jsonb, actor_role, '{}'::text[], '{}'::text[], title
 from required_steps
+where exists (
+  select 1 from public.obligation_versions v
+  join public.obligations o on o.id=v.obligation_id
+  where o.code='PERFORMANCE_INCOME_TAX'
+    and v.version_number=1
+    and v.status='DRAFT'
+)
 on conflict (workflow_template_id, code) do update set
   sequence=excluded.sequence, title=excluded.title, actor=excluded.actor,
   actor_role_code=excluded.actor_role_code, input_document_types=excluded.input_document_types,
@@ -91,9 +99,38 @@ select 'd0000001-0000-0000-0000-000000000001',
   ('e0000001-0000-0000-0000-' || lpad(to_seq::text,12,'0'))::uuid,
   code, outcome, 'USER_ACTION', outcome, 100, outcome, true
 from edges
+where exists (
+  select 1 from public.obligation_versions v
+  join public.obligations o on o.id=v.obligation_id
+  where o.code='PERFORMANCE_INCOME_TAX'
+    and v.version_number=1
+    and v.status='DRAFT'
+)
 on conflict (workflow_template_id, code) do update set
   from_step_id=excluded.from_step_id, to_step_id=excluded.to_step_id,
   outcome_code=excluded.outcome_code, condition_expression=excluded.condition_expression,
   is_active=true;
+
+-- Publish only after the complete workflow definition has been created. A
+-- previously published version is intentionally left untouched and therefore
+-- remains immutable and idempotent.
+update public.obligation_versions v
+set status='PUBLISHED',
+    published_at=coalesce(v.published_at, now()),
+    updated_at=now()
+from public.obligations o
+where v.obligation_id=o.id
+  and o.code='PERFORMANCE_INCOME_TAX'
+  and v.version_number=1
+  and v.status='DRAFT'
+  and exists (
+    select 1 from public.workflow_templates wt
+    where wt.obligation_version_id=v.id
+  )
+  and exists (
+    select 1 from public.workflow_steps ws
+    join public.workflow_templates wt on wt.id=ws.workflow_template_id
+    where wt.obligation_version_id=v.id
+  );
 
 commit;
