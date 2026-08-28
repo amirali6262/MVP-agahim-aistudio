@@ -214,14 +214,34 @@ select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-0000000
 
 do $$
 begin
-  if (select count(*) from public.users) <> 6
-     or not exists (
-       select 1 from public.users
-       where id = '10000000-0000-0000-0000-000000000005'
-         and role = 'PLATFORM_ADMIN'
-     ) then
-    raise exception 'platform admin user-directory policy failed';
+  if (select count(*) from public.users) <> 1
+     or (select role from public.users) <> 'PLATFORM_ADMIN' then
+    raise exception 'platform admin own-profile policy failed';
   end if;
+  if (select count(*) from public.list_platform_users()) <> 6 then
+    raise exception 'platform admin cannot read the user directory RPC';
+  end if;
+  perform public.update_platform_user_roles(
+    '10000000-0000-0000-0000-000000000006',
+    '["REVIEWER","BUSINESS_USER"]'::jsonb
+  );
+  if not exists (
+    select 1 from public.list_platform_users()
+    where id = '10000000-0000-0000-0000-000000000006'
+      and role = 'REVIEWER'
+      and roles = '["REVIEWER","BUSINESS_USER"]'::jsonb
+  ) then
+    raise exception 'platform admin role update RPC failed';
+  end if;
+  begin
+    perform public.update_platform_user_roles(
+      '10000000-0000-0000-0000-000000000005',
+      '["BUSINESS_USER"]'::jsonb
+    );
+    raise exception 'platform admin changed their own roles';
+  exception when insufficient_privilege then
+    null;
+  end;
   if (select count(*) from public.tenants) <> 0 then
     raise exception 'platform admin bypassed tenant membership RLS';
   end if;

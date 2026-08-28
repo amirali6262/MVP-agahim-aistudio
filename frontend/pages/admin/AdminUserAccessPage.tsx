@@ -319,10 +319,10 @@ export default function AdminUserAccessPage() {
       toast.error('اتصال به پایگاه‌داده برقرار نیست. فهرست کاربران واقعی بارگذاری نشد.')
       return
     }
-    const { data, error } = await supabase.from('users').select('id,email,phone,role,roles,created_at').order('created_at', { ascending: false })
+    const { data, error } = await (supabase as any).rpc('list_platform_users')
     if (error) toast.error('بارگذاری کاربران انجام نشد.')
     // Keep compatibility with profiles created before the multi-role migration.
-    const transformedData = (data ?? []).map((item) => ({
+    const transformedData = (data ?? []).map((item: Omit<UserRow, 'roles'> & { roles: unknown }) => ({
       ...item,
       roles: Array.isArray(item.roles) && item.roles.length > 0
         ? item.roles as UserRole[]
@@ -370,10 +370,10 @@ export default function AdminUserAccessPage() {
       setSavingId(null)
       return
     }
-    const { error } = await supabase
-      .from('users')
-      .update({ role: primaryRole, roles: newRoles })
-      .eq('id', user.id)
+    const { error } = await (supabase as any).rpc('update_platform_user_roles', {
+      requested_user_id: user.id,
+      requested_roles: newRoles,
+    })
     if (error) {
       toast.error('تغییر نقش ذخیره نشد. سیاست‌های امنیتی پایگاه‌داده اعمال شده است.')
       setSavingId(null)
