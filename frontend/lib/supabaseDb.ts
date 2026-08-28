@@ -108,92 +108,38 @@ async function safeQuery<T>(queryFn: () => any): Promise<T[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Objection Templates (from tax_objection_stages)
+// User-defined objection templates
 // ---------------------------------------------------------------------------
 
 export async function fetchObjectionTemplates(): Promise<ObjectionTemplate[]> {
-  const stages = await safeQuery(() =>
-    (supabase as any)
-      .from('tax_objection_stages')
-      .select('*')
-      .eq('is_active', true)
-      .order('display_order', { ascending: true })
-  )
+  if (!isSupabaseConfigured) return []
+  const { data, error } = await (supabase as any)
+    .from('objection_templates')
+    .select('*, objection_steps(*)')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
 
-  if (stages.length === 0) return []
-
-  const mappedSteps: ObjectionStep[] = stages.map((s: any) => {
-    const formFields: WorkflowStepField[] =
-      s.form_schema?.fields?.map((f: any) => ({
-        id: f.key || s.id + '-field',
-        label: f.label || f.key,
-        key: f.key,
-        type: f.type || 'text',
-        required: f.required ?? false,
-        placeholder: f.placeholder,
-        options: f.options,
-      })) ?? []
-
-    const actorRole = (s.actor_role_code || '') as string
-    let actor: 'TAXPAYER' | 'TAX_AUTHORITY' | 'COURT_DIVAN' = 'TAX_AUTHORITY'
-    if (actorRole.includes('taxpayer') || actorRole === 'TAXPAYER') actor = 'TAXPAYER'
-    else if (actorRole.includes('divan') || actorRole === 'COURT_DIVAN') actor = 'COURT_DIVAN'
-
-    let stepNature: ObjectionStep['step_nature'] = 'MANDATORY'
-    const stepType = (s.step_type || '') as string
-    if (stepType === 'CONDITIONAL_EXPERT') stepNature = 'CONDITIONAL_EXPERT'
-    else if (stepType === 'EXPIRED_END') stepNature = 'EXPIRED_END'
-    else if (stepType === 'NEXT_STAGE') stepNature = 'NEXT_STAGE'
-
-    return {
-      id: s.id,
-      title: s.title_fa || s.code,
-      base_event: s.base_event || 'تاریخ ابلاغ برگ/اختیاریه',
-      gap_value: s.gap_value ?? 30,
-      gap_unit: s.gap_unit || 'روز',
-      step_nature: stepNature,
-      actor,
-      note: s.user_guidance_fa || s.description_fa || '',
-      fields: formFields,
-    }
-  })
-
-  // Group by phase
-  const phaseMap = new Map<string, ObjectionStep[]>()
-  for (const step of mappedSteps) {
-    const stage = (stages as any[]).find((s: any) => s.id === step.id)
-    const phase = (stage as any)?.phase_code || 'PHASE_1'
-    if (!phaseMap.has(phase)) phaseMap.set(phase, [])
-    phaseMap.get(phase)!.push(step)
-  }
-
-  const phaseNames: Record<string, string> = {
-    PHASE_1: 'فاز ۱: تهیه گزارش و صدور برگ تشخیص',
-    PHASE_2: 'فاز ۲: قبول و پرداخت',
-    PHASE_3: 'فاز ۳: اعتراض ماده ۲۳۸',
-    PHASE_4: 'فاز ۴: پایان مهلت و ارجاع',
-    PHASE_5: 'فاز ۵: قطعیت و پرداخت',
-  }
-
-  const combinedTemplate: ObjectionTemplate = {
-    id: 'db-combined-pit',
-    template_name: 'مالیات بر عملکرد ـ از تهیه گزارش رسیدگی تا قطعیت مالیات یا ارجاع به هیأت حل اختلاف مالیاتی بدوی',
+  return (data ?? []).map((template: any) => ({
+    id: template.id,
+    template_name: template.title,
+    description: template.description,
     is_base_template: true,
-    steps: mappedSteps,
-    created_at: new Date().toISOString(),
-  }
-
-  const phaseTemplates: ObjectionTemplate[] = Array.from(phaseMap.entries()).map(
-    ([phase, steps]) => ({
-      id: `db-phase-${phase}`,
-      template_name: phaseNames[phase] || phase,
-      is_base_template: true,
-      steps,
-      created_at: new Date().toISOString(),
-    })
-  )
-
-  return [combinedTemplate, ...phaseTemplates]
+    created_at: template.created_at,
+    steps: (template.objection_steps ?? [])
+      .sort((a: any, b: any) => a.sequence - b.sequence)
+      .map((step: any) => ({
+        id: step.id,
+        title: step.title,
+        actor: step.actor,
+        gap_value: step.gap_value,
+        gap_unit: step.gap_unit,
+        base_event: step.base_event,
+        step_nature: step.step_nature,
+        legal_basis: step.legal_basis,
+        fields: step.form_schema?.fields ?? [],
+      })),
+  })) as ObjectionTemplate[]
 }
 
 // ---------------------------------------------------------------------------
@@ -522,34 +468,73 @@ export async function fetchUserTenants(userId: string): Promise<any[]> {
 // ---------------------------------------------------------------------------
 
 export async function fetchObjectionTemplateById(id: string): Promise<ObjectionTemplate | null> {
-  if (!isSupabaseConfigured) return null
-  const { data, error } = await (supabase as any).from('tax_objection_stages').select('*').eq('id', id).single()
-  if (error || !data) return null
-  return { id: data.id, template_name: data.title_fa, is_base_template: true, steps: [], created_at: data.created_at } as ObjectionTemplate
+  const templates = await fetchObjectionTemplates()
+  return templates.find((template) => template.id === id) ?? null
 }
 
-export async function createObjectionTemplate(payload: { title_fa: string; phase_code?: string; is_active?: boolean }): Promise<any | null> {
-  if (!isSupabaseConfigured) return null
-  const { data, error } = await (supabase as any).from('tax_objection_stages').insert({
-    code: 'CUSTOM_' + Date.now(),
-    title_fa: payload.title_fa,
-    phase_code: payload.phase_code || 'PHASE_1',
-    is_active: payload.is_active ?? true,
+type ObjectionTemplateWrite = {
+  template_name: string
+  description?: string
+  steps: ObjectionStep[]
+}
+
+function serializeObjectionSteps(templateId: string, steps: ObjectionStep[]) {
+  return steps.map((step, index) => ({
+    template_id: templateId,
+    sequence: index + 1,
+    code: `STEP_${index + 1}`,
+    title: step.title,
+    actor: step.actor ?? 'TAXPAYER',
+    gap_value: step.gap_value ?? 0,
+    gap_unit: step.gap_unit ?? 'روز',
+    base_event: step.base_event ?? null,
+    step_nature: step.step_nature ?? 'MANDATORY',
+    legal_basis: step.legal_basis ?? null,
+    form_schema: { fields: step.fields ?? [] },
+    is_optional: step.step_nature === 'CONDITIONAL_EXPERT',
+  }))
+}
+
+export async function createObjectionTemplate(payload: ObjectionTemplateWrite): Promise<any> {
+  if (!isSupabaseConfigured) throw new Error('اتصال به پایگاه‌داده برقرار نیست.')
+  const { data, error } = await (supabase as any).from('objection_templates').insert({
+    title: payload.template_name,
+    description: payload.description ?? null,
+    is_active: true,
   }).select().single()
-  if (error) { console.warn('[supabaseDb] createObjectionTemplate:', error.message); return null }
+  if (error || !data) throw new Error(error?.message ?? 'ایجاد الگو انجام نشد.')
+
+  const { error: stepsError } = await (supabase as any)
+    .from('objection_steps')
+    .insert(serializeObjectionSteps(data.id, payload.steps))
+  if (stepsError) {
+    await (supabase as any).from('objection_templates').delete().eq('id', data.id)
+    throw new Error(stepsError.message)
+  }
   return data
 }
 
-export async function updateObjectionTemplate(id: string, payload: Partial<any>): Promise<any | null> {
-  if (!isSupabaseConfigured) return null
-  const { data, error } = await (supabase as any).from('tax_objection_stages').update(payload).eq('id', id).select().single()
-  if (error) { console.warn('[supabaseDb] updateObjectionTemplate:', error.message); return null }
+export async function updateObjectionTemplate(id: string, payload: ObjectionTemplateWrite): Promise<any> {
+  if (!isSupabaseConfigured) throw new Error('اتصال به پایگاه‌داده برقرار نیست.')
+  const { data, error } = await (supabase as any).from('objection_templates').update({
+    title: payload.template_name,
+    description: payload.description ?? null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', id).select().single()
+  if (error || !data) throw new Error(error?.message ?? 'ویرایش الگو انجام نشد.')
+
+  const { error: deleteError } = await (supabase as any).from('objection_steps').delete().eq('template_id', id)
+  if (deleteError) throw new Error(deleteError.message)
+  const { error: stepsError } = await (supabase as any)
+    .from('objection_steps')
+    .insert(serializeObjectionSteps(id, payload.steps))
+  if (stepsError) throw new Error(stepsError.message)
   return data
 }
 
 export async function deleteObjectionTemplate(id: string): Promise<boolean> {
   if (!isSupabaseConfigured) return false
-  const { error } = await (supabase as any).from('tax_objection_stages').delete().eq('id', id)
+  const { error } = await (supabase as any).from('objection_templates').delete().eq('id', id)
   return !error
 }
 
