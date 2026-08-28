@@ -362,8 +362,15 @@ export default function ObjectionTemplatesPage() {
   }
 
   const loadData = async () => {
-    // Load real objection templates and obligations from Supabase (fail-closed when not configured)
-    const objectionTemplates = await fetchObjectionTemplates()
+    // Load both user-defined templates and the existing legal-stage catalog.
+    // Failure of one source must not prevent the other source from being shown.
+    let objectionTemplates: ObjectionTemplate[] = []
+    try {
+      objectionTemplates = await fetchObjectionTemplates()
+    } catch (error) {
+      console.warn('[ObjectionTemplatesPage] custom templates:', error)
+      toast.error('بارگذاری الگوهای سفارشی انجام نشد؛ مراحل قانونی موجود نمایش داده می‌شوند.')
+    }
     const obligations = await fetchObligations()
     setAllObligations(obligations)
 
@@ -372,11 +379,13 @@ export default function ObjectionTemplatesPage() {
       return
     }      // When Supabase is configured, also fetch from the independent objection stages table
     try {
-      const { data: stages } = await (supabase as any)
+      const { data: stages, error: stagesError } = await (supabase as any)
         .from('tax_objection_stages')
         .select('*')
         .eq('is_active', true)
         .order('display_order', { ascending: true })
+
+      if (stagesError) throw new Error(stagesError.message)
 
       if (stages && stages.length > 0) {
         const mappedSteps: ObjectionStep[] = stages.map((s: any) => {
@@ -464,7 +473,11 @@ export default function ObjectionTemplatesPage() {
       } else {
         setTemplates(objectionTemplates)
       }
-    } catch {
+    } catch (error) {
+      console.warn('[ObjectionTemplatesPage] legal stages:', error)
+      if (objectionTemplates.length === 0) {
+        toast.error('بارگذاری مراحل رسیدگی و اعتراضات از پایگاه‌داده انجام نشد.')
+      }
       setTemplates(objectionTemplates)
     }
   }

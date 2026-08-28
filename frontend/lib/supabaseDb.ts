@@ -113,21 +113,33 @@ async function safeQuery<T>(queryFn: () => any): Promise<T[]> {
 
 export async function fetchObjectionTemplates(): Promise<ObjectionTemplate[]> {
   if (!isSupabaseConfigured) return []
-  const { data, error } = await (supabase as any)
+  const { data: templates, error } = await (supabase as any)
     .from('objection_templates')
-    .select('*, objection_steps(*)')
+    .select('*')
     .eq('is_active', true)
     .order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
 
-  return (data ?? []).map((template: any) => ({
+  const templateIds = (templates ?? []).map((template: any) => template.id)
+  let steps: any[] = []
+  if (templateIds.length > 0) {
+    const { data: stepRows, error: stepsError } = await (supabase as any)
+      .from('objection_steps')
+      .select('*')
+      .in('template_id', templateIds)
+      .order('sequence', { ascending: true })
+    if (stepsError) throw new Error(stepsError.message)
+    steps = stepRows ?? []
+  }
+
+  return (templates ?? []).map((template: any) => ({
     id: template.id,
     template_name: template.title,
     description: template.description,
     is_base_template: true,
     created_at: template.created_at,
-    steps: (template.objection_steps ?? [])
-      .sort((a: any, b: any) => a.sequence - b.sequence)
+    steps: steps
+      .filter((step: any) => step.template_id === template.id)
       .map((step: any) => ({
         id: step.id,
         title: step.title,
