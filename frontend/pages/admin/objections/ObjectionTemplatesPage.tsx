@@ -194,6 +194,7 @@ export default function ObjectionTemplatesPage() {
   const [selectedTimelineTemplate, setSelectedTimelineTemplate] = useState<ObjectionTemplate | null>(null)
   const [selectedDiagramTemplate, setSelectedDiagramTemplate] = useState<ObjectionTemplate | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   // Form State
   const [templateName, setTemplateName] = useState('')
@@ -361,8 +362,15 @@ export default function ObjectionTemplatesPage() {
   }
 
   const loadData = async () => {
-    // Load real objection templates and obligations from Supabase (fail-closed when not configured)
-    const objectionTemplates = await fetchObjectionTemplates()
+    // Load both user-defined templates and the existing legal-stage catalog.
+    // Failure of one source must not prevent the other source from being shown.
+    let objectionTemplates: ObjectionTemplate[] = []
+    try {
+      objectionTemplates = await fetchObjectionTemplates()
+    } catch (error) {
+      console.warn('[ObjectionTemplatesPage] custom templates:', error)
+      toast.error('بارگذاری الگوهای سفارشی انجام نشد؛ مراحل قانونی موجود نمایش داده می‌شوند.')
+    }
     const obligations = await fetchObligations()
     setAllObligations(obligations)
 
@@ -371,11 +379,13 @@ export default function ObjectionTemplatesPage() {
       return
     }      // When Supabase is configured, also fetch from the independent objection stages table
     try {
-      const { data: stages } = await (supabase as any)
+      const { data: stages, error: stagesError } = await (supabase as any)
         .from('tax_objection_stages')
         .select('*')
         .eq('is_active', true)
         .order('display_order', { ascending: true })
+
+      if (stagesError) throw new Error(stagesError.message)
 
       if (stages && stages.length > 0) {
         const mappedSteps: ObjectionStep[] = stages.map((s: any) => {
@@ -463,7 +473,11 @@ export default function ObjectionTemplatesPage() {
       } else {
         setTemplates(objectionTemplates)
       }
-    } catch {
+    } catch (error) {
+      console.warn('[ObjectionTemplatesPage] legal stages:', error)
+      if (objectionTemplates.length === 0) {
+        toast.error('بارگذاری مراحل رسیدگی و اعتراضات از پایگاه‌داده انجام نشد.')
+      }
       setTemplates(objectionTemplates)
     }
   }
@@ -617,6 +631,7 @@ export default function ObjectionTemplatesPage() {
   }
 
   const handleSaveTemplate = async () => {
+    if (isSaving) return
     if (!templateName.trim()) {
       toast.error('لطفاً نام الگو را وارد نمایید.')
       return
@@ -632,28 +647,27 @@ export default function ObjectionTemplatesPage() {
       }
     }
 
-    let templateId = editingTemplate?.id
+    setIsSaving(true)
+    try {
+      const payload = {
+        template_name: templateName.trim(),
+        steps,
+      }
+      if (editingTemplate) {
+        await updateObjectionTemplate(editingTemplate.id, payload)
+      } else {
+        await createObjectionTemplate(payload)
+      }
 
-    if (editingTemplate) {
-      await updateObjectionTemplate(editingTemplate.id, {
-        title_fa: templateName.trim(),
-        is_active: true, // is_base_template not in API
-      })
-    } else {
-      const created = await createObjectionTemplate({
-        title_fa: templateName.trim(),
-        is_active: true, // is_base_template not in API
-      })
-      templateId = created.id
+      toast.success('الگوی اعتراض و مراحل آن با موفقیت ذخیره شدند.')
+      await loadData()
+      handleCloseForm()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'خطای ناشناخته'
+      toast.error(`ذخیره الگوی اعتراض انجام نشد: ${message}`)
+    } finally {
+      setIsSaving(false)
     }
-
-    if (templateId) {
-      // Template assignment tracking - simplified for Supabase migration
-    }
-
-    toast.success('الگوی اعتراض و تکالیف مرتبط با موفقیت ذخیره شدند.')
-    loadData()
-    handleCloseForm()
   }
 
   // Delete Guard State
@@ -883,10 +897,11 @@ export default function ObjectionTemplatesPage() {
               <Button
                 type="button"
                 onClick={handleSaveTemplate}
+                disabled={isSaving}
                 className="bg-[#E5A93C] hover:bg-[#d49a2d] text-[#181614] font-bold gap-2 h-9 px-6"
               >
                 <Save className="w-4 h-4" />
-                ذخیره الگو
+                {isSaving ? 'در حال ذخیره...' : 'ذخیره الگو'}
               </Button>
             </div>
           </div>
