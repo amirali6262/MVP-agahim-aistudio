@@ -13,12 +13,24 @@ values ('c0000001-0000-0000-0000-000000000002', (select id from public.obligatio
   'سازمان امور مالیاتی کشور', true, null)
 on conflict (code) do update set is_active=true, updated_at=now();
 
+-- The earlier PIT migrations may already have published version 1. Never
+-- mutate that immutable version. Only create the reference workflow when the
+-- version does not exist yet; otherwise this migration is a no-op for the
+-- normalized workflow and leaves the existing definition untouched.
+-- The source trigger blocks child writes for REVIEW/TESTING/PUBLISHED, so the
+-- DRAFT-only predicates below are intentional and must remain on every child
+-- write in this migration.
 insert into public.obligation_versions
   (id, obligation_id, version_number, status, legal_reference, audience_summary,
    effective_from, published_at, created_by)
-values ('c0000001-0000-0000-0000-000000000003', (select id from public.obligations where code='PERFORMANCE_INCOME_TAX'), 1,
-  'DRAFT', 'قانون مالیات‌های مستقیم', 'مودیان مشمول مالیات بر عملکرد', '2021-12-12', null, null)
-on conflict (obligation_id, version_number) do nothing;
+select 'c0000001-0000-0000-0000-000000000003', o.id, 1,
+  'DRAFT', 'قانون مالیات‌های مستقیم', 'مودیان مشمول مالیات بر عملکرد', '2021-12-12', null, null
+from public.obligations o
+where o.code='PERFORMANCE_INCOME_TAX'
+  and not exists (
+    select 1 from public.obligation_versions existing
+    where existing.obligation_id=o.id and existing.version_number=1
+  );
 
 insert into public.workflow_templates (id, obligation_version_id, title, created_by)
 select 'd0000001-0000-0000-0000-000000000001', v.id,
@@ -28,31 +40,34 @@ join public.obligations o on o.id=v.obligation_id
 where o.code='PERFORMANCE_INCOME_TAX'
   and v.version_number=1
   and v.status='DRAFT'
-on conflict (obligation_version_id) do update set title=excluded.title, updated_at=now();
+  and not exists (
+    select 1 from public.workflow_templates existing
+    where existing.obligation_version_id=v.id
+  );
 
 with required_steps(code, seq, title, actor_role, actor) as (values
-  ('PIT-001',1,'تهیه گزارش رسیدگی','tax_audit_unit','AUTHORITY'),
-  ('PIT-002',2,'صدور برگ تشخیص','tax_assessment_issuer','AUTHORITY'),
-  ('PIT-003',3,'ابلاغ برگ تشخیص','tax_notification_unit','AUTHORITY'),
-  ('PIT-004',4,'دریافت جزئیات گزارش مبنای تشخیص','taxpayer','USER'),
-  ('PIT-005',5,'مهلت تصمیم مؤدی','taxpayer','USER'),
-  ('PIT-010',10,'اعلام قبول کتبی','taxpayer','USER'),
-  ('PIT-011',11,'پرداخت یا ترتیب پرداخت','taxpayer','USER'),
-  ('PIT-012',12,'قطعیت ناشی از قبول یا رفع اختلاف','tax_finalization_collection_unit','AUTHORITY'),
-  ('PIT-020',20,'ثبت اعتراض ماده ۲۳۸','taxpayer','USER'),
-  ('PIT-021',21,'ارجاع داخلی اعتراض','tax_objection_unit','AUTHORITY'),
-  ('PIT-022',22,'رسیدگی مجدد ماده ۲۳۸','article_238_responsible_officer','AUTHORITY'),
-  ('PIT-023',23,'صدور قرار بررسی مجدد','article_238_responsible_officer','AUTHORITY'),
-  ('PIT-024',24,'اجرای قرار کارشناسی','tax_reexamination_expert','AUTHORITY'),
-  ('PIT-025',25,'رسیدگی نهایی ماده ۲۳۸','article_238_responsible_officer','AUTHORITY'),
-  ('PIT-026',26,'اعلام نتیجه رسیدگی مجدد','tax_objection_unit','AUTHORITY'),
-  ('PIT-027',27,'تصمیم مؤدی درباره نتیجه رسیدگی','taxpayer','USER'),
-  ('PIT-030',30,'پایان مهلت اعتراض با ابلاغ واقعی','system_automation','AUTHORITY'),
-  ('PIT-031',31,'پایان مهلت با ابلاغ قانونی','system_automation','AUTHORITY'),
-  ('PIT-032',32,'ارجاع به هیأت حل اختلاف بدوی','tax_objection_unit','AUTHORITY'),
-  ('PIT-040',40,'رسیدگی هیأت حل اختلاف بدوی','first_instance_tax_dispute_board','AUTHORITY'),
-  ('PIT-050',50,'صدور برگ قطعی مالیات بر عملکرد','tax_finalization_collection_unit','AUTHORITY'),
-  ('PIT-051',51,'پرداخت مالیات قطعی','taxpayer','USER')
+  ('PIT_001',1,'تهیه گزارش رسیدگی','tax_audit_unit','AUTHORITY'),
+  ('PIT_002',2,'صدور برگ تشخیص','tax_assessment_issuer','AUTHORITY'),
+  ('PIT_003',3,'ابلاغ برگ تشخیص','tax_notification_unit','AUTHORITY'),
+  ('PIT_004',4,'دریافت جزئیات گزارش مبنای تشخیص','taxpayer','USER'),
+  ('PIT_005',5,'مهلت تصمیم مؤدی','taxpayer','USER'),
+  ('PIT_010',10,'اعلام قبول کتبی','taxpayer','USER'),
+  ('PIT_011',11,'پرداخت یا ترتیب پرداخت','taxpayer','USER'),
+  ('PIT_012',12,'قطعیت ناشی از قبول یا رفع اختلاف','tax_finalization_collection_unit','AUTHORITY'),
+  ('PIT_020',20,'ثبت اعتراض ماده ۲۳۸','taxpayer','USER'),
+  ('PIT_021',21,'ارجاع داخلی اعتراض','tax_objection_unit','AUTHORITY'),
+  ('PIT_022',22,'رسیدگی مجدد ماده ۲۳۸','article_238_responsible_officer','AUTHORITY'),
+  ('PIT_023',23,'صدور قرار بررسی مجدد','article_238_responsible_officer','AUTHORITY'),
+  ('PIT_024',24,'اجرای قرار کارشناسی','tax_reexamination_expert','AUTHORITY'),
+  ('PIT_025',25,'رسیدگی نهایی ماده ۲۳۸','article_238_responsible_officer','AUTHORITY'),
+  ('PIT_026',26,'اعلام نتیجه رسیدگی مجدد','tax_objection_unit','AUTHORITY'),
+  ('PIT_027',27,'تصمیم مؤدی درباره نتیجه رسیدگی','taxpayer','USER'),
+  ('PIT_030',30,'پایان مهلت اعتراض با ابلاغ واقعی','system_automation','AUTHORITY'),
+  ('PIT_031',31,'پایان مهلت با ابلاغ قانونی','system_automation','AUTHORITY'),
+  ('PIT_032',32,'ارجاع به هیأت حل اختلاف بدوی','tax_objection_unit','AUTHORITY'),
+  ('PIT_040',40,'رسیدگی هیأت حل اختلاف بدوی','first_instance_tax_dispute_board','AUTHORITY'),
+  ('PIT_050',50,'صدور برگ قطعی مالیات بر عملکرد','tax_finalization_collection_unit','AUTHORITY'),
+  ('PIT_051',51,'پرداخت مالیات قطعی','taxpayer','USER')
 )
 insert into public.workflow_steps
   (id, workflow_template_id, sequence, code, title, actor, due_rule, form_schema,
@@ -64,9 +79,11 @@ from required_steps
 where exists (
   select 1 from public.obligation_versions v
   join public.obligations o on o.id=v.obligation_id
+  join public.workflow_templates wt on wt.obligation_version_id=v.id
   where o.code='PERFORMANCE_INCOME_TAX'
     and v.version_number=1
     and v.status='DRAFT'
+    and wt.id='d0000001-0000-0000-0000-000000000001'
 )
 on conflict (workflow_template_id, code) do update set
   sequence=excluded.sequence, title=excluded.title, actor=excluded.actor,
@@ -102,35 +119,19 @@ from edges
 where exists (
   select 1 from public.obligation_versions v
   join public.obligations o on o.id=v.obligation_id
+  join public.workflow_templates wt on wt.obligation_version_id=v.id
   where o.code='PERFORMANCE_INCOME_TAX'
     and v.version_number=1
     and v.status='DRAFT'
+    and wt.id='d0000001-0000-0000-0000-000000000001'
 )
 on conflict (workflow_template_id, code) do update set
   from_step_id=excluded.from_step_id, to_step_id=excluded.to_step_id,
   outcome_code=excluded.outcome_code, condition_expression=excluded.condition_expression,
   is_active=true;
 
--- Publish only after the complete workflow definition has been created. A
--- previously published version is intentionally left untouched and therefore
--- remains immutable and idempotent.
-update public.obligation_versions v
-set status='PUBLISHED',
-    published_at=coalesce(v.published_at, now()),
-    updated_at=now()
-from public.obligations o
-where v.obligation_id=o.id
-  and o.code='PERFORMANCE_INCOME_TAX'
-  and v.version_number=1
-  and v.status='DRAFT'
-  and exists (
-    select 1 from public.workflow_templates wt
-    where wt.obligation_version_id=v.id
-  )
-  and exists (
-    select 1 from public.workflow_steps ws
-    join public.workflow_templates wt on wt.id=ws.workflow_template_id
-    where wt.obligation_version_id=v.id
-  );
+-- The immutable normalized workflow is not published by this seed. Publication
+-- must go through the validated lifecycle RPC after legal review and testing;
+-- this migration only creates editable reference data on a fresh database.
 
 commit;
