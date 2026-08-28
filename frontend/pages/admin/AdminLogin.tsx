@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Shield, Eye, EyeOff, Sparkles, ArrowRight, KeyRound } from 'lucide-react'
+import { Shield, Eye, EyeOff, ArrowRight, KeyRound } from 'lucide-react'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
@@ -83,15 +83,7 @@ export default function AdminLogin() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          {isMockAuthEnabled && !recoveryMode && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-6 text-amber-200">
-              <div className="mb-1 flex items-center gap-2 font-bold">
-                <Sparkles className="h-4 w-4" />
-                حالت پیش‌نمایش محلی فعال است
-              </div>
-              برای ورود، یک ایمیل معتبر و هر رمز عبوری وارد کنید. این نشست واقعی Supabase نیست.
-            </div>
-          )}
+          
           {!recoveryMode && <div className="flex flex-col gap-2">
             <Label htmlFor="identifier" className="text-zinc-300 text-sm">
               ایمیل یا شماره موبایل
