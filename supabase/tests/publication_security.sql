@@ -626,6 +626,66 @@ begin
 end
 $$;
 
+-- ── Reopen: return a retired/published version to DRAFT for re-editing ──────
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '91000000-0000-0000-0000-000000000005', true);
+select set_config('request.jwt.claims', '{"sub":"91000000-0000-0000-0000-000000000005","role":"authenticated","is_anonymous":false}', true);
+
+do $$
+declare reopened_row public.obligation_versions;
+begin
+  select * into reopened_row
+  from public.reopen_obligation_version('95000000-0000-0000-0000-000000000001');
+  if reopened_row.status <> 'DRAFT'
+     or reopened_row.published_by is not null
+     or reopened_row.published_at is not null
+     or reopened_row.retired_by is not null
+     or reopened_row.retired_at is not null
+     or reopened_row.effective_from is null then
+    raise exception 'reopen RPC did not return a clean editable draft';
+  end if;
+end
+$$;
+
+-- The reopened version becomes editable again.
+update public.obligation_versions
+set legal_reference = 'مرجع بازنویسی‌شده پس از بازگشایی'
+where id = '95000000-0000-0000-0000-000000000001';
+do $$
+begin
+  if (select legal_reference from public.obligation_versions where id = '95000000-0000-0000-0000-000000000001') <> 'مرجع بازنویسی‌شده پس از بازگشایی' then
+    raise exception 'reopened version is not editable';
+  end if;
+end
+$$;
+
+-- A non-terminal (DRAFT) version cannot be reopened.
+do $$
+begin
+  begin
+    perform public.reopen_obligation_version('95000000-0000-0000-0000-000000000002');
+    raise exception 'reopen RPC accepted a DRAFT version';
+  exception when invalid_parameter_value then null;
+  end;
+end
+$$;
+reset role;
+
+-- A regular user cannot reopen.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '91000000-0000-0000-0000-000000000003', true);
+select set_config('request.jwt.claims', '{"sub":"91000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":false}', true);
+do $$
+begin
+  begin
+    perform public.reopen_obligation_version('95000000-0000-0000-0000-000000000001');
+    raise exception 'non-admin reopened an obligation version';
+  exception when insufficient_privilege then null;
+  end;
+end
+$$;
+reset role;
+
 do $$
 begin
   if (
@@ -660,7 +720,8 @@ begin
   if has_function_privilege('anon', 'public.publish_obligation_version(uuid)', 'EXECUTE')
      or has_function_privilege('anon', 'public.publish_circular_and_notify(uuid,text)', 'EXECUTE')
      or has_function_privilege('anon', 'public.estimate_case_penalty(uuid,numeric,date,numeric,numeric)', 'EXECUTE')
-     or has_function_privilege('anon', 'public.retire_obligation_version(uuid)', 'EXECUTE') then
+     or has_function_privilege('anon', 'public.retire_obligation_version(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.reopen_obligation_version(uuid)', 'EXECUTE') then
     raise exception 'anon can execute a sensitive compliance RPC';
   end if;
 end

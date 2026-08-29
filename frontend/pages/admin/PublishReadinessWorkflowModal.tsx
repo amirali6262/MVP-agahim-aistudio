@@ -42,6 +42,7 @@ type Props = {
   onWithdrawReview: () => Promise<void>
   onPublish: () => Promise<void>
   onRetire: () => Promise<void>
+  onReopen: () => Promise<void>
   onEditVersion: () => void
   onClose: () => void
   onSaved: () => Promise<void>
@@ -54,6 +55,7 @@ const WORKFLOW_STEPS = [
   { key: 'APPROVED', label: 'تأیید نهایی', icon: CheckCircle2 },
   { key: 'TESTING', label: 'آزمایش', icon: Sparkles },
   { key: 'PUBLISHED', label: 'انتشار', icon: Rocket },
+  { key: 'RETIRED', label: 'منسوخ', icon: Archive },
 ]
 
 export default function PublishReadinessWorkflowModal({
@@ -73,6 +75,7 @@ export default function PublishReadinessWorkflowModal({
   onWithdrawReview,
   onPublish,
   onRetire,
+  onReopen,
   onEditVersion,
   onClose,
 }: Props) {
@@ -87,7 +90,8 @@ export default function PublishReadinessWorkflowModal({
     if (version.status === 'REVIEW' && activeRequest?.status === 'REQUESTED') return s.key === 'REQUESTED'
     if (version.status === 'REVIEW' && activeRequest?.status === 'IN_REVIEW') return s.key === 'IN_REVIEW'
     if (version.status === 'TESTING') return s.key === 'TESTING'
-    if (version.status === 'PUBLISHED' || version.status === 'RETIRED') return s.key === 'PUBLISHED'
+    if (version.status === 'PUBLISHED') return s.key === 'PUBLISHED'
+    if (version.status === 'RETIRED') return s.key === 'RETIRED'
     return false
   })
 
@@ -175,6 +179,12 @@ export default function PublishReadinessWorkflowModal({
                     منسوخ‌سازی نسخه
                   </Button>
                 )}
+                {(version.status === 'PUBLISHED' || version.status === 'RETIRED') && (
+                  <Button onClick={() => void onReopen()} disabled={busy} size="sm" variant="outline" className="gap-1.5 border-sky-700/60 text-sky-300 hover:bg-sky-950/40">
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                    بازگشت به پیش‌نویس
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -185,7 +195,7 @@ export default function PublishReadinessWorkflowModal({
           <h4 className="text-sm font-semibold text-zinc-400 mb-4">مسیر انتشار</h4>
           <div className="flex items-center justify-between gap-1 overflow-x-auto pb-2">
             {WORKFLOW_STEPS.map((step, idx) => {
-              const isCompleted = idx < currentStepIndex || version.status === 'PUBLISHED' || version.status === 'RETIRED'
+              const isCompleted = idx < currentStepIndex || version.status === 'PUBLISHED'
               const isCurrent = idx === currentStepIndex
               const isPending = idx > currentStepIndex
               const StepIcon = step.icon

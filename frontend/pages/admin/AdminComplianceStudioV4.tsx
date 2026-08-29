@@ -34,6 +34,7 @@ import {
   Inbox,
   Copy,
   Archive,
+  RotateCcw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
@@ -937,6 +938,30 @@ export default function AdminComplianceStudio() {
     }
   }
 
+  const reopen = async () => {
+    if (!selectedVersionId) return
+    if (!window.confirm('این نسخه به حالت پیش‌نویس بازگردانده می‌شود تا بتوانید دوباره آن را ویرایش و سپس انتشار دهید. سوابق انتشار/منسوخ‌سازی آن پاک می‌شود. ادامه می‌دهید؟')) return
+    setBusy(true)
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await (supabase as any).rpc('reopen_obligation_version', {
+          requested_version_id: selectedVersionId,
+        })
+        if (error) throw error
+      } else {
+        throw new Error('برای بازگشت نسخه به پیش‌نویس اتصال Supabase الزامی است.')
+      }
+
+      toast.success('نسخه به پیش‌نویس بازگشت و دوباره قابل ویرایش شد.')
+      await loadCatalog()
+      await loadDefinition()
+    } catch (err) {
+      toast.error(errorMessage(err, 'بازگشت نسخه به پیش‌نویس انجام نشد.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) return <div className="flex justify-center p-24 text-zinc-400"><Loader2 className="h-7 w-7 animate-spin" /></div>
 
   return (
@@ -1062,6 +1087,7 @@ export default function AdminComplianceStudio() {
           onWithdrawReview={withdrawReview}
           onPublish={publish}
           onRetire={retire}
+          onReopen={reopen}
           onEditVersion={() => setActiveSubModule(null)}
           onClose={() => setActiveSubModule(null)}
           onSaved={async () => { await loadCatalog(); await loadDefinition() }}
@@ -1150,6 +1176,18 @@ export default function AdminComplianceStudio() {
                   <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
                   تازه‌سازی
                 </Button>
+                {(selectedVersion.status === 'PUBLISHED' || selectedVersion.status === 'RETIRED') && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-sky-700/60 text-sky-300 hover:bg-sky-950/40 gap-1.5 text-xs"
+                    onClick={() => void reopen()}
+                    disabled={busy}
+                  >
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                    بازگشت به پیش‌نویس
+                  </Button>
+                )}
                 {selectedVersion.status === 'PUBLISHED' && (
                   <Button
                     size="sm"
