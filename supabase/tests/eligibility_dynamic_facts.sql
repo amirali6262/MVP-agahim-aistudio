@@ -365,10 +365,18 @@ begin
 end
 $$;
 
--- Successful cascade delete of a DRAFT obligation with soft references.
+-- Successful cascade delete of a DRAFT obligation with soft references (as admin).
 do $$
 begin
   perform public.delete_obligation_cascade('97000000-0000-0000-0000-000000000090');
+end
+$$;
+reset role;
+
+-- Verification runs as the test superuser because the tenant-facing tables
+-- (fulfillments, extensions) have no SELECT policy for authenticated roles.
+do $$
+begin
   if exists (select 1 from public.obligations where id = '97000000-0000-0000-0000-000000000090') then
     raise exception 'obligation row still exists after cascade delete';
   end if;
@@ -389,7 +397,6 @@ begin
   end if;
 end
 $$;
-reset role;
 
 -- ── Rollback guard ──────────────────────────────────────────────────────────
 do $$
