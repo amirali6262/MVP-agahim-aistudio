@@ -1,17 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   ArrowRight,
   Building2,
   FileDigit,
+  Folder,
   Hash,
   LayoutDashboard,
   LogOut,
   MapPin,
   Tag,
   Users,
+  ChevronDown,
+  Loader2,
 } from 'lucide-react'
+import { fetchPublishedMenu, type PublishedCompanyMenuItem } from '../../lib/supabaseDb'
 import { Button } from '../../lib/shadcn/button'
 import { useAuth } from '../../context/AuthContext'
 import { useTenant } from '../../context/TenantContext'
@@ -22,11 +26,56 @@ import ThemeToggle from '../../components/ThemeToggle'
 
 type ActiveTab = 'OVERVIEW' | 'BUSINESS_PROFILE' | 'MEMBERS'
 
+interface CompanyMenuItemNode extends PublishedCompanyMenuItem { children: CompanyMenuItemNode[] }
+
+function buildCompanyTree(items: PublishedCompanyMenuItem[]): CompanyMenuItemNode[] {
+  const byCode = new Map<string, CompanyMenuItemNode>()
+  items.forEach((i) => byCode.set(i.code, { ...i, children: [] }))
+  const roots: CompanyMenuItemNode[] = []
+  items
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .forEach((i) => {
+      const node = byCode.get(i.code)!
+      const parent = i.parent_code ? byCode.get(i.parent_code) : undefined
+      if (parent) parent.children.push(node)
+      else roots.push(node)
+    })
+  return roots
+}
+
 export default function PanelDashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW')
   const { signOut } = useAuth()
   const { selectedTenant, clearTenant } = useTenant()
   const navigate = useNavigate()
+
+  // Company workspace menu (published by the platform admin) — loaded dynamically.
+  const [companyMenu, setCompanyMenu] = useState<CompanyMenuItemNode[]>([])
+  const [menuOpen, setMenuOpen] = useState(true)
+  const [loadingMenu, setLoadingMenu] = useState(true)
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoadingMenu(true)
+      try {
+        const published = await fetchPublishedMenu()
+        if (cancelled) return
+        const tree = buildCompanyTree(published)
+        setCompanyMenu(tree)
+        const initial: Record<string, boolean> = {}
+        tree.forEach((n) => (initial[n.id] = true))
+        setExpandedGroups(initial)
+      } finally {
+        if (!cancelled) setLoadingMenu(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  const hasCompanyMenu = useMemo(() => companyMenu.length > 0, [companyMenu])
 
   if (!selectedTenant) return null
 
@@ -80,6 +129,31 @@ export default function PanelDashboard() {
               </div>
             </div>
 
+            {/* Dynamic company menu published by the platform admin */}
+            <div className="rounded-2xl border border-zinc-800 bg-[#141615] p-4">
+              <button onClick={() => setMenuOpen((o) => !o)} className="mb-3 flex w-full items-center justify-between">
+                <p className="flex items-center gap-2 text-xs font-bold text-zinc-400">
+                  <Folder className="h-4 w-4 text-amber-400" /> منوی شرکت
+                </p>
+                <ChevronDown className={`h-4 w-4 text-zinc-500 transition ${menuOpen ? '' : 'rotate-180'}`} />
+              </button>
+              {menuOpen && (
+                <div className="space-y-2">
+                  {loadingMenu ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-zinc-500">
+                      <Loader2 className="h-4 w-4 animate-spin text-amber-400" /> در حال بارگذاری منو...
+                    </div>
+                  ) : !hasCompanyMenu ? (
+                    <p className="py-2 text-xs text-zinc-600">هنوز منویی منتشر نشده است.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {companyMenu.map((node) => renderCompanyMenu(node, 0, expandedGroups, setExpandedGroups))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="rounded-2xl border border-zinc-800 bg-[#141615] p-5">
               <p className="mb-4 text-xs font-bold text-zinc-400">مشخصات کسب‌وکار</p>
               <div className="space-y-3">
@@ -99,6 +173,40 @@ export default function PanelDashboard() {
           </main>
         </div>
       </div>
+    </div>
+  )
+}
+
+function renderCompanyMenu(
+  node: CompanyMenuItemNode,
+  depth: number,
+  expanded: Record<string, boolean>,
+  setExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
+): React.ReactNode {
+  const isGroup = node.item_type === 'GROUP' && node.children.length > 0
+  const open = expanded[node.id] ?? false
+
+  return (
+    <div key={node.id} className="flex flex-col">
+      <button
+        onClick={() => {
+          if (isGroup) setExpanded((e) => ({ ...e, [node.id]: !open }))
+          else if (node.form_obligation_id) {
+            // Leaf linked to a published obligation → open the form page.
+            window.location.href = `/panel/company-form/${node.form_obligation_id}`
+          }
+        }}
+        className="flex w-full items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 text-right text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800"
+        style={{ marginRight: `${depth * 16}px` }}
+      >
+        {isGroup ? (
+          <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-amber-400 transition ${open ? '' : '-rotate-90'}`} />
+        ) : (
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+        )}
+        <span className="truncate">{node.title_fa}</span>
+      </button>
+      {isGroup && open && node.children.map((c) => renderCompanyMenu(c, depth + 1, expanded, setExpanded))}
     </div>
   )
 }

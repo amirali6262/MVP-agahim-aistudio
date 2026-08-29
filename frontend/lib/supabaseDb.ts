@@ -816,3 +816,256 @@ export const tenantsDb = {
     return createTenant({ ...params, created_by: createdBy })
   },
 }
+
+// ---------------------------------------------------------------------------
+// Company Workspace Menu
+// Admin defines a multi-level menu (GROUP folders + FORM leaves) in
+// company_menu_drafts, then publishes a validated snapshot into
+// company_menu that the company workspace reads dynamically.
+// ---------------------------------------------------------------------------
+
+export type MenuItemType = 'GROUP' | 'FORM'
+
+export interface CompanyMenuDraft {
+  id: string
+  code: string
+  title_fa: string
+  item_type: MenuItemType
+  parent_id: string | null
+  form_obligation_id: string | null
+  icon: string | null
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CompanyMenuDraftWrite {
+  title_fa: string
+  item_type: MenuItemType
+  parent_id?: string | null
+  form_obligation_id?: string | null
+  icon?: string | null
+  is_active?: boolean
+}
+
+export interface MenuPublishItem {
+  code: string
+  title_fa: string
+  item_type: MenuItemType
+  parent_code: string | null
+  form_obligation_id: string | null
+  icon: string | null
+  sort_order: number
+  is_active: boolean
+}
+
+export interface PublishedCompanyMenuItem {
+  id: string
+  code: string
+  title_fa: string
+  item_type: MenuItemType
+  parent_code: string | null
+  form_obligation_id: string | null
+  icon: string | null
+  sort_order: number
+  is_active: boolean
+  published_at: string
+}
+
+// Curated, limited list of menu icons (kept in sync with the picker UI).
+export const COMPANY_MENU_ICONS = [
+  { value: 'folder', label: 'پوشه' },
+  { value: 'scale', label: 'ترازو' },
+  { value: 'receipt', label: 'رسید' },
+  { value: 'file', label: 'سند' },
+  { value: 'shield', label: 'سپر' },
+  { value: 'building', label: 'سازمان' },
+  { value: 'briefcase', label: 'کیف کار' },
+  { value: 'banknote', label: 'اسکناس' },
+  { value: 'calendar', label: 'تقویم' },
+  { value: 'layers', label: 'لایه‌ها' },
+]
+
+function generateMenuCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'
+  let suffix = ''
+  for (let i = 0; i < 8; i++) suffix += chars[Math.floor(Math.random() * chars.length)]
+  return `MENU_${suffix}`
+}
+
+export async function fetchMenuDrafts(): Promise<CompanyMenuDraft[]> {
+  return safeQuery<CompanyMenuDraft>(() =>
+    (supabase as any).from('company_menu_drafts').select('*').order('sort_order', { ascending: true })
+  )
+}
+
+export async function createMenuDraft(payload: CompanyMenuDraftWrite): Promise<CompanyMenuDraft | null> {
+  if (!isSupabaseConfigured) return null
+  // Initial placement: a new item is appended as the last sibling of its parent.
+  const siblings = await safeQuery<CompanyMenuDraft>(() =>
+    (supabase as any)
+      .from('company_menu_drafts')
+      .select('sort_order')
+      .eq('parent_id', payload.parent_id ?? null)
+  )
+  const sortOrder = siblings.reduce((m, s) => Math.max(m, s.sort_order ?? 0), 0) + 1
+  const { data, error } = await (supabase as any)
+    .from('company_menu_drafts')
+    .insert({
+      code: generateMenuCode(),
+      title_fa: payload.title_fa,
+      item_type: payload.item_type,
+      parent_id: payload.parent_id ?? null,
+      form_obligation_id: payload.form_obligation_id ?? null,
+      icon: payload.icon ?? null,
+      sort_order: sortOrder,
+      is_active: payload.is_active ?? true,
+    })
+    .select()
+    .single()
+  if (error) { console.warn('[supabaseDb] createMenuDraft:', error.message); return null }
+  return data
+}
+
+export async function updateMenuDraft(id: string, payload: Partial<CompanyMenuDraftWrite>): Promise<CompanyMenuDraft | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any)
+    .from('company_menu_drafts')
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) { console.warn('[supabaseDb] updateMenuDraft:', error.message); return null }
+  return data
+}
+
+export async function deleteMenuDraft(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  const { error } = await (supabase as any).from('company_menu_drafts').delete().eq('id', id)
+  return !error
+}
+
+export async function reorderMenuDrafts(items: { id: string; parent_id: string | null; sort_order: number }[]): Promise<boolean> {
+  if (!isSupabaseConfigured) return false
+  for (const it of items) {
+    const { error } = await (supabase as any)
+      .from('company_menu_drafts')
+      .update({ parent_id: it.parent_id, sort_order: it.sort_order, updated_at: new Date().toISOString() })
+      .eq('id', it.id)
+    if (error) {
+      console.warn('[supabaseDb] reorderMenuDrafts:', error.message)
+      return false
+    }
+  }
+  return true
+}
+
+export interface SelectableObligation {
+  id: string
+  code: string
+  title: string
+  summary: string | null
+  domain: string
+  domain_title: string
+  is_active: boolean
+  version_number: number
+  version_status: string
+  published_at: string | null
+  version_id: string
+}
+
+// Forms the menu can link to: active obligations with a PUBLISHED version.
+export async function fetchSelectableObligations(): Promise<SelectableObligation[]> {
+  return safeQuery<SelectableObligation>(async () => {
+    const result = await (supabase as any)
+      .from('obligations')
+      .select('*, family:obligation_families(domain, title), versions:obligation_versions(status, version_number, published_at)')
+      .eq('is_active', true)
+      .eq('versions.status', 'PUBLISHED')
+      .order('title')
+    if (result?.error) return []
+    return (result?.data ?? []).map((row: any) => ({
+      id: row.id,
+      code: row.code,
+      title: row.title,
+      summary: row.summary ?? null,
+      domain: row.family?.domain ?? '',
+      domain_title: row.family?.title ?? '—',
+      is_active: row.is_active ?? true,
+      version_number: row.versions?.[0]?.version_number ?? 1,
+      version_status: row.versions?.[0]?.status ?? 'NONE',
+      published_at: row.versions?.[0]?.published_at ?? null,
+      version_id: row.versions?.[0]?.id ?? null,
+    }))
+  })
+}
+
+export interface ObligationFormPreview {
+  id: string
+  code: string
+  title: string
+  summary: string | null
+  domain: string
+  domain_title: string
+  is_active: boolean
+  version_number: number
+  version_status: string
+  published_at: string | null
+  effective_from: string | null
+  effective_to: string | null
+  legal_reference: string | null
+  official_action_url: string | null
+}
+
+export async function fetchObligationFormPreview(obligationId: string): Promise<ObligationFormPreview | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await (supabase as any)
+    .from('obligations')
+    .select('*, family:obligation_families(domain, title), versions:obligation_versions(status, version_number, published_at, effective_from, effective_to, legal_reference)')
+    .eq('id', obligationId)
+    .eq('versions.status', 'PUBLISHED')
+    .order('version_number', { foreignTable: 'versions', ascending: false })
+    .maybeSingle()
+  if (error || !data) return null
+  const version = data.versions?.[0]
+  return {
+    id: data.id,
+    code: data.code,
+    title: data.title,
+    summary: data.summary ?? null,
+    domain: data.family?.domain ?? '',
+    domain_title: data.family?.title ?? '—',
+    is_active: data.is_active ?? true,
+    version_number: version?.version_number ?? 1,
+    version_status: version?.status ?? 'NONE',
+    published_at: version?.published_at ?? null,
+    effective_from: version?.effective_from ?? null,
+    effective_to: version?.effective_to ?? null,
+    legal_reference: version?.legal_reference ?? null,
+    official_action_url: data.official_action_url ?? null,
+  }
+}
+
+// Publish the validated tree snapshot into the published menu table.
+export async function publishCompanyMenu(items: MenuPublishItem[]): Promise<{ ok: boolean; message?: string }> {
+  if (!isSupabaseConfigured) return { ok: false, message: 'اتصال به پایگاه‌داده برقرار نیست.' }
+  const { data, error } = await (supabase as any).rpc('replace_company_menu', { p_items: items })
+  if (error) return { ok: false, message: error.message }
+  return { ok: true, message: String(data ?? '') }
+}
+
+export async function fetchPublishedMenu(): Promise<PublishedCompanyMenuItem[]> {
+  return safeQuery<PublishedCompanyMenuItem>(() =>
+    (supabase as any).from('company_menu').select('*').order('sort_order', { ascending: true })
+  )
+}
+
+export async function fetchMenuPublishStatus(): Promise<{ published_at: string | null; item_count: number }> {
+  const rows = await safeQuery<PublishedCompanyMenuItem>(() =>
+    (supabase as any).from('company_menu').select('published_at')
+  )
+  if (rows.length === 0) return { published_at: null, item_count: 0 }
+  const latest = rows.reduce((a, b) => (a.published_at > b.published_at ? a : b))
+  return { published_at: latest.published_at, item_count: rows.length }
+}

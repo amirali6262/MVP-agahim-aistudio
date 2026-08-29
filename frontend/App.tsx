@@ -16,11 +16,13 @@ import TaxCorporatePage from './pages/admin/tax/TaxCorporatePage'
 import CommercialBooksAdminPage from './pages/admin/books/CommercialBooksAdminPage'
 import ChecklistAdminPage from './pages/admin/checklists/ChecklistAdminPage'
 import ObjectionTemplatesPage from './pages/admin/objections/ObjectionTemplatesPage'
+import CompanyMenuManagerPage from './pages/admin/CompanyMenuManagerPage'
 import DeadlineExtensionsPage from './pages/admin/extensions/DeadlineExtensionsPage'
 import AdminUserAccessPage from './pages/admin/AdminUserAccessPage'
 import UserAuth from './pages/auth/UserAuth'
 import WorkspacePage from './pages/workspace/WorkspacePage'
 import PanelDashboard from './pages/panel/PanelDashboard'
+import CompanyMenuFormPage from './pages/panel/CompanyMenuFormPage'
 
 import './styles/persian.css'
 
@@ -245,6 +247,15 @@ export default function App() {
             />
 
             <Route
+              path="/admin/company-menu"
+              element={
+                <AdminPage>
+                  <CompanyMenuManagerPage />
+                </AdminPage>
+              }
+            />
+
+            <Route
               path="/admin/users"
               element={
                 <AdminPage>
@@ -289,6 +300,17 @@ export default function App() {
                 <ProtectedRoute>
                   <TenantPage>
                     <Navigate to="/panel/dashboard" replace />
+                  </TenantPage>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/panel/company-form/:obligationId"
+              element={
+                <ProtectedRoute>
+                  <TenantPage>
+                    <CompanyMenuFormPage />
                   </TenantPage>
                 </ProtectedRoute>
               }
