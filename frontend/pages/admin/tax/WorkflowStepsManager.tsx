@@ -10,6 +10,8 @@ import type { Obligation, WorkflowStep, WorkflowStepField } from '../../../lib/s
 import { cn } from '../../../lib/shadcn/utils'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import FullScreenDialog from '../../../components/FullScreenDialog'
+import KeyRegistryField from '../../../components/KeyRegistryField'
+import { findDuplicateRawKey, registerRawScopedKey } from '../../../lib/systemKeys'
 
 interface StepRow extends WorkflowStep {
   isNew?: boolean
@@ -213,11 +215,27 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
       }
     }
 
+    // Scoped uniqueness: no duplicate Key within the same step.
+    const dup = findDuplicateRawKey(editingFields.map((f) => f.key))
+    if (dup) {
+      toast.error(`شناسه انگلیسی (Key) «${dup}» در این گام تکراری است.`)
+      return
+    }
+
     setSteps((prev) =>
       prev.map((s) =>
         s.id === activeStepForFields.id ? { ...s, fields: editingFields } : s
       )
     )
+    // Best-effort central registration of scoped raw field keys.
+    if (activeStepForFields.id) {
+      editingFields.forEach((f) => {
+        void registerRawScopedKey(
+          { module: 'workflow', entityType: 'WORKFLOW_STEP', scopeType: 'workflow_steps', scopeCode: activeStepForFields.title || 'step', scopeId: activeStepForFields.id, titleFa: f.label },
+          f.key,
+        )
+      })
+    }
     toast.success(`فیلدهای اختصاصی برای گام "${activeStepForFields.title || 'انتخابی'}" ثبت شد.`)
     setActiveStepForFields(null)
   }
@@ -608,12 +626,15 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
                       {/* Field Key */}
                       <div className="sm:col-span-3 flex flex-col gap-1">
                         <Label className="text-zinc-300 text-[11px]">شناسه لاتین (Key)</Label>
-                        <Input
-                          value={field.key}
-                          onChange={(e) => handleUpdateField(field.id, 'key', e.target.value)}
+                        <KeyRegistryField
+                          raw
+                          compact
+                          title={field.label}
+                          entityType="WORKFLOW_STEP"
+                          module="workflow"
+                          initialKey={field.key}
                           placeholder="taxable_income"
-                          className="bg-zinc-950 border-zinc-700 text-zinc-200 font-mono h-8 text-xs"
-                          dir="ltr"
+                          onFullKeyChange={(k) => handleUpdateField(field.id, 'key', k)}
                         />
                       </div>
 

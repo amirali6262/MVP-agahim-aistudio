@@ -19,6 +19,8 @@ import {
 } from '../../lib/companyInfo'
 import OptionSourcePicker from '../../components/selectionLists/OptionSourcePicker'
 import FullScreenDialog from '../../components/FullScreenDialog'
+import KeyRegistryField from '../../components/KeyRegistryField'
+import { rawFromFullKey, syncRegistryAfterSave } from '../../lib/systemKeys'
 import ConditionBuilder from '../../components/condition/ConditionBuilder'
 import { emptyGroup, type ConditionFieldDescriptor, type ConditionRuleModel, type ConditionRow } from '../../lib/conditionSchema'
 
@@ -141,6 +143,21 @@ export default function CompanyInfoDesignerPage() {
       })
       if ((type === 'SELECT' || type === 'MULTI_SELECT') && !linkedListId) {
         await saveCompanyFieldOptions(saved!.id, optionRows.filter((r) => r.value.trim() && r.label.trim()).map((r, i) => ({ ...(r.id ? { id: r.id } : {}), value: r.value.trim(), label: r.label.trim(), sort_order: i + 1 })))
+      }
+      if (saved?.id && fieldForm.key?.trim()) {
+        try {
+          await syncRegistryAfterSave({
+            full_key: `company_profile.field.${String(fieldForm.key).trim().toLowerCase()}`,
+            title_fa: fieldForm.title.trim(),
+            entity_type: 'FIELD',
+            module: 'company_profile',
+            form_name: 'اطلاعات شرکت',
+            source_table: 'company_field_definitions',
+            source_record_id: saved.id,
+            locked: editingField?.is_system ?? false,
+            lock_reason: editingField?.is_system ? 'سیستمی یا اثرگذار در تشخیص' : null,
+          })
+        } catch { /* registry is advisory; DB unique is enforced on the source key anyway */ }
       }
       toast.success(editingField ? 'فیلد به‌روزرسانی شد.' : 'فیلد افزوده شد.')
       setFieldModalOpen(false)
@@ -355,8 +372,18 @@ export default function CompanyInfoDesignerPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="عنوان نمایشی *"><Input value={fieldForm.title ?? ''} onChange={(e) => setFieldForm({ ...fieldForm, title: e.target.value })} className="h-10" /></Field>
                 <Field label="کلید سیستمی *">
-                  <Input value={fieldForm.key ?? ''} disabled={keyLocked} onChange={(e) => setFieldForm({ ...fieldForm, key: e.target.value })} className="h-10" />
-                  {keyLocked && <p className="text-[9px] text-zinc-400">کلید سیستم قابل تغییر نیست.</p>}
+                  <KeyRegistryField
+                    title={fieldForm.title ?? ''}
+                    entityType="FIELD"
+                    module="company_profile"
+                    formName="اطلاعات شرکت"
+                    initialKey={fieldForm.key ?? ''}
+                    locked={keyLocked}
+                    lockReason={keyLocked ? 'کلید سیستم قابل تغییر نیست' : undefined}
+                    sourceTable="company_field_definitions"
+                    sourceRecordId={editingField?.id ?? null}
+                    onFullKeyChange={(fullKey) => setFieldForm({ ...fieldForm, key: rawFromFullKey(fullKey) })}
+                  />
                 </Field>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">

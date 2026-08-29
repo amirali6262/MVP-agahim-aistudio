@@ -45,6 +45,7 @@ import { Badge } from '../../lib/shadcn/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../lib/shadcn/table'
 import DeleteGuardModal from '../../components/DeleteGuardModal'
+import KeyRegistryField from '../../components/KeyRegistryField'
 import JalaliDatePicker from '../../components/JalaliDatePicker'
 
 type Family = Tables<'obligation_families'> | any
@@ -3979,7 +3980,7 @@ function WorkflowStepForm({
         <p className="mb-3 text-xs text-zinc-500">فیلد ورودی فرم برای این مرحله (اختیاری)</p>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="عنوان فیلد"><Input value={fieldLabel} onChange={(e) => setFieldLabel(e.target.value)} placeholder="کد رهگیری اظهارنامه" /></Field>
-          <Field label="کلید انگلیسی"><Input value={fieldKey} onChange={(e) => setFieldKey(e.target.value)} dir="ltr" placeholder="tracking_code" /></Field>
+          <Field label="کلید انگلیسی"><KeyRegistryField raw compact title={fieldLabel} entityType="WORKFLOW_STEP" module="workflow" initialKey={fieldKey} placeholder="tracking_code" onFullKeyChange={(k) => setFieldKey(k)} /></Field>
           <Field label="نوع فیلد">
             <Select value={fieldType} onValueChange={setFieldType}>
               <SelectTrigger><SelectValue /></SelectTrigger>

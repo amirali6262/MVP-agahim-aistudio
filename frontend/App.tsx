@@ -19,6 +19,7 @@ import ObjectionTemplatesPage from './pages/admin/objections/ObjectionTemplatesP
 import CompanyMenuManagerPage from './pages/admin/CompanyMenuManagerPage'
 import CompanyInfoDesignerPage from './pages/admin/CompanyInfoDesignerPage'
 import SelectionListsPage from './pages/admin/SelectionListsPage'
+import SystemKeyRegistryPage from './pages/admin/SystemKeyRegistryPage'
 import DeadlineExtensionsPage from './pages/admin/extensions/DeadlineExtensionsPage'
 import AdminUserAccessPage from './pages/admin/AdminUserAccessPage'
 import UserAuth from './pages/auth/UserAuth'
@@ -284,6 +285,15 @@ export default function App() {
               element={
                 <AdminPage>
                   <CompanyMenuManagerPage />
+                </AdminPage>
+              }
+            />
+
+            <Route
+              path="/admin/system-keys"
+              element={
+                <AdminPage>
+                  <SystemKeyRegistryPage />
                 </AdminPage>
               }
             />
