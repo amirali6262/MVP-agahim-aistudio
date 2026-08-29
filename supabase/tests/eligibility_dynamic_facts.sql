@@ -245,9 +245,8 @@ end
 $$;
 
 -- Legacy fact: ENTITY_TYPE EQ 'حقوقی' still resolves from the tenants table.
-insert into public.eligibility_conditions (rule_set_id, sequence, fact_key, operator, expected_value, connector)
-values ('97000000-0000-0000-0000-000000000063', 7, 'ENTITY_TYPE', 'EQ', '"حقوقی"', 'AND');
-
+-- (Inserting a new condition into a PUBLISHED version is intentionally blocked
+-- by the immutability trigger, so only the matcher itself is exercised here.)
 do $$
 declare
   legacy_match boolean;
