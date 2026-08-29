@@ -169,7 +169,7 @@ export default function PublishReadinessWorkflowModal({
                     انتشار نهایی
                   </Button>
                 )}
-                {canEdit && version.status === 'PUBLISHED' && (
+                {version.status === 'PUBLISHED' && (
                   <Button onClick={() => void onRetire()} disabled={busy} size="sm" variant="outline" className="gap-1.5 border-zinc-600 text-zinc-300 hover:bg-zinc-800">
                     {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
                     منسوخ‌سازی نسخه

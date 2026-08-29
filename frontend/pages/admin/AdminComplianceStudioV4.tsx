@@ -1150,6 +1150,38 @@ export default function AdminComplianceStudio() {
                   <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
                   تازه‌سازی
                 </Button>
+                {selectedVersion.status === 'PUBLISHED' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-zinc-600 text-zinc-300 hover:bg-zinc-800 gap-1.5 text-xs"
+                    onClick={() => {
+                      void (async () => {
+                        if (!window.confirm('نسخه منسوخ می‌شود و دیگر برای تشخیص شرکت‌ها استفاده نخواهد شد. محتوای آن به‌عنوان سند تاریخی منتشرشده حفظ می‌شود و قابل بازگشت نیست. ادامه می‌دهید؟')) return
+                        setBusy(true)
+                        try {
+                          if (isSupabaseConfigured) {
+                            const { error } = await (supabase as any).rpc('retire_obligation_version', { requested_version_id: selectedVersionId })
+                            if (error) throw error
+                          } else {
+                            throw new Error('برای منسوخ‌سازی نسخه اتصال Supabase الزامی است.')
+                          }
+                          toast.success('نسخه منسوخ شد و دیگر برای تشخیص شرکت‌ها استفاده نمی‌شود.')
+                          await loadCatalog()
+                          await loadDefinition()
+                        } catch (err) {
+                          toast.error(errorMessage(err, 'منسوخ‌سازی نسخه انجام نشد.'))
+                        } finally {
+                          setBusy(false)
+                        }
+                      })()
+                    }}
+                    disabled={busy}
+                  >
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                    منسوخ‌سازی
+                  </Button>
+                )}
               </div>
             </div>
 
