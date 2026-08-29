@@ -3,14 +3,19 @@ begin;
 -- The schema migration defines the PIT engine, but the reference catalog must
 -- also be installed for a fresh database. All identifiers are deterministic so
 -- this migration is idempotent and can safely repair a partially seeded DB.
+-- created_by uses a real platform admin (falling back to any user) instead of
+-- NULL so the seed applies on databases where the NOT NULL constraint is still
+-- enforced (e.g. a remote project whose history predates the DROP NOT NULL).
 insert into public.obligation_families (id, code, domain, title, description, is_active, created_by)
-values ('c0000001-0000-0000-0000-000000000001', 'DIRECT_TAX', 'TAX', 'مالیات‌های مستقیم', 'تکالیف قانون مالیات‌های مستقیم', true, null)
+values ('c0000001-0000-0000-0000-000000000001', 'DIRECT_TAX', 'TAX', 'مالیات‌های مستقیم', 'تکالیف قانون مالیات‌های مستقیم', true,
+  coalesce((select id from public.users where roles @> '"PLATFORM_ADMIN"'::jsonb or role = 'PLATFORM_ADMIN' order by created_at limit 1), (select id from public.users order by created_at limit 1)))
 on conflict (code) do update set is_active=true, updated_at=now();
 
 insert into public.obligations (id, family_id, code, title, summary, authority_name, is_active, created_by)
 values ('c0000001-0000-0000-0000-000000000002', (select id from public.obligation_families where code='DIRECT_TAX'),
   'PERFORMANCE_INCOME_TAX', 'مالیات بر عملکرد', 'فرایند تشخیص، اعتراض، قطعیت و پرداخت مالیات بر عملکرد',
-  'سازمان امور مالیاتی کشور', true, null)
+  'سازمان امور مالیاتی کشور', true,
+  coalesce((select id from public.users where roles @> '"PLATFORM_ADMIN"'::jsonb or role = 'PLATFORM_ADMIN' order by created_at limit 1), (select id from public.users order by created_at limit 1)))
 on conflict (code) do update set is_active=true, updated_at=now();
 
 -- The earlier PIT migrations may already have published version 1. Never
@@ -24,7 +29,8 @@ insert into public.obligation_versions
   (id, obligation_id, version_number, status, legal_reference, audience_summary,
    effective_from, published_at, created_by)
 select 'c0000001-0000-0000-0000-000000000003', o.id, 1,
-  'DRAFT', 'قانون مالیات‌های مستقیم', 'مودیان مشمول مالیات بر عملکرد', '2021-12-12', null, null
+  'DRAFT', 'قانون مالیات‌های مستقیم', 'مودیان مشمول مالیات بر عملکرد', '2021-12-12', null,
+  coalesce((select id from public.users where roles @> '"PLATFORM_ADMIN"'::jsonb or role = 'PLATFORM_ADMIN' order by created_at limit 1), (select id from public.users order by created_at limit 1))
 from public.obligations o
 where o.code='PERFORMANCE_INCOME_TAX'
   and not exists (
@@ -34,7 +40,8 @@ where o.code='PERFORMANCE_INCOME_TAX'
 
 insert into public.workflow_templates (id, obligation_version_id, title, created_by)
 select 'd0000001-0000-0000-0000-000000000001', v.id,
-  'فرایند مرجع مالیات بر عملکرد', null
+  'فرایند مرجع مالیات بر عملکرد',
+  coalesce((select id from public.users where roles @> '"PLATFORM_ADMIN"'::jsonb or role = 'PLATFORM_ADMIN' order by created_at limit 1), (select id from public.users order by created_at limit 1))
 from public.obligation_versions v
 join public.obligations o on o.id=v.obligation_id
 where o.code='PERFORMANCE_INCOME_TAX'
