@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../../lib/shadcn/table'
+import FullScreenDialog from '../../../components/FullScreenDialog'
 import { fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, deleteObjectionTemplate } from '../../../lib/supabaseDb'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField, TaxTypeOverride } from '../../../lib/supabase'
@@ -1400,33 +1401,33 @@ export default function ObjectionTemplatesPage() {
 
       {/* Step Fields Modal */}
       {editingStepForFields && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#1e1c1a] border border-amber-500/30 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl text-zinc-100 animate-in fade-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/60">
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal className="w-5 h-5 text-amber-400" />
-                <div>
-                  <h3 className="font-bold text-base text-zinc-100">
-                    تعریف فیلدهای پویا برای {editingStepForFields.title}
-                  </h3>
-                  <p className="text-xs text-zinc-400">
-                    این فیلدها در محیط کاربری شرکت هنگام رسیدن به این گام نمایش داده می‌شوند
-                  </p>
-                </div>
-              </div>
+        <FullScreenDialog
+          open
+          title={`تعریف فیلدهای پویا برای ${editingStepForFields.title}`}
+          subtitle="این فیلدها در محیط کاربری شرکت هنگام رسیدن به این گام نمایش داده می‌شوند"
+          onBack={() => setEditingStepForFields(null)}
+          footer={
+            <div className="flex items-center justify-end gap-3">
               <Button
+                type="button"
                 variant="ghost"
-                size="icon"
                 onClick={() => setEditingStepForFields(null)}
-                className="text-zinc-400 hover:text-zinc-100 h-8 w-8"
+                className="text-zinc-400 text-xs h-9"
               >
-                <X className="w-4 h-4" />
+                انصراف
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveStepFields}
+                className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs h-9 gap-1.5 px-4"
+              >
+                <Save className="w-4 h-4" />
+                <span>ذخیره فیلدهای این گام</span>
               </Button>
             </div>
-
-            {/* Modal Body */}
-            <div className="p-6 max-h-[65vh] overflow-y-auto flex flex-col gap-4">
+          }
+        >
+          <div className="flex flex-col gap-4">
               {/* Batch Actions & Quick Templates Header */}
               <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800">
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1605,27 +1606,7 @@ export default function ObjectionTemplatesPage() {
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="px-6 py-3.5 border-t border-zinc-800 bg-zinc-900/60 flex items-center justify-end gap-3">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setEditingStepForFields(null)}
-                className="text-zinc-400 text-xs h-9"
-              >
-                انصراف
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSaveStepFields}
-                className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs h-9 gap-1.5 px-4"
-              >
-                <Save className="w-4 h-4" />
-                <span>ذخیره فیلدهای این گام</span>
-              </Button>
-            </div>
-          </div>
-        </div>
+        </FullScreenDialog>
       )}
 
       {/* Delete Guard Modal */}

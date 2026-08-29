@@ -22,6 +22,7 @@ import {
   type ObligationFormPreview, type MenuItemType,
 } from '../../lib/supabaseDb'
 import { isSupabaseConfigured } from '../../lib/supabase'
+import FullScreenDialog from '../../components/FullScreenDialog'
 
 // ---------------------------------------------------------------------------
 // Brand palette for this page (workspace visual language option #1)
@@ -563,14 +564,19 @@ function MenuItemPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative mr-auto flex h-full w-full max-w-md flex-col bg-white shadow-2xl dark:bg-zinc-900">
-        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-          <h3 className="font-bold text-zinc-900 dark:text-white">{item ? 'ویرایش آیتم منو' : 'افزودن آیتم منو'}</h3>
-          <button onClick={onClose} className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"><X className="h-5 w-5" /></button>
+    <FullScreenDialog
+      open
+      title={item ? 'ویرایش آیتم منو' : 'افزودن آیتم منو'}
+      subtitle="آیتم گروه برای دسته‌بندی و آیتم فرم آخرین سطح منوی فضای شرکت است."
+      onBack={onClose}
+      footer={(
+        <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
+          <Button variant="ghost" onClick={onClose}>انصراف</Button>
+          <Button disabled={titleMissing} style={{ background: BRAND }} className="text-white" onClick={submit}>{item ? 'ذخیره تغییرات' : 'افزودن'}</Button>
         </div>
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+      )}
+    >
+      <div className="mx-auto max-w-2xl space-y-5 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
           <Field label="عنوان منو" required>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثلاً اظهارنامه عملکرد" dir="rtl" />
           </Field>
@@ -634,13 +640,8 @@ function MenuItemPanel({
               <p className="text-xs text-zinc-400">منو همواره آخرین نسخه‌ی منتشرشده‌ی فرم را باز می‌کند.</p>
             </Field>
           )}
-        </div>
-        <div className="flex items-center justify-between gap-2 border-t border-zinc-200 px-5 py-4 dark:border-zinc-800">
-          <Button variant="ghost" onClick={onClose}>انصراف</Button>
-          <Button disabled={titleMissing} style={{ background: BRAND }} className="text-white" onClick={submit}>{item ? 'ذخیره تغییرات' : 'افزودن'}</Button>
-        </div>
       </div>
-    </div>
+    </FullScreenDialog>
   )
 }
 
@@ -685,8 +686,14 @@ function FormPickerModal({ forms, onClose, onSelect, onPreview }: {
   }).sort((a, b) => (DOMAIN_LABEL[a.domain] ?? '').localeCompare(DOMAIN_LABEL[b.domain] ?? ''))
 
   return (
-    <Modal onClose={onClose} title="انتخاب فرم" maxW="max-w-2xl">
-      <div className="flex flex-wrap items-center gap-2">
+    <FullScreenDialog
+      open
+      title="انتخاب فرم"
+      subtitle="فقط فرم‌های فعال با نسخه‌ی منتشرشده و مجاز برای فضای شرکت"
+      onBack={onClose}
+    >
+      <div className="mx-auto max-w-3xl space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
+        <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جست‌وجو بر اساس نام فرم..." className="pr-9" />
@@ -736,8 +743,9 @@ function FormPickerModal({ forms, onClose, onSelect, onPreview }: {
             </div>
           </div>
         ))}
-      </div>
-    </Modal>
+        </div>
+        </div>
+    </FullScreenDialog>
   )
 }
 
@@ -746,8 +754,13 @@ function FormPickerModal({ forms, onClose, onSelect, onPreview }: {
 // ---------------------------------------------------------------------------
 function FormPreviewModal({ form, onClose }: { form: ObligationFormPreview; onClose: () => void }) {
   return (
-    <Modal onClose={onClose} title="پیش‌نمایش فرم" maxW="max-w-lg">
-      <div className="space-y-3">
+    <FullScreenDialog
+      open
+      title="پیش‌نمایش فرم"
+      subtitle="اطلاعات نسخه‌ی منتشرشده‌ی فرم متصل به منو"
+      onBack={onClose}
+    >
+      <div className="mx-auto max-w-lg space-y-3 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
         <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-zinc-900 dark:text-white">{form.title}</span>
@@ -766,7 +779,7 @@ function FormPreviewModal({ form, onClose }: { form: ObligationFormPreview; onCl
           با کلیک کاربر، آخرین نسخه‌ی منتشرشده‌ی همین فرم در فضای شرکت باز می‌شود.
         </p>
       </div>
-    </Modal>
+    </FullScreenDialog>
   )
 }
 
@@ -822,26 +835,33 @@ function PreviewModal({ items, forms, onClose }: {
   )
 
   return (
-    <Modal onClose={onClose} title="پیش‌نمایش منوی فضای شرکت (پیش از انتشار)" maxW="max-w-lg">
-      {nodes.length === 0 ? (
-        <div className="py-10 text-center text-sm text-zinc-400">هنوز آیتمی تعریف نشده است.</div>
-      ) : (
-        <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-2 dark:border-zinc-700 dark:bg-zinc-800/40">{renderTree(nodes, 0)}</div>
-      )}
-      {nodes.length > 0 && (
-        <>
-          {hasErrors ? (
-            <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
-              <AlertTriangle className="h-3.5 w-3.5" /> برخی آیتم‌ها خطا دارند و منو قابل انتشار نیست.
-            </p>
-          ) : (
-            <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-              <Info className="h-3.5 w-3.5" /> این همان ساختاری است که پس از «انتشار منو» در فضای شرکت نمایش داده می‌شود.
-            </p>
-          )}
-        </>
-      )}
-    </Modal>
+    <FullScreenDialog
+      open
+      title="پیش‌نمایش منوی فضای شرکت (پیش از انتشار)"
+      subtitle="ساختار درختی که پس از «انتشار منو» در فضای شرکت نمایش داده می‌شود"
+      onBack={onClose}
+    >
+      <div className="mx-auto max-w-lg space-y-3 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
+        {nodes.length === 0 ? (
+          <div className="py-10 text-center text-sm text-zinc-400">هنوز آیتمی تعریف نشده است.</div>
+        ) : (
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-2 dark:border-zinc-700 dark:bg-zinc-800/40">{renderTree(nodes, 0)}</div>
+        )}
+        {nodes.length > 0 && (
+          <>
+            {hasErrors ? (
+              <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+                <AlertTriangle className="h-3.5 w-3.5" /> برخی آیتم‌ها خطا دارند و منو قابل انتشار نیست.
+              </p>
+            ) : (
+              <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                <Info className="h-3.5 w-3.5" /> این همان ساختاری است که پس از «انتشار منو» در فضای شرکت نمایش داده می‌شود.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </FullScreenDialog>
   )
 }
 

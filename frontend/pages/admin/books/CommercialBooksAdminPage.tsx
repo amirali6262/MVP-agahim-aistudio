@@ -36,6 +36,7 @@ import {
   TableRow,
 } from '../../../lib/shadcn/table'
 import JalaliDatePicker from '../../../components/JalaliDatePicker'
+import FullScreenDialog from '../../../components/FullScreenDialog'
 import { fetchCommercialBookPeriods, createCommercialBookPeriod, updateCommercialBookPeriod, deleteCommercialBookPeriod } from '../../../lib/supabaseDb'
 import type { CommercialBookPeriod } from '../../../lib/supabase'
 
@@ -418,26 +419,33 @@ export default function CommercialBooksAdminPage() {
 
       {/* Modal Form for Adding / Editing Period & Circular Attachment */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div
-            className="w-full max-w-xl rounded-2xl border border-zinc-800 p-6 flex flex-col gap-5 shadow-2xl overflow-y-auto max-h-[90vh]"
-            style={{ background: '#1c1917' }}
-          >
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h3 className="text-white font-bold text-base flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-[#E5A93C]" />
-                {editingPeriod ? 'ویرایش دوره و بخشنامه تمدید' : 'افزودن دوره بارگذاری سامانه دفاتر تجاری'}
-              </h3>
-              <button
+        <FullScreenDialog
+          open
+          title={editingPeriod ? 'ویرایش دوره و بخشنامه تمدید' : 'افزودن دوره بارگذاری سامانه دفاتر تجاری'}
+          subtitle="تعریف مهلت قانونی، بخشنامه تمدید و پیوست دوره‌های بارگذاری اسناد دفاتر تجاری"
+          onBack={() => setModalOpen(false)}
+          footer={
+            <div className="flex items-center justify-end gap-3">
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setModalOpen(false)}
-                className="text-zinc-400 hover:text-white text-lg font-bold"
+                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-10 font-medium text-xs"
               >
-                ✕
-              </button>
+                انصراف
+              </Button>
+              <Button
+                type="submit"
+                form="commercial-book-period-form"
+                disabled={saving}
+                className="bg-[#E5A93C] hover:bg-[#d49a2d] text-[#181614] font-bold h-10 text-xs px-6 shadow"
+              >
+                {saving ? 'در حال ذخیره...' : 'ذخیره مهلت و انتشار'}
+              </Button>
             </div>
-
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          }
+        >
+          <form id="commercial-book-period-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-white font-medium text-xs">
                   عنوان دوره / تکلیف تجاری <span className="text-red-400">*</span>
@@ -596,45 +604,29 @@ export default function CommercialBooksAdminPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setModalOpen(false)}
-                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-10 font-medium text-xs"
-                >
-                  انصراف
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-[#E5A93C] hover:bg-[#d49a2d] text-[#181614] font-bold h-10 text-xs px-6 shadow"
-                >
-                  {saving ? 'در حال ذخیره...' : 'ذخیره مهلت و انتشار'}
-                </Button>
-              </div>
             </form>
-          </div>
-        </div>
+        </FullScreenDialog>
       )}
 
       {/* Attachment Preview Modal */}
       {previewAttachment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-3xl bg-[#1c1917] border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4 max-h-[90vh] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <span className="text-white font-bold text-sm flex items-center gap-2">
-                <Paperclip className="w-4 h-4 text-amber-400" />
-                تصویر / تصویر فایل بخشنامه: {previewAttachment.name}
-              </span>
-              <button
-                type="button"
+        <FullScreenDialog
+          open
+          title="پیش‌نمایش پیوست بخشنامه"
+          subtitle={previewAttachment.name}
+          onBack={() => setPreviewAttachment(null)}
+          footer={
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
                 onClick={() => setPreviewAttachment(null)}
-                className="text-zinc-400 hover:text-white"
+                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 text-xs"
               >
-                <X className="w-5 h-5" />
-              </button>
+                بستن
+              </Button>
             </div>
+          }
+        >
 
             <div className="flex-1 overflow-auto max-h-[70vh] flex items-center justify-center bg-zinc-950 p-2 rounded-xl">
               {previewAttachment.url.startsWith('data:image/') || previewAttachment.url.match(/\.(jpeg|jpg|gif|png|webp)/i) ? (
@@ -652,17 +644,7 @@ export default function CommercialBooksAdminPage() {
               )}
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-zinc-800">
-              <Button
-                variant="outline"
-                onClick={() => setPreviewAttachment(null)}
-                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 text-xs"
-              >
-                بستن
-              </Button>
-            </div>
-          </div>
-        </div>
+        </FullScreenDialog>
       )}
     </div>
   )

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
-  ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, Copy, Eye, FileText, FolderTree,
+  ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, Copy, Download, Eye, FileSpreadsheet, FileText, FolderTree,
   Layers, Loader2, Pencil, Plus, RefreshCw, Save, Search, Send, Trash2, Upload, X,
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
@@ -16,8 +17,57 @@ import {
   SYSTEM_SOURCES, LIST_STATUS_LABEL, SOURCE_TYPE_LABEL,
   type SelectionList, type SelectionListOption, type SelectionListDesign, type SelectionListSourceType,
 } from '../../lib/selectionLists'
+import FullScreenDialog from '../../components/FullScreenDialog'
 
 const BRAND = '#5B4DE6'
+
+// ── Excel import helpers (shared by wizard step 3 and the options editor) ──
+type ImportedRow = { key: string; label: string; parent_key?: string }
+
+function parseExcelBuffer(buf: ArrayBuffer): ImportedRow[] {
+  const wb = XLSX.read(buf, { type: 'array' })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  if (!ws) throw new Error('فایل اکسل شیت ندارد.')
+  const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+  if (json.length === 0) throw new Error('فایل اکسل شامل هیچ ردیف داده‌ای نیست (ردیف اول باید سربرگ باشد).')
+  const headers = Object.keys(json[0]).map((h) => h.trim().toLowerCase())
+  const idxKey = headers.indexOf('key')
+  const idxLabel = headers.indexOf('label')
+  const idxParent = headers.indexOf('parent_key')
+  if (idxKey < 0 || idxLabel < 0) throw new Error('ستون‌های موردنیاز: key و label (اختیاری: parent_key, sort_order, is_active).')
+  return json.map((r) => {
+    const parent = idxParent >= 0 ? String(r[headers[idxParent]] ?? '').trim() : ''
+    return {
+      key: String(r[headers[idxKey]] ?? '').trim(),
+      label: String(r[headers[idxLabel]] ?? '').trim(),
+      parent_key: parent !== '' ? parent : undefined,
+    }
+  })
+}
+
+async function readExcelFile(file: File): Promise<ImportedRow[]> {
+  const buf = await file.arrayBuffer()
+  return parseExcelBuffer(buf)
+}
+
+function downloadExcelSample() {
+  const sample: Array<Array<string | number | boolean>> = [
+    ['key', 'label', 'parent_key', 'sort_order', 'is_active'],
+    ['prov_tehran', 'استان تهران', '', 1, true],
+    ['cnt_tehran', 'شهرستان تهران', 'prov_tehran', 1, true],
+    ['city_tehran', 'شهر تهران', 'cnt_tehran', 1, true],
+    ['city_rey', 'شهر ری', 'cnt_tehran', 2, true],
+    ['prov_alborz', 'استان البرز', '', 2, true],
+    ['cnt_karaj', 'شهرستان کرج', 'prov_alborz', 1, true],
+    ['city_karaj', 'شهر کرج', 'cnt_karaj', 1, true],
+    ['city_mahdasht', 'شهر ماهدشت', 'cnt_karaj', 2, true],
+  ]
+  const ws = XLSX.utils.aoa_to_sheet(sample)
+  ws['!cols'] = [{ wch: 16 }, { wch: 22 }, { wch: 16 }, { wch: 10 }, { wch: 10 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'گزینه‌ها')
+  XLSX.writeFile(wb, 'نمونه-فهرست-انتخابی.xlsx')
+}
 
 // Build a dependent-option tree for preview.
 function optionChildren(options: SelectionListOption[], parentId: string | null): SelectionListOption[] {
@@ -162,6 +212,17 @@ export default function SelectionListsPage() {
           sort_order: r.sort_order || i + 1,
           is_active: r.is_active,
         })))
+        // Link dependent options by key (same rule as the options editor).
+        if (valid.some((r) => r.parent_key)) {
+          const { data: savedOpts } = await (supabase as any).from('selection_list_options').select('id,key,parent_option_id').eq('list_id', saved.id)
+          const idByKey: Record<string, string> = {}
+          ;(savedOpts ?? []).forEach((o: any) => { idByKey[o.key] = o.id })
+          for (const r of valid) {
+            if (r.parent_key && idByKey[r.key] && idByKey[r.parent_key] && idByKey[r.parent_key] !== idByKey[r.key]) {
+              await (supabase as any).from('selection_list_options').update({ parent_option_id: idByKey[r.parent_key] }).eq('id', idByKey[r.key])
+            }
+          }
+        }
       }
       toast.success(editingList ? 'فهرست بهروزرسانی شد.' : 'فهرست ساخته شد.')
       setListModalOpen(false)
@@ -329,19 +390,29 @@ export default function SelectionListsPage() {
         </>
       )}
 
-      {/* ── Create/Edit list wizard modal ── */}
-      {listModalOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setListModalOpen(false)} />
-          <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-[#1d1d20]">
-            <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
-              <div className="flex items-center gap-2 text-sm font-extrabold text-zinc-900 dark:text-zinc-50">
-                {editingList ? `ویرایش فهرست: ${editingList.title}` : listStep === 1 ? 'ایجاد فهرست · مشخصات' : listStep === 2 ? 'ایجاد فهرست · وابستگی/منبع' : 'ایجاد فهرست · گزینهها'}
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setListModalOpen(false)} className="h-8 w-8 p-0 text-zinc-400"><X className="h-4 w-4" /></Button>
+      {/* ── Create/Edit list wizard — full page ── */}
+      <FullScreenDialog
+        open={listModalOpen}
+        title={editingList ? `ویرایش فهرست: ${editingList.title}` : listStep === 1 ? 'ایجاد فهرست · مشخصات' : listStep === 2 ? 'ایجاد فهرست · وابستگی/منبع' : 'ایجاد فهرست · گزینهها'}
+        subtitle="فهرست انتخابی مرکزی: ثابت (مستقل یا وابسته) یا پویای سیستم"
+        onBack={() => setListModalOpen(false)}
+        footer={(
+          <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {listStep > 1 ? (
+                <Button variant="outline" size="sm" onClick={() => setListStep(listStep - 1)} className="gap-1 border-zinc-300 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"><ArrowRight className="h-3.5 w-3.5" />قبلی</Button>
+              ) : <span />}
+              {listStep < (listForm.source_type === 'SYSTEM' ? 2 : 3) ? (
+                <Button size="sm" onClick={() => setListStep(listStep + 1)} className="gap-1 text-xs text-white" style={{ background: BRAND }}>بعدی<ArrowLeft className="h-3.5 w-3.5" /></Button>
+              ) : (
+                <Button size="sm" onClick={() => void persistList()} className="gap-1.5 text-xs font-bold text-white" style={{ background: BRAND }}><Save className="h-3.5 w-3.5" />ذخیره فهرست</Button>
+              )}
             </div>
-
-            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+            <Button variant="ghost" size="sm" onClick={() => setListModalOpen(false)} className="text-xs text-zinc-400">انصراف</Button>
+          </div>
+        )}
+      >
+        <div className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
               {listStep === 1 && (
                 <>
                   <Field label="عنوان *"><Input value={listForm.title ?? ''} onChange={(e) => setListForm({ ...listForm, title: e.target.value })} className="h-10" placeholder="مثلاً نوع شخصیت" /></Field>
@@ -405,11 +476,39 @@ export default function SelectionListsPage() {
                   ))}
                   <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setOptionsRows([...optionsRows, { key: '', label: '', sort_order: optionsRows.length + 1, is_active: true }])}><Plus className="h-3.5 w-3.5" />افزودن گزینه</Button>
                   <div className="space-y-2 rounded-xl border border-zinc-200 p-3 dark:border-zinc-700">
-                    <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-200">ورود گروهی CSV (key,label,parent_key,sort_order,is_active)</p>
+                    <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-200">ورود گروهی: CSV یا فایل اکسل (key,label,parent_key,sort_order,is_active)</p>
                     <textarea rows={3} value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={'key,label\nnatural_person,حقیقی\nlegal_entity,حقوقی'} dir="ltr" className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 font-mono text-[11px] text-zinc-800 focus:outline-none focus:ring-2 dark:border-zinc-700 dark:bg-[#1d1d20] dark:text-zinc-100" />
                     <div className="flex items-center gap-2">
                       <Button type="button" size="sm" variant="outline" onClick={parseCsv} className="gap-1 text-xs"><Upload className="h-3.5 w-3.5" />تجزیه و پیشنمایش</Button>
                       {csvPreview.length > 0 && <Button type="button" size="sm" onClick={() => { setOptionsRows(csvPreview.map((r) => ({ key: r.key, label: r.label, parent_key: r.parent_key, sort_order: 0, is_active: true }))); toast.success(`${csvPreview.length.toLocaleString('fa-IR')} گزینه از CSV بارگذاری شد.`); setCsvText(''); setCsvPreview([]) }} className="gap-1 text-xs bg-emerald-600 hover:bg-emerald-500 text-white"><CheckIcon />اعمال در لیست</Button>}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-2 dark:border-zinc-700">
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                      <span className="text-[11px] text-zinc-500">یا از فایل اکسل بخوانید (ستون‌ها: key, label, parent_key):</span>
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            e.target.value = ''
+                            if (!file) return
+                            void (async () => {
+                              try {
+                                const imported = await readExcelFile(file)
+                                const dupe = imported.filter((r, i) => imported.findIndex((x) => x.key === r.key) !== i)
+                                if (dupe.length > 0) { setCsvError('کلید تکراری در فایل اکسل وجود دارد.'); setCsvPreview([]); return }
+                                setCsvError(null)
+                                setCsvPreview(imported)
+                                toast.success(`${imported.length.toLocaleString('fa-IR')} ردیف از فایل اکسل خوانده شد.`)
+                              } catch (err) { setCsvError(err instanceof Error ? err.message : 'خواندن فایل اکسل ناموفق بود.'); setCsvPreview([]) }
+                            })()
+                          }}
+                        />
+                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-500"><Upload className="h-3 w-3" />انتخاب فایل اکسل</span>
+                      </label>
+                      <Button type="button" variant="outline" size="sm" onClick={downloadExcelSample} className="gap-1 text-[11px]"><Download className="h-3 w-3" />دانلود نمونه (استان/شهرستان/شهر)</Button>
                     </div>
                     {csvError && <p className="text-[11px] text-red-500">{csvError}</p>}
                     {csvPreview.length > 0 && (
@@ -423,36 +522,18 @@ export default function SelectionListsPage() {
                   </div>
                 </div>
               )}
-            </div>
-
-            <div className="flex items-center justify-between gap-2 border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
-              <div className="flex items-center gap-2">
-                {listStep > 1 ? (
-                  <Button variant="outline" size="sm" onClick={() => setListStep(listStep - 1)} className="gap-1 border-zinc-300 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"><ArrowRight className="h-3.5 w-3.5" />قبلی</Button>
-                ) : <span />}
-                {listStep < (listForm.source_type === 'SYSTEM' ? 2 : 3) ? (
-                  <Button size="sm" onClick={() => setListStep(listStep + 1)} className="gap-1 text-xs text-white" style={{ background: BRAND }}>بعدی<ArrowLeft className="h-3.5 w-3.5" /></Button>
-                ) : (
-                  <Button size="sm" onClick={() => void persistList()} className="gap-1.5 text-xs font-bold text-white" style={{ background: BRAND }}><Save className="h-3.5 w-3.5" />ذخیره فهرست</Button>
-                )}
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setListModalOpen(false)} className="text-xs text-zinc-400">انصراف</Button>
-            </div>
-          </div>
         </div>
-      )}
+      </FullScreenDialog>
 
-      {/* ── Options editor modal ── */}
-      {optionsList && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setOptionsList(null)} />
-          <div className="relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-[#1d1d20]">
-            <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
-              <h2 className="text-sm font-extrabold text-zinc-900 dark:text-zinc-50">گزینههای فهرست «{optionsList.title}»</h2>
-              <Button variant="ghost" size="sm" onClick={() => setOptionsList(null)} className="h-8 w-8 p-0 text-zinc-400"><X className="h-4 w-4" /></Button>
-            </div>
-            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              {optionsList.source_type === 'SYSTEM' ? (
+      {/* ── Options editor — full page ── */}
+      <FullScreenDialog
+        open={!!optionsList}
+        title={optionsList ? `گزینههای فهرست «${optionsList.title}»` : ''}
+        subtitle="کلید مقدار ذخیرهشده و عنوان نمایشی؛ برای فهرست وابسته، والد با کلید گزینه ثبت میشود."
+        onBack={() => setOptionsList(null)}
+      >
+        <div className="mx-auto max-w-3xl space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
+          {optionsList && (optionsList.source_type === 'SYSTEM' ? (
                 <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-6 text-center text-xs text-indigo-600 dark:border-indigo-900/60 dark:bg-indigo-950/20 dark:text-indigo-300">
                   این فهرست پویای سیستم است؛ گزینهها بهصورت زنده از منبع «{SYSTEM_SOURCES.find((s) => s.key === optionsList.system_source_key)?.label ?? optionsList.system_source_key}» دریافت میشوند و قابل ویرایش دستی نیستند.
                 </div>
@@ -462,23 +543,19 @@ export default function SelectionListsPage() {
                   options={optionsByList[optionsList.id] ?? []}
                   onSaved={() => void load()}
                 />
-              )}
-            </div>
-          </div>
+              ))}
         </div>
-      )}
+      </FullScreenDialog>
 
-      {/* ── Cascade preview modal ── */}
-      {previewList && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setPreviewList(null)} />
-          <div className="relative flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-[#1d1d20]">
-            <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
-              <h2 className="text-sm font-extrabold text-zinc-900 dark:text-zinc-50">پیشنمایش «{previewList.title}»</h2>
-              <Button variant="ghost" size="sm" onClick={() => setPreviewList(null)} className="h-8 w-8 p-0 text-zinc-400"><X className="h-4 w-4" /></Button>
-            </div>
-            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              {previewList.source_type === 'STATIC' && previewList.is_dependent && parentList ? (
+      {/* ── Cascade preview — full page ── */}
+      <FullScreenDialog
+        open={!!previewList}
+        title={previewList ? `پیشنمایش «${previewList.title}»` : ''}
+        subtitle="ساختار آبشاری فهرستهای وابسته پیش از انتشار"
+        onBack={() => setPreviewList(null)}
+      >
+        <div className="mx-auto max-w-lg space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
+          {previewList && (previewList.source_type === 'STATIC' && previewList.is_dependent && parentList ? (
                 <CascadePreview
                   chain={[parentList, previewList]}
                   lists={listsById}
@@ -491,11 +568,9 @@ export default function SelectionListsPage() {
                   {options.map((o) => <div key={o.id} className="rounded-lg border border-zinc-200 px-3 py-2 text-xs dark:border-zinc-700"><span className="text-zinc-600 dark:text-zinc-300">{o.label}</span></div>)}
                   {options.length === 0 && <p className="py-8 text-center text-xs text-zinc-400">گزینهی منتشرشدهای برای این فهرست تعریف نشده است.</p>}
                 </div>
-              )}
-            </div>
-          </div>
+              ))}
         </div>
-      )}
+      </FullScreenDialog>
     </div>
   )
 }
@@ -538,6 +613,31 @@ function OptionsEditor({
   const [rows, setRows] = useState<Array<{ id?: string; key: string; label: string; parent_key?: string; sort_order: number; is_active: boolean }>>(() =>
     options.map((o, i) => ({ id: o.id, key: o.key, label: o.label, parent_key: o.parent_option_id ?? undefined, sort_order: o.sort_order || i + 1, is_active: o.is_active }))
   )
+  const [excelError, setExcelError] = useState<string | null>(null)
+
+  const handleExcelFile = async (file: File | null) => {
+    setExcelError(null)
+    if (!file) return
+    try {
+      const imported = await readExcelFile(file)
+      const dupe = imported.filter((r, i) => imported.findIndex((x) => x.key === r.key) !== i)
+      if (dupe.length > 0) { setExcelError('کلید تکراری در فایل اکسل وجود دارد.'); return }
+      setRows((prev) => {
+        const next = [...prev]
+        for (const r of imported) {
+          const existing = next.find((x) => x.key === r.key)
+          if (existing) {
+            existing.label = r.label
+            existing.parent_key = r.parent_key
+          } else {
+            next.push({ key: r.key, label: r.label, parent_key: r.parent_key, sort_order: next.length + 1, is_active: true })
+          }
+        }
+        return next
+      })
+      toast.success(`${imported.length.toLocaleString('fa-IR')} گزینه از فایل اکسل بارگذاری شد.`)
+    } catch (err) { setExcelError(err instanceof Error ? err.message : 'خواندن فایل اکسل ناموفق بود.') }
+  }
 
   // Resolve parent option id from the user-selected parent key (children store parent by id).
   const resolveParent = (parentKey?: string): string | null => {
@@ -605,6 +705,16 @@ function OptionsEditor({
             </tbody>
           </table>
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2.5 dark:border-zinc-700">
+        <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+        <span className="text-[11px] text-zinc-500">ورود از فایل اکسل (key, label, parent_key) — نمونه استان/شهرستان/شهر را دانلود کنید:</span>
+        <label className="cursor-pointer">
+          <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void handleExcelFile(f ?? null) }} />
+          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-500"><Upload className="h-3 w-3" />انتخاب فایل اکسل</span>
+        </label>
+        <Button type="button" variant="outline" size="sm" onClick={downloadExcelSample} className="gap-1 text-[11px]"><Download className="h-3 w-3" />دانلود نمونه (استان/شهرستان/شهر)</Button>
+        {excelError && <span className="text-[11px] text-red-500">{excelError}</span>}
       </div>
       <div className="flex items-center justify-between gap-2">
         <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setRows([...rows, { key: '', label: '', sort_order: rows.length + 1, is_active: true }])}><Plus className="h-3.5 w-3.5" />افزودن سریع</Button>

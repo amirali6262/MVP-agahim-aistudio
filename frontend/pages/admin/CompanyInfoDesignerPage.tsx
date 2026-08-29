@@ -18,6 +18,7 @@ import {
   type CompanyWidth, type CompanyWizardStep, type CompanyInfoDesign,
 } from '../../lib/companyInfo'
 import OptionSourcePicker from '../../components/selectionLists/OptionSourcePicker'
+import FullScreenDialog from '../../components/FullScreenDialog'
 import ConditionBuilder from '../../components/condition/ConditionBuilder'
 import { emptyGroup, type ConditionFieldDescriptor, type ConditionRuleModel, type ConditionRow } from '../../lib/conditionSchema'
 
@@ -337,19 +338,20 @@ export default function CompanyInfoDesignerPage() {
         </>
       )}
 
-      {/* Field modal */}
-      {fieldModalOpen && (
-        <div className="fixed inset-0 z-[70] flex items-start justify-center p-4 sm:items-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setFieldModalOpen(false)} />
-          <div className="relative flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-[#1d1d20]">
-            <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
-              <div>
-                <h2 className="text-sm font-extrabold text-zinc-900 dark:text-zinc-50">{editingField ? 'ویرایش فیلد' : 'افزودن فیلد'}</h2>
-                <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">تعریفی که از Supabase می‌آید؛ پس از انتشار در فضای کاری نمایش داده می‌شود.</p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setFieldModalOpen(false)} className="h-8 w-8 p-0 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"><ArrowLeft className="h-4 w-4" /></Button>
-            </div>
-            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+      {/* Field modal — full page */}
+      <FullScreenDialog
+        open={fieldModalOpen}
+        title={editingField ? 'ویرایش فیلد' : 'افزودن فیلد'}
+        subtitle="تعریفی که از Supabase می‌آید؛ پس از انتشار در فضای کاری نمایش داده می‌شود."
+        onBack={() => setFieldModalOpen(false)}
+        footer={(
+          <div className="mx-auto flex max-w-3xl items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setFieldModalOpen(false)} className="border-zinc-300 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">انصراف</Button>
+            <Button size="sm" onClick={() => void saveField()} className="gap-1.5 text-xs font-bold text-white" style={{ background: BRAND }}><Save className="h-3.5 w-3.5" />ذخیره فیلد</Button>
+          </div>
+        )}
+      >
+        <div className="mx-auto max-w-3xl space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="عنوان نمایشی *"><Input value={fieldForm.title ?? ''} onChange={(e) => setFieldForm({ ...fieldForm, title: e.target.value })} className="h-10" /></Field>
                 <Field label="کلید سیستمی *">
@@ -433,25 +435,23 @@ export default function CompanyInfoDesignerPage() {
                   onTestValuesChange={setCondTestValues}
                 />
               </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
-              <Button variant="outline" size="sm" onClick={() => setFieldModalOpen(false)} className="border-zinc-300 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">انصراف</Button>
-              <Button size="sm" onClick={() => void saveField()} className="gap-1.5 text-xs font-bold text-white" style={{ background: BRAND }}><Save className="h-3.5 w-3.5" />ذخیره فیلد</Button>
-            </div>
-          </div>
         </div>
-      )}
+      </FullScreenDialog>
 
-      {/* Wizard step modal */}
-      {stepModalOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setStepModalOpen(false)} />
-          <div className="relative flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-[#1d1d20]">
-            <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
-              <h2 className="text-sm font-extrabold text-zinc-900 dark:text-zinc-50">{editingStep ? 'ویرایش مرحله' : 'افزودن مرحله'}</h2>
-              <Button variant="ghost" size="sm" onClick={() => setStepModalOpen(false)} className="h-8 w-8 p-0 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"><ArrowLeft className="h-4 w-4" /></Button>
-            </div>
-            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+      {/* Wizard step modal — full page */}
+      <FullScreenDialog
+        open={stepModalOpen}
+        title={editingStep ? 'ویرایش مرحله' : 'افزودن مرحله'}
+        subtitle="مرحله‌ای از ویزارد اطلاعات شرکت که فیلدها در آن نمایش داده می‌شوند."
+        onBack={() => setStepModalOpen(false)}
+        footer={(
+          <div className="mx-auto flex max-w-2xl items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setStepModalOpen(false)} className="border-zinc-300 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">انصراف</Button>
+            <Button size="sm" onClick={() => void saveStep()} className="gap-1.5 text-xs font-bold text-white" style={{ background: BRAND }}><Save className="h-3.5 w-3.5" />ذخیره مرحله</Button>
+          </div>
+        )}
+      >
+        <div className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
               <Field label="عنوان مرحله *"><Input value={stepForm.title ?? ''} onChange={(e) => setStepForm({ ...stepForm, title: e.target.value })} className="h-10" /></Field>
               <Field label="توضیح"><Input value={stepForm.description ?? ''} onChange={(e) => setStepForm({ ...stepForm, description: e.target.value })} className="h-10" /></Field>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -464,14 +464,8 @@ export default function CompanyInfoDesignerPage() {
                 </Field>
               </div>
               <ToggleField label="فعال" checked={stepForm.is_active !== false} onChange={(v) => setStepForm({ ...stepForm, is_active: v })} />
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
-              <Button variant="outline" size="sm" onClick={() => setStepModalOpen(false)} className="border-zinc-300 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">انصراف</Button>
-              <Button size="sm" onClick={() => void saveStep()} className="gap-1.5 text-xs font-bold text-white" style={{ background: BRAND }}><Save className="h-3.5 w-3.5" />ذخیره مرحله</Button>
-            </div>
-          </div>
         </div>
-      )}
+      </FullScreenDialog>
     </div>
   )
 }
