@@ -358,6 +358,16 @@ export default function App() {
                   />
                 }
               />
+              <Route
+                path="help"
+                element={
+                  <PanelPlaceholderPage
+                    pageKey="help"
+                    title="راهنما و پشتیبانی"
+                    description="راهنمای کاربری و پشتیبانی فضای کاری شرکت در این مرحله ارائه نمی‌شود."
+                  />
+                }
+              />
               <Route path="company-form/:obligationId" element={<CompanyMenuFormPage />} />
             </Route>
 

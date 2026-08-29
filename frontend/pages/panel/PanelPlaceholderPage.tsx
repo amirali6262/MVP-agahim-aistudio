@@ -1,4 +1,4 @@
-import { CalendarClock, ClipboardList, FolderOpen, BarChart3, Settings, Inbox, type LucideIcon } from 'lucide-react'
+import { CalendarClock, ClipboardList, FolderOpen, BarChart3, Settings, Headphones, Inbox, type LucideIcon } from 'lucide-react'
 import { useTenant } from '../../context/TenantContext'
 
 const BRAND = '#5B4DE6'
@@ -10,10 +10,11 @@ const ICONS: Record<string, LucideIcon> = {
   documents: FolderOpen,
   reports: BarChart3,
   settings: Settings,
+  help: Headphones,
 }
 
 interface Props {
-  pageKey: 'calendar' | 'tasks' | 'documents' | 'reports' | 'settings'
+  pageKey: 'calendar' | 'tasks' | 'documents' | 'reports' | 'settings' | 'help'
   title: string
   description: string
 }

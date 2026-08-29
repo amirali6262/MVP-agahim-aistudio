@@ -6,23 +6,26 @@ import {
   BarChart3,
   Bell,
   Building2,
+  Calendar,
   CalendarClock,
   Check,
   ChevronDown,
   ClipboardList,
   Folder,
   FolderOpen,
+  Headphones,
   LayoutDashboard,
   Loader2,
   LogOut,
   Menu,
+  RefreshCw,
   Search,
   Settings,
+  User,
   Users,
   X,
   Hash,
 } from 'lucide-react'
-import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { fetchPublishedMenu, fetchUserTenants, type PublishedCompanyMenuItem } from '../../lib/supabaseDb'
@@ -111,6 +114,11 @@ export default function CompanyWorkspaceShell() {
 
   const tenantId = selectedTenant?.id ?? null
   const userId = profile?.id ?? null
+  const userLabel = profile?.email ? profile.email.split('@')[0] : profile?.phone ?? 'کاربر'
+
+  // Top-bar refresh state ("آخرین به‌روزرسانی").
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshTime, setRefreshTime] = useState(() => formatRefreshTime(new Date()))
 
   // ── Load published menu (only affects the dynamic section on failure) ──
   useEffect(() => {
@@ -162,6 +170,16 @@ export default function CompanyWorkspaceShell() {
   }, [loadNotifications])
 
   const unreadCount = useMemo(() => notifications.filter((n) => !n.read_at).length, [notifications])
+
+  // Refresh button in the top bar: tells open pages (e.g. the dashboard) to
+  // reload their data and refreshes notifications + the displayed clock.
+  const handleRefresh = () => {
+    setRefreshing(true)
+    setRefreshTime(formatRefreshTime(new Date()))
+    window.dispatchEvent(new Event('agahim:data-refresh'))
+    void loadNotifications()
+    setTimeout(() => setRefreshing(false), 900)
+  }
 
   const markAllRead = async () => {
     if (!tenantId || !userId || !isSupabaseConfigured) return
@@ -248,6 +266,7 @@ export default function CompanyWorkspaceShell() {
         <aside className="sticky top-0 hidden h-screen w-[270px] shrink-0 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#161618] lg:flex">
           <SidebarContent
             tenantName={selectedTenant?.name}
+            tenantNationalId={selectedTenant?.national_id ?? undefined}
             companyMenu={companyMenu}
             loadingMenu={loadingMenu}
             menuError={menuError}
@@ -256,6 +275,7 @@ export default function CompanyWorkspaceShell() {
             expandedGroups={expandedGroups}
             setExpandedGroups={setExpandedGroups}
             onSwitchCompany={openSwitcher}
+            onSignOut={() => void handleSignOut()}
           />
         </aside>
 
@@ -273,6 +293,7 @@ export default function CompanyWorkspaceShell() {
               <div className="flex-1 overflow-y-auto">
                 <SidebarContent
                   tenantName={selectedTenant?.name}
+                  tenantNationalId={selectedTenant?.national_id ?? undefined}
                   companyMenu={companyMenu}
                   loadingMenu={loadingMenu}
                   menuError={menuError}
@@ -281,6 +302,7 @@ export default function CompanyWorkspaceShell() {
                   expandedGroups={expandedGroups}
                   setExpandedGroups={setExpandedGroups}
                   onSwitchCompany={openSwitcher}
+                  onSignOut={() => void handleSignOut()}
                 />
               </div>
             </aside>
@@ -292,7 +314,7 @@ export default function CompanyWorkspaceShell() {
           {/* ── Top bar ── */}
           <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-[#161618]/95">
             <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
-              <div className="flex min-w-0 items-center gap-2.5">
+              <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
                 <button
                   onClick={() => setMobileNavOpen(true)}
                   className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 lg:hidden"
@@ -300,21 +322,15 @@ export default function CompanyWorkspaceShell() {
                 >
                   <Menu className="h-5 w-5" />
                 </button>
-                <span className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white sm:flex" style={{ background: BRAND }}>
-                  <Building2 className="h-5 w-5" />
+                <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 sm:flex">
+                  <User className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-extrabold text-zinc-900 dark:text-zinc-50">{selectedTenant?.name ?? 'فضای کاری شرکت'}</p>
-                  <p className="hidden text-[11px] text-zinc-400 sm:block">سامانه انطباق آگاهیم</p>
+                  <p className="truncate text-sm font-extrabold text-zinc-900 dark:text-zinc-50">خوش آمدید، {userLabel}</p>
+                  <p className="hidden truncate text-[11px] text-zinc-500 dark:text-zinc-400 sm:block">
+                    نمای کلی وضعیت انطباق و اقدامات {selectedTenant?.name ?? 'شرکت'}
+                  </p>
                 </div>
-                <button
-                  onClick={openSwitcher}
-                  className="mr-1 inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition hover:opacity-85"
-                  style={{ background: BRAND_SOFT, color: BRAND }}
-                >
-                  تغییر شرکت
-                  <ChevronDown className="h-3 w-3" />
-                </button>
               </div>
 
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
@@ -370,19 +386,21 @@ export default function CompanyWorkspaceShell() {
                   )}
                 </div>
 
-                <div className="hidden h-7 w-px bg-zinc-200 dark:bg-zinc-800 sm:block" />
+                <div className="hidden h-7 w-px bg-zinc-200 dark:bg-zinc-800 md:block" />
 
-                <div className="hidden min-w-0 items-center gap-2 sm:flex">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: BRAND }}>
-                    {(profile?.email ?? profile?.phone ?? '?').slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="max-w-[140px] truncate text-xs text-zinc-600 dark:text-zinc-300">{profile?.email ?? profile?.phone ?? '—'}</span>
+                <div className="hidden text-left md:block">
+                  <p className="flex items-center justify-end gap-1.5 text-[11px] font-bold text-zinc-600 dark:text-zinc-300">
+                    <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+                    <span className="whitespace-nowrap">{formatGregorian(new Date())} | {formatJalali(new Date())}</span>
+                  </p>
+                  <button
+                    onClick={handleRefresh}
+                    className="mt-1 flex items-center justify-end gap-1 whitespace-nowrap text-[10px] text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
+                    آخرین به‌روزرسانی: {refreshTime}
+                  </button>
                 </div>
-
-                <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-1.5 text-xs text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:text-zinc-400 dark:hover:bg-red-950/40 dark:hover:text-red-400">
-                  <LogOut className="h-4 w-4" />
-                  <span className="hidden sm:inline">خروج</span>
-                </Button>
               </div>
             </div>
           </header>
@@ -493,6 +511,7 @@ export default function CompanyWorkspaceShell() {
 
 interface SidebarContentProps {
   tenantName?: string
+  tenantNationalId?: string
   companyMenu: CompanyMenuItemNode[]
   loadingMenu: boolean
   menuError: string | null
@@ -501,10 +520,12 @@ interface SidebarContentProps {
   expandedGroups: Record<string, boolean>
   setExpandedGroups: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
   onSwitchCompany: () => void
+  onSignOut: () => void
 }
 
 function SidebarContent({
   tenantName,
+  tenantNationalId,
   companyMenu,
   loadingMenu,
   menuError,
@@ -513,21 +534,30 @@ function SidebarContent({
   expandedGroups,
   setExpandedGroups,
   onSwitchCompany,
+  onSignOut,
 }: SidebarContentProps) {
   return (
     <>
       {/* Brand block */}
-      <div className="border-b border-zinc-100 px-4 py-4 dark:border-zinc-800">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white" style={{ background: BRAND }}>              <Building2 className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-extrabold text-zinc-900 dark:text-zinc-50">{tenantName ?? 'فضای کاری شرکت'}</p>
-            <button onClick={onSwitchCompany} className="mt-0.5 text-[10px] font-bold transition hover:opacity-80" style={{ color: BRAND }}>
-              تغییر شرکت ←
-            </button>
-          </div>
-        </div>
+      <div className="border-b border-zinc-100 px-4 py-5 dark:border-zinc-800">
+        <p className="text-center text-xl font-black" style={{ color: BRAND }}>
+          آگاهیم
+        </p>
+        <p className="mt-1 text-center text-[10px] text-zinc-400">پلتفرم انطباق و پایش کسب‌وکار</p>
+
+        <button
+          onClick={onSwitchCompany}
+          className="mt-4 flex w-full items-center gap-2.5 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-right transition hover:border-zinc-300 dark:border-zinc-700 dark:bg-[#161618] dark:hover:border-zinc-600"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: BRAND_SOFT, color: BRAND }}>
+            <Building2 className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-bold text-zinc-800 dark:text-zinc-100">{tenantName ?? 'انتخاب شرکت'}</span>
+            <span className="block truncate text-[10px] text-zinc-400">{tenantNationalId ? `شناسه ملی: ${tenantNationalId}` : 'شرکت فعالی انتخاب نشده است'}</span>
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400" />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
@@ -540,13 +570,13 @@ function SidebarContent({
               to={item.to}
               end={item.to === '/panel/dashboard'}
               className={({ isActive }) =>
-                `flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold transition ${
+                `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-bold transition ${
                   isActive
-                    ? 'text-white shadow-sm'
+                    ? ''
                     : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
                 }`
               }
-              style={({ isActive }) => (isActive ? { background: BRAND } : undefined)}
+              style={({ isActive }) => (isActive ? { background: BRAND_SOFT, color: BRAND } : undefined)}
             >
               <item.icon className="h-4 w-4 shrink-0" />
               <span className="truncate">{item.label}</span>
@@ -595,8 +625,30 @@ function SidebarContent({
       </div>
       </div>
 
-      <div className="border-t border-zinc-100 px-4 py-3 dark:border-zinc-800">
-        <p className="text-[10px] text-zinc-400">سامانه انطباق آگاهیم · نسخه فضای کاری شرکت</p>
+      <div className="border-t border-zinc-100 px-3 py-3 dark:border-zinc-800">
+        <nav className="space-y-1">
+          <NavLink
+            to="/panel/help"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-bold transition ${
+                isActive
+                  ? ''
+                  : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
+              }`
+            }
+            style={({ isActive }) => (isActive ? { background: BRAND_SOFT, color: BRAND } : undefined)}
+          >
+            <Headphones className="h-4 w-4 shrink-0" />
+            <span className="truncate">راهنما و پشتیبانی</span>
+          </NavLink>
+          <button
+            onClick={onSignOut}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-bold text-zinc-500 transition hover:bg-red-50 hover:text-red-600 dark:text-zinc-400 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            خروج
+          </button>
+        </nav>
       </div>
     </>
   )
@@ -648,4 +700,30 @@ function formatDateTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
   return date.toLocaleDateString('fa-IR', { year: 'numeric', month: 'short', day: 'numeric' }) + ' — ' + date.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })
+}
+
+// Gregorian date rendered with Persian month names (e.g. «۲۹ اوت ۲۰۲۶»).
+function formatGregorian(date: Date) {
+  try {
+    return new Intl.DateTimeFormat('fa-IR', { calendar: 'gregory', day: 'numeric', month: 'long', year: 'numeric' }).format(date)
+  } catch {
+    return date.toLocaleDateString('fa-IR')
+  }
+}
+
+// Jalali date rendered in Persian (e.g. «شنبه، ۷ شهریور ۱۴۰۵»).
+function formatJalali(date: Date) {
+  try {
+    return new Intl.DateTimeFormat('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(date)
+  } catch {
+    return ''
+  }
+}
+
+function formatRefreshTime(date: Date) {
+  try {
+    return date.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
 }
