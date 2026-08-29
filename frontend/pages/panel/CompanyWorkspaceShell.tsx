@@ -11,6 +11,7 @@ import {
   Check,
   ChevronDown,
   ClipboardList,
+  FileInput,
   Folder,
   FolderOpen,
   Headphones,
@@ -50,6 +51,7 @@ const FIXED_MENU: Array<{ to: string; label: string; icon: React.ElementType }> 
   { to: '/panel/documents', label: 'اسناد و مدارک', icon: FolderOpen },
   { to: '/panel/reports', label: 'گزارش‌ها', icon: BarChart3 },
   { to: '/panel/business', label: 'کسب‌وکار و مشمولیت', icon: Building2 },
+  { to: '/panel/company-info', label: 'تکمیل اطلاعات شرکت', icon: FileInput },
   { to: '/panel/members', label: 'اعضا و دسترسی‌ها', icon: Users },
   { to: '/panel/settings', label: 'تنظیمات شرکت', icon: Settings },
 ]

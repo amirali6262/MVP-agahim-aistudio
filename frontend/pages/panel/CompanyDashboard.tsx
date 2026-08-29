@@ -22,6 +22,7 @@ import { Label } from '../../lib/shadcn/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
 import { Switch } from '../../lib/shadcn/switch'
 import { useTenant } from '../../context/TenantContext'
+import FiscalYearSystemField from '../../components/FiscalYearSystemField'
 
 const BRAND = '#5B4DE6'
 const BRAND_SOFT = '#EEECFC'
@@ -655,8 +656,7 @@ function ActionRowView({ row, expanded, onToggle, onDone }: { row: ActionRow; ex
       </tr>
       {expanded && row.task && row.step && (
         <tr className="border-b border-zinc-100 bg-violet-50/40 dark:border-zinc-800 dark:bg-violet-950/10">
-          <td colSpan={7} className="px-5 py-5">
-            <TaskForm task={row.task} step={row.step} transitions={row.transitions} reason={row.reason} onCompleted={onDone} />
+          <td colSpan={7} className="px-5 py-5">                          <TaskForm task={row.task} step={row.step} transitions={row.transitions} reason={row.reason} caseRow={row.case} onCompleted={onDone} />
           </td>
         </tr>
       )}
@@ -664,13 +664,15 @@ function ActionRowView({ row, expanded, onToggle, onDone }: { row: ActionRow; ex
   )
 }
 
-function TaskForm({ task, step, transitions, reason, onCompleted }: { task: CaseTask; step: WorkflowStep; transitions: WorkflowTransition[]; reason: string; onCompleted: () => void }) {
+function TaskForm({ task, step, transitions, reason, caseRow, onCompleted }: { task: CaseTask; step: WorkflowStep; transitions: WorkflowTransition[]; reason: string; caseRow: ComplianceCase; onCompleted: () => void }) {
   const fields = useMemo(() => parseFields(step.form_schema), [step.form_schema])
   const [values, setValues] = useState<Record<string, string | number | boolean>>({})
   const [submitting, setSubmitting] = useState(false)
   const [transitionId, setTransitionId] = useState(transitions.length === 1 ? transitions[0].id : '')
+  const [fiscalReady, setFiscalReady] = useState(Boolean(caseRow.fiscal_year_id))
 
   const submit = async () => {
+    if (!fiscalReady) return toast.error('برای ذخیره، ابتدا سال مالی این تعهد را انتخاب کنید.')
     const missing = fields.find((field) => field.required && (values[field.key] === undefined || values[field.key] === '' || (field.type === 'checkbox' && values[field.key] !== true)))
     if (missing) return toast.error(`لطفاً «${missing.label}» را تکمیل کنید.`)
     if (!transitionId) return toast.error('نتیجه این مرحله را انتخاب کنید.')
@@ -694,6 +696,13 @@ function TaskForm({ task, step, transitions, reason, onCompleted }: { task: Case
 
   return (
     <div className="space-y-4">
+      {/* System field — company fiscal year (auto-injected into every obligation form) */}
+      <FiscalYearSystemField
+        tenantId={caseRow.tenant_id}
+        caseId={caseRow.id}
+        fiscalYearId={caseRow.fiscal_year_id}
+        onRequirementChange={setFiscalReady}
+      />
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-[#161618]">
           <p className="text-[11px] font-bold text-zinc-400">چرا این اقدام فعال شده؟</p>
@@ -732,7 +741,7 @@ function TaskForm({ task, step, transitions, reason, onCompleted }: { task: Case
         </div>
       )}
 
-      <Button onClick={() => void submit()} disabled={submitting || transitions.length === 0} className="gap-2 text-xs font-bold text-white" style={{ background: BRAND }}>
+      <Button onClick={() => void submit()} disabled={submitting || transitions.length === 0 || !fiscalReady} className="gap-2 text-xs font-bold text-white" style={{ background: BRAND }}>
         {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
         ثبت نتیجه و ادامه در مسیر انتخاب‌شده
       </Button>
