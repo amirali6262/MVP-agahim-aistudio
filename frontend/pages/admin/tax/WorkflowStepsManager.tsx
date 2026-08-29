@@ -10,7 +10,6 @@ import type { Obligation, WorkflowStep, WorkflowStepField } from '../../../lib/s
 import { cn } from '../../../lib/shadcn/utils'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import FullScreenDialog from '../../../components/FullScreenDialog'
-import KeyRegistryField from '../../../components/KeyRegistryField'
 
 interface StepRow extends WorkflowStep {
   isNew?: boolean

@@ -18,8 +18,6 @@ import {
   type SelectionList, type SelectionListOption, type SelectionListDesign, type SelectionListSourceType,
 } from '../../lib/selectionLists'
 import FullScreenDialog from '../../components/FullScreenDialog'
-import KeyRegistryField from '../../components/KeyRegistryField'
-import { rawFromFullKey, syncRegistryAfterSave } from '../../lib/systemKeys'
 
 const BRAND = '#5B4DE6'
 
@@ -225,21 +223,6 @@ export default function SelectionListsPage() {
             }
           }
         }
-      }
-      if (saved.id && listForm.key?.trim()) {
-        try {
-          await syncRegistryAfterSave({
-            full_key: `selection_list.${String(listForm.key).trim().toLowerCase()}`,
-            title_fa: listForm.title.trim(),
-            entity_type: 'SELECTION_LIST',
-            module: 'selection',
-            form_name: listForm.is_dependent ? 'فهرست وابسته' : 'فهرست مستقل',
-            source_table: 'selection_lists',
-            source_record_id: saved.id,
-            locked: saved.status === 'PUBLISHED',
-            lock_reason: saved.status === 'PUBLISHED' ? 'پس از انتشار قفل است' : null,
-          })
-        } catch { /* advisory */ }
       }
       toast.success(editingList ? 'فهرست بهروزرسانی شد.' : 'فهرست ساخته شد.')
       setListModalOpen(false)
