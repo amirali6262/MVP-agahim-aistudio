@@ -36,9 +36,9 @@ create table public.selection_lists (
   created_by uuid default auth.uid() references auth.users(id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint selection_lists_key_uidx unique (lower(key)),
   constraint selection_lists_not_self_parent check (parent_list_id is distinct from id)
 );
+create unique index selection_lists_key_uidx on public.selection_lists (lower(key));
 comment on table public.selection_lists is
   'Central list of selectable options (static or system-backed) used by field definitions.';
 comment on column public.selection_lists.system_source_key is
@@ -144,9 +144,9 @@ create table public.selection_list_options (
   extra_info jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint selection_list_options_list_key_uidx unique (list_id, lower(key)),
   constraint selection_list_options_not_self_parent check (parent_option_id is distinct from id)
 );
+create unique index selection_list_options_list_key_uidx on public.selection_list_options (list_id, lower(key));
 comment on column public.selection_list_options.key is
   'Stable key used as the logical stored value. label is presentation-only and may change.';
 comment on column public.selection_list_options.parent_option_id is
