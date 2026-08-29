@@ -18,6 +18,7 @@ import { Button } from '../../../lib/shadcn/button'
 import { Input } from '../../../lib/shadcn/input'
 import { Label } from '../../../lib/shadcn/label'
 import { Badge } from '../../../lib/shadcn/badge'
+import FullScreenDialog from '../../../components/FullScreenDialog'
 import { fetchChecklistTemplates, createChecklistTemplate, updateChecklistTemplate, deleteChecklistTemplate } from '../../../lib/supabaseDb'
 import type { ChecklistSection, ChecklistItem, ChecklistImportance } from '../../../lib/supabase'
 import type { ChecklistTemplate } from '../../../lib/supabaseDb'
@@ -350,26 +351,32 @@ export default function ChecklistAdminPage() {
 
       {/* Modal for Creating / Editing Template */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div
-            className="w-full max-w-3xl rounded-2xl border border-zinc-800 p-6 flex flex-col gap-5 shadow-2xl overflow-y-auto max-h-[90vh]"
-            style={{ background: '#1c1917' }}
-          >
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h3 className="text-white font-bold text-base flex items-center gap-2">
-                <CheckSquare className="w-5 h-5 text-[#E5A93C]" />
-                {editingTemplate ? 'ویرایش ساختار چک‌لیست' : 'طراحی چک‌لیست مالیاتی جدید'}
-              </h3>
-              <button
+        <FullScreenDialog
+          open
+          title={editingTemplate ? 'ویرایش ساختار چک‌لیست' : 'طراحی چک‌لیست مالیاتی جدید'}
+          subtitle="تعریف بخش‌ها و بندهای کنترلی چک‌لیست و انتشار آن"
+          onBack={() => setModalOpen(false)}
+          footer={
+            <div className="flex items-center justify-end gap-3">
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setModalOpen(false)}
-                className="text-zinc-400 hover:text-white text-lg font-bold"
+                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-10 font-medium text-xs"
               >
-                ✕
-              </button>
+                انصراف
+              </Button>
+              <Button
+                type="submit"
+                form="checklist-template-form"
+                className="bg-[#E5A93C] hover:bg-[#d49a2d] text-[#181614] font-bold h-10 text-xs px-6 shadow"
+              >
+                ذخیره و انتشار چک‌لیست
+              </Button>
             </div>
-
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          }
+        >
+          <form id="checklist-template-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <Label className="text-white font-medium text-xs">عنوان چک‌لیست</Label>
@@ -502,25 +509,8 @@ export default function ChecklistAdminPage() {
                 ))}
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800 mt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setModalOpen(false)}
-                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-10 font-medium text-xs"
-                >
-                  انصراف
-                </Button>
-                <Button
-                  type="submit"
-                  className="bg-[#E5A93C] hover:bg-[#d49a2d] text-[#181614] font-bold h-10 text-xs px-6 shadow"
-                >
-                  ذخیره و انتشار چک‌لیست
-                </Button>
-              </div>
             </form>
-          </div>
-        </div>
+        </FullScreenDialog>
       )}
     </div>
   )

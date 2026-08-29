@@ -9,6 +9,7 @@ import { updateObligation } from '../../../lib/supabaseDb'
 import type { Obligation, WorkflowStep, WorkflowStepField } from '../../../lib/supabase'
 import { cn } from '../../../lib/shadcn/utils'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
+import FullScreenDialog from '../../../components/FullScreenDialog'
 
 interface StepRow extends WorkflowStep {
   isNew?: boolean
@@ -468,26 +469,31 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
 
       {/* Dynamic Step Fields Modal */}
       {activeStepForFields && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-3xl bg-[#1c1917] border border-zinc-800 rounded-2xl p-6 flex flex-col gap-5 shadow-2xl max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <div>
-                <h3 className="text-white font-bold text-base flex items-center gap-2">
-                  <SlidersHorizontal className="w-5 h-5 text-amber-400" />
-                  تعریف فیلدهای اختصاصی گام
-                </h3>
-                <p className="text-zinc-400 text-xs mt-0.5">
-                  گام مربوطه: <span className="text-amber-300 font-bold">{activeStepForFields.title || 'بدون عنوان'}</span>
-                </p>
-              </div>
-              <button
+        <FullScreenDialog
+          open
+          title="تعریف فیلدهای اختصاصی گام"
+          subtitle={`گام مربوطه: ${activeStepForFields.title || 'بدون عنوان'}`}
+          onBack={() => setActiveStepForFields(null)}
+          footer={
+            <div className="flex items-center justify-end gap-3">
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setActiveStepForFields(null)}
-                className="text-zinc-400 hover:text-white p-1"
+                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 text-xs"
               >
-                <X className="w-5 h-5" />
-              </button>
+                انصراف
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveFieldsForStep}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-9 text-xs px-5"
+              >
+                تأیید فیلدهای گام
+              </Button>
             </div>
+          }
+        >
 
             {/* Quick Multi-Field Addition Header */}
             <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800">
@@ -664,25 +670,7 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setActiveStepForFields(null)}
-                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 text-xs"
-              >
-                انصراف
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSaveFieldsForStep}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-9 text-xs px-5"
-              >
-                تأیید فیلدهای گام
-              </Button>
-            </div>
-          </div>
-        </div>
+        </FullScreenDialog>
       )}
 
       {/* Delete Guard Modal */}
