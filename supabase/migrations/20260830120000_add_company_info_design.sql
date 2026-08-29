@@ -286,8 +286,8 @@ select 1;
 -- Person type options (natural / legal) — real system data, stored in the DB.
 insert into public.company_field_options (id, field_id, value, label, sort_order, is_active)
 values
-  ('o0000001-0000-0000-0000-000000000001', 'f0000001-0000-0000-0000-000000000001', 'natural_person', 'حقیقی', 1, true),
-  ('o0000002-0000-0000-0000-000000000002', 'f0000001-0000-0000-0000-000000000001', 'legal_entity', 'حقوقی', 2, true)
+  ('c0000001-0000-0000-0000-000000000001', 'f0000001-0000-0000-0000-000000000001', 'natural_person', 'حقیقی', 1, true),
+  ('c0000002-0000-0000-0000-000000000002', 'f0000001-0000-0000-0000-000000000001', 'legal_entity', 'حقوقی', 2, true)
 on conflict (field_id, value) do nothing;
 
 commit;
