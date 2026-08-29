@@ -154,11 +154,13 @@ export default function AdminComplianceStudio() {
     item: CatalogItem | null
     dependencies: Array<{ formName: string; details: string; iconType?: 'extension' | 'penalty' | 'workflow' | 'template' | 'obligation' }>
     isDeleting: boolean
+    hasPublished: boolean
   }>({
     isOpen: false,
     item: null,
     dependencies: [],
     isDeleting: false,
+    hasPublished: false,
   })
   const [deleteRuleGuard, setDeleteRuleGuard] = useState<{
     isOpen: boolean
@@ -221,6 +223,7 @@ export default function AdminComplianceStudio() {
       item,
       dependencies: deps,
       isDeleting: false,
+      hasPublished: item.versions.some((v) => v.status === 'PUBLISHED'),
     })
   }
 
@@ -228,6 +231,11 @@ export default function AdminComplianceStudio() {
     const item = deleteObligationGuard.item
     if (!item) return
     
+    if (deleteObligationGuard.hasPublished) {
+      toast.error('این تعهد دارای نسخه منتشرشده است و طبق قواعد تغییرناپذیری داده‌های حقوقی قابل حذف نیست.')
+      return
+    }
+
     const targetObligationId = item.obligation.id
     const targetTitle = item.obligation.title
 
@@ -284,7 +292,7 @@ export default function AdminComplianceStudio() {
       if (oRes.error) throw new Error('حذف تعهد ناموفق بود: ' + oRes.error.message)
 
       await loadCatalog()
-      setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false })
+      setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false, hasPublished: false })
       toast.success(`تعهد «${targetTitle}» به همراه موارد مرتبط حذف شد.`)
     } catch (err) {
       setDeleteObligationGuard((g) => ({ ...g, isDeleting: false }))
@@ -1220,7 +1228,7 @@ export default function AdminComplianceStudio() {
 
       <DeleteGuardModal
         isOpen={deleteObligationGuard.isOpen}
-        onClose={() => setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false })}
+        onClose={() => setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false, hasPublished: false })}
         onConfirm={confirmDeleteObligation}
         onConfirmDelete={confirmDeleteObligation}
         title={deleteObligationGuard.item?.obligation.title ?? 'تعهد قانونی'}
@@ -1230,6 +1238,7 @@ export default function AdminComplianceStudio() {
           hasDependencies: deleteObligationGuard.dependencies.length > 0,
           dependencies: deleteObligationGuard.dependencies as any,
         }}
+        allowCascadeDelete={!deleteObligationGuard.hasPublished}
         isDeleting={deleteObligationGuard.isDeleting}
       />
 
