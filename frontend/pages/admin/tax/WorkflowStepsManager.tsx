@@ -10,6 +10,8 @@ import type { Obligation, WorkflowStep, WorkflowStepField } from '../../../lib/s
 import { cn } from '../../../lib/shadcn/utils'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import FullScreenDialog from '../../../components/FullScreenDialog'
+import KeyRegistryField from '../../../components/KeyRegistryField'
+import { findDuplicateRawKey, registerRawScopedKey } from '../../../lib/systemKeys'
 
 interface StepRow extends WorkflowStep {
   isNew?: boolean
@@ -213,11 +215,27 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
       }
     }
 
+    // Scoped uniqueness: no duplicate Key within the same step.
+    const dup = findDuplicateRawKey(editingFields.map((f) => f.key))
+    if (dup) {
+      toast.error(`شناسه انگلیسی (Key) «${dup}» در این گام تکراری است.`)
+      return
+    }
+
     setSteps((prev) =>
       prev.map((s) =>
         s.id === activeStepForFields.id ? { ...s, fields: editingFields } : s
       )
     )
+    // Best-effort central registration of scoped raw field keys.
+    if (activeStepForFields.id) {
+      editingFields.forEach((f) => {
+        void registerRawScopedKey(
+          { module: 'workflow', entityType: 'WORKFLOW_STEP', scopeType: 'workflow_steps', scopeCode: activeStepForFields.title || 'step', scopeId: activeStepForFields.id, titleFa: f.label },
+          f.key,
+        )
+      })
+    }
     toast.success(`فیلدهای اختصاصی برای گام "${activeStepForFields.title || 'انتخابی'}" ثبت شد.`)
     setActiveStepForFields(null)
   }

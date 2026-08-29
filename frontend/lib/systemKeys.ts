@@ -294,5 +294,80 @@ export async function syncRegistryAfterSave(input: RegistryUpsert & { source_rec
   return rec.id
 }
 
+// ── Scoped raw (per-form fact) keys ──────────────────────────────────────────
+// Workflow / objection step fields keep a SHORT raw key (e.g. `tracking_code`)
+// inside the JSON form_schema — that string is referenced by the eligibility
+// engine and must never be changed. For those we enforce uniqueness only within
+// their scope (form/template) and register the key centrally under a namespaced
+// full key while leaving the stored raw value untouched.
+
+export interface RawScopedKeyInput {
+  module: string
+  entityType: KeyEntityType
+  /** Owning table, e.g. 'workflow_steps' | 'objection_stages'. */
+  scopeType: string
+  /** Human scope slug used in the namespaced key (e.g. step code). */
+  scopeCode: string
+  /** Owning row uuid. */
+  scopeId: string
+  /** Persian field label shown in the key registry. */
+  titleFa: string
+}
+
+/** Turn a list of raw keys into a namespaced full key for the given scope. */
+export function buildRawFullKey(input: RawScopedKeyInput, rawKey: string): string | null {
+  const raw = rawFromFullKey(rawKey)
+  if (!raw) return null
+  const slug = normalizeKeySegment(input.scopeCode) || input.scopeId
+  const fullKey = [input.module, ENTITY_SEGMENT[input.entityType], slug, raw].join('.')
+  return isValidKeyPattern(fullKey) ? fullKey : null
+}
+
+/**
+ * Best-effort central registration of a scoped raw fact-key. The stored raw
+ * value is untouched; the registry holds a namespaced full key instead. Never
+ * throws, so registration can never block or break the host save flow. Returns
+ * the registry id (or null when skipped).
+ */
+export async function registerRawScopedKey(input: RawScopedKeyInput, rawKey: string): Promise<string | null> {
+  const fullKey = buildRawFullKey(input, rawKey)
+  if (!fullKey) return null
+  try {
+    const existing = await checkRegistryKey(fullKey)
+    if (existing) {
+      if (existing.title_fa !== input.titleFa) {
+        await updateRegistryKey(existing.id, { title_fa: input.titleFa })
+      }
+      return existing.id
+    }
+    const rec = await insertRegistryKey({
+      full_key: fullKey,
+      title_fa: input.titleFa,
+      entity_type: input.entityType,
+      module: input.module,
+      form_name: input.scopeType,
+      form_id: input.scopeId,
+      source_table: input.scopeType,
+      // Multiple fields share the same owning row ⇒ keep source_record_id NULL
+      // so the one-row-per-source index does not apply.
+    })
+    return rec.id
+  } catch {
+    return null
+  }
+}
+
+/** Returns the first duplicated raw key in a scope (scoped uniqueness) or null. */
+export function findDuplicateRawKey(rawKeys: Array<string | null | undefined>): string | null {
+  const seen = new Set<string>()
+  for (const r of rawKeys) {
+    const k = rawFromFullKey((r ?? '').trim())
+    if (!k) continue
+    if (seen.has(k)) return k
+    seen.add(k)
+  }
+  return null
+}
+
 export const REGISTRY_MODULES = ['company_profile', 'selection', 'obligations', 'workflow', 'objection', 'form', 'action', 'general']
 export const REGISTRY_ENTITIES: KeyEntityType[] = ['FIELD', 'SELECTION_LIST', 'SELECTION_OPTION', 'OBLIGATION', 'WORKFLOW_STEP', 'OBJECTION_TEMPLATE', 'OBJECTION_STEP', 'FORM', 'SHARED_ACTION', 'OTHER']

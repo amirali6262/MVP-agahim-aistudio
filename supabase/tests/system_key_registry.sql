@@ -71,6 +71,21 @@ do $$ begin
   end if;
 end $$;
 
+-- ── Raw (scoped per-form) keys: same raw key in two scopes is allowed, but a
+--    duplicate within one scope is rejected by the DB UNIQUE(full_key). ───────
+insert into public.system_key_registry (full_key, title_fa, entity_type, module, form_id, source_table, status)
+values ('workflow.step.submit_plan.tracking_code', 'کد رهگیری', 'WORKFLOW_STEP', 'workflow', 'f1000000-0000-0000-0000-00000000000a', 'workflow_steps', 'DRAFT');
+insert into public.system_key_registry (full_key, title_fa, entity_type, module, form_id, source_table, status)
+values ('workflow.step.objection_filing.tracking_code', 'کد رهگیری اظهارنامه', 'WORKFLOW_STEP', 'workflow', 'f1000000-0000-0000-0000-00000000000b', 'workflow_steps', 'DRAFT');
+
+do $$
+begin
+  insert into public.system_key_registry (full_key, title_fa, entity_type, module, form_id, source_table, status)
+  values ('workflow.step.submit_plan.tracking_code', 'تکرار همان دامنه', 'WORKFLOW_STEP', 'workflow', 'f1000000-0000-0000-0000-00000000000a', 'workflow_steps', 'DRAFT');
+  raise exception 'FAIL: duplicate scoped raw key in the same scope was accepted';
+exception when unique_violation then null;
+end $$;
+
 -- ── As a regular user: RLS must hide everything and block writes ───────────
 reset role;
 set local role authenticated;
@@ -82,12 +97,12 @@ do $$ declare c integer; begin
   if c <> 0 then raise exception 'FAIL: non-admin was able to read the registry'; end if;
 end $$;
 
-insert into public.system_key_registry (full_key, title_fa, entity_type, module, status)
-values ('company_profile.field.unauthorized', 'غیرمجاز', 'FIELD', 'company_profile', 'DRAFT');
-
-do $$ declare c integer; begin
-  select count(*) into c from public.system_key_registry where full_key = 'company_profile.field.unauthorized';
-  if c <> 0 then raise exception 'FAIL: non-admin was able to insert into the registry'; end if;
+do $$
+begin
+  insert into public.system_key_registry (full_key, title_fa, entity_type, module, status)
+  values ('company_profile.field.unauthorized', 'غیرمجاز', 'FIELD', 'company_profile', 'DRAFT');
+  raise exception 'FAIL: non-admin was able to insert into the registry';
+exception when insufficient_privilege then null;
 end $$;
 
 rollback;

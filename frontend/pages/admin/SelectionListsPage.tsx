@@ -18,6 +18,8 @@ import {
   type SelectionList, type SelectionListOption, type SelectionListDesign, type SelectionListSourceType,
 } from '../../lib/selectionLists'
 import FullScreenDialog from '../../components/FullScreenDialog'
+import KeyRegistryField from '../../components/KeyRegistryField'
+import { rawFromFullKey, syncRegistryAfterSave } from '../../lib/systemKeys'
 
 const BRAND = '#5B4DE6'
 

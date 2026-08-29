@@ -20,6 +20,8 @@ import {
   TableRow,
 } from '../../../lib/shadcn/table'
 import FullScreenDialog from '../../../components/FullScreenDialog'
+import KeyRegistryField from '../../../components/KeyRegistryField'
+import { findDuplicateRawKey, registerRawScopedKey } from '../../../lib/systemKeys'
 import { fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, deleteObjectionTemplate } from '../../../lib/supabaseDb'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField, TaxTypeOverride } from '../../../lib/supabase'
@@ -658,6 +660,14 @@ export default function ObjectionTemplatesPage() {
         return
       }
     }
+    // Scoped uniqueness: within each objection stage, no duplicate data key.
+    for (const step of steps) {
+      const dup = findDuplicateRawKey(((step as any).fields ?? []).map((f: any) => f.key))
+      if (dup) {
+        toast.error(`شناسه کلید داده «${dup}» در مرحله «${step.title}» تکراری است.`)
+        return
+      }
+    }
 
     setIsSaving(true)
     try {
@@ -669,6 +679,17 @@ export default function ObjectionTemplatesPage() {
         await updateObjectionTemplate(editingTemplate.id, payload)
       } else {
         await createObjectionTemplate(payload)
+      }
+
+      // Best-effort central registration of every scoped raw data key.
+      for (const step of steps) {
+        for (const f of ((step as any).fields ?? []) as any[]) {
+          if (!f.key) continue
+          void registerRawScopedKey(
+            { module: 'objection', entityType: 'OBJECTION_STEP', scopeType: 'tax_objection_stages', scopeCode: step.title || 'step', scopeId: String((step as any).id ?? editingTemplate?.id ?? ''), titleFa: f.label || '' },
+            f.key,
+          )
+        }
       }
 
       toast.success('الگوی اعتراض و مراحل آن با موفقیت ذخیره شدند.')
@@ -1553,12 +1574,15 @@ export default function ObjectionTemplatesPage() {
 
                         <div className="flex flex-col gap-1">
                           <Label className="text-xs text-zinc-300">شناسه کلید داده (key)</Label>
-                          <Input
-                            value={field.key}
-                            onChange={(e) => handleUpdateStepField(field.id, 'key', e.target.value)}
+                          <KeyRegistryField
+                            raw
+                            compact
+                            title={field.label}
+                            entityType="OBJECTION_STEP"
+                            module="objection"
+                            initialKey={field.key}
                             placeholder="assessment_number"
-                            className="bg-zinc-950 border-zinc-700 text-zinc-100 h-8 text-xs font-mono"
-                            dir="ltr"
+                            onFullKeyChange={(k) => handleUpdateStepField(field.id, 'key', k)}
                           />
                         </div>
 

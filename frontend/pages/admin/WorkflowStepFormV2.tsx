@@ -9,6 +9,7 @@ import { Label } from '../../lib/shadcn/label'
 import { Switch } from '../../lib/shadcn/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
 import KeyRegistryField from '../../components/KeyRegistryField'
+import { registerRawScopedKey, findDuplicateRawKey } from '../../lib/systemKeys'
 
 type Version = Tables<'obligation_versions'> | any
 type WorkflowStep = Tables<'workflow_steps'> | any
@@ -188,9 +189,18 @@ export default function WorkflowStepFormV2({
       if (!isSupabaseConfigured) {
         throw new Error('اتصال به پایگاه‌داده برقرار نیست. عملیات مرحله انجام نشد.')
       }
+      // Scoped uniqueness: within one step form no two fields may share a key.
+      const dup = findDuplicateRawKey(enteredFields.map((f) => f.key))
+      if (dup) {
+        toast.error(`کلید فیلد «${dup}» در این مرحله تکراری است.`)
+        return
+      }
+
+      let createdStepId: string | undefined
       if (editingStep) {
         const { error } = await supabase.from('workflow_steps').update(stepPayload as any).eq('id', editingStep.id)
         if (error) throw error
+        createdStepId = editingStep.id
         toast.success(`مرحله «${title.trim()}» با موفقیت ویرایش شد.`)
       } else {
         const templateResult = await supabase
@@ -212,12 +222,24 @@ export default function WorkflowStepFormV2({
           template = created.data
         }
 
-        const { error } = await supabase.from('workflow_steps').insert({
+        const createdStep = await supabase.from('workflow_steps').insert({
           workflow_template_id: template.id,
           ...stepPayload,
-        } as any)
-        if (error) throw error
+        } as any).select('id').single()
+        if (createdStep.error) throw createdStep.error
+        createdStepId = createdStep.data?.id
         toast.success('مرحله ثبت شد.')
+      }
+
+      // Best-effort central registration of every scoped raw field key
+      // (namespaced full key in the registry; stored raw key untouched).
+      if (createdStepId) {
+        for (const f of enteredFields) {
+          void registerRawScopedKey(
+            { module: 'workflow', entityType: 'WORKFLOW_STEP', scopeType: 'workflow_steps', scopeCode: normalizedCode, scopeId: createdStepId, titleFa: f.label },
+            f.key,
+          )
+        }
       }
 
       resetForm()
