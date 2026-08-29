@@ -334,13 +334,15 @@ values ('97000000-0000-0000-0000-000000000096', '97000000-0000-0000-0000-0000000
 
 insert into public.obligation_versions (
   id, obligation_id, version_number, status, legal_reference, source_url,
-  effective_from, recurrence_rule, deadline_rule, penalty_rule, created_by
+  effective_from, recurrence_rule, deadline_rule, penalty_rule, created_by,
+  published_by, published_at
 ) values (
   '97000000-0000-0000-0000-000000000097',
   '97000000-0000-0000-0000-000000000096',
   1, 'PUBLISHED', 'مرجع قانونی آزمایشی قفل', 'https://example.invalid/source', current_date,
   '{}'::jsonb, '{}'::jsonb, '{"type":"NONE"}'::jsonb,
-  '97000000-0000-0000-0000-000000000005'
+  '97000000-0000-0000-0000-000000000005',
+  '97000000-0000-0000-0000-000000000005', now()
 );
 
 set local role authenticated;
