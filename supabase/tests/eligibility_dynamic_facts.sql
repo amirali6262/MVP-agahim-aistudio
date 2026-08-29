@@ -35,9 +35,9 @@ insert into public.company_field_definitions (
   id, key, title, field_type, required, section, sort_order,
   is_active, is_system, is_deletable, used_in_eligibility, status
 ) values
-  ('97000000-0000-0000-0000-000000000020', 'legal_person_type', 'نوع شخصیت', 'SELECT', true, 'INITIAL', 1, true, true, false, true, 'PUBLISHED'),
-  ('97000000-0000-0000-0000-000000000021', 'annual_revenue', 'فروش سالانه', 'NUMBER', false, 'COMPLEMENTARY', 2, true, false, true, true, 'PUBLISHED'),
-  ('97000000-0000-0000-0000-000000000022', 'has_active_contracts', 'قرارداد فعال', 'BOOLEAN', false, 'COMPLEMENTARY', 3, true, false, true, true, 'PUBLISHED');
+  ('97000000-0000-0000-0000-000000000020', 'dyn_person_type', 'نوع شخصیت', 'SELECT', true, 'INITIAL', 1, true, true, false, true, 'PUBLISHED'),
+  ('97000000-0000-0000-0000-000000000021', 'dyn_annual_revenue', 'فروش سالانه', 'NUMBER', false, 'COMPLEMENTARY', 2, true, false, true, true, 'PUBLISHED'),
+  ('97000000-0000-0000-0000-000000000022', 'dyn_has_active_contracts', 'قرارداد فعال', 'BOOLEAN', false, 'COMPLEMENTARY', 3, true, false, true, true, 'PUBLISHED');
 
 insert into public.company_field_options (id, field_id, value, label, sort_order, is_active)
 values
@@ -78,22 +78,22 @@ insert into public.eligibility_rule_sets (
   ('97000000-0000-0000-0000-000000000063', '97000000-0000-0000-0000-000000000052', 4, 'قاعده اعتبارسنجی', 'ELIGIBLE', 'توضیح قاعده ۴', '97000000-0000-0000-0000-000000000005');
 
 -- Conditions for the evaluation scenarios.
--- Rule 1 (AND): legal_person_type EQ legal_entity AND annual_revenue GTE 1000
--- Rule 2 (OR):  legal_person_type EQ natural_person OR has_active_contracts IS_TRUE
--- Rule 3:       legal_person_type EQ natural_person
+-- Rule 1 (AND): dyn_person_type EQ legal_entity AND dyn_annual_revenue GTE 1000
+-- Rule 2 (OR):  dyn_person_type EQ natural_person OR dyn_has_active_contracts IS_TRUE
+-- Rule 3:       dyn_person_type EQ natural_person
 insert into public.eligibility_conditions (
   id, rule_set_id, sequence, fact_key, operator, expected_value, connector
 ) values
-  ('97000000-0000-0000-0000-000000000070', '97000000-0000-0000-0000-000000000060', 1, 'legal_person_type', 'EQ', '"legal_entity"', 'AND'),
-  ('97000000-0000-0000-0000-000000000071', '97000000-0000-0000-0000-000000000060', 2, 'annual_revenue', 'GTE', '1000', 'AND'),
-  ('97000000-0000-0000-0000-000000000072', '97000000-0000-0000-0000-000000000061', 1, 'legal_person_type', 'EQ', '"natural_person"', 'AND'),
-  ('97000000-0000-0000-0000-000000000073', '97000000-0000-0000-0000-000000000061', 2, 'has_active_contracts', 'IS_TRUE', null, 'OR'),
-  ('97000000-0000-0000-0000-000000000074', '97000000-0000-0000-0000-000000000062', 1, 'legal_person_type', 'EQ', '"natural_person"', 'AND');
+  ('97000000-0000-0000-0000-000000000070', '97000000-0000-0000-0000-000000000060', 1, 'dyn_person_type', 'EQ', '"legal_entity"', 'AND'),
+  ('97000000-0000-0000-0000-000000000071', '97000000-0000-0000-0000-000000000060', 2, 'dyn_annual_revenue', 'GTE', '1000', 'AND'),
+  ('97000000-0000-0000-0000-000000000072', '97000000-0000-0000-0000-000000000061', 1, 'dyn_person_type', 'EQ', '"natural_person"', 'AND'),
+  ('97000000-0000-0000-0000-000000000073', '97000000-0000-0000-0000-000000000061', 2, 'dyn_has_active_contracts', 'IS_TRUE', null, 'OR'),
+  ('97000000-0000-0000-0000-000000000074', '97000000-0000-0000-0000-000000000062', 1, 'dyn_person_type', 'EQ', '"natural_person"', 'AND');
 
 -- ── Validator behaviour ─────────────────────────────────────────────────────
 -- New designer fact keys are accepted.
 insert into public.eligibility_conditions (rule_set_id, sequence, fact_key, operator, expected_value)
-values ('97000000-0000-0000-0000-000000000063', 1, 'legal_person_type', 'IN', '["legal_entity","natural_person"]'::jsonb);
+values ('97000000-0000-0000-0000-000000000063', 1, 'dyn_person_type', 'IN', '["legal_entity","natural_person"]'::jsonb);
 
 -- Legacy (pre-designer) fact keys stay valid so existing rules keep working.
 insert into public.eligibility_conditions (rule_set_id, sequence, fact_key, operator, expected_value)
@@ -121,7 +121,7 @@ do $$
 begin
   begin
     insert into public.eligibility_conditions (rule_set_id, sequence, fact_key, operator, expected_value, connector)
-    values ('97000000-0000-0000-0000-000000000063', 4, 'legal_person_type', 'EQ', '"legal_entity"', 'XOR');
+    values ('97000000-0000-0000-0000-000000000063', 4, 'dyn_person_type', 'EQ', '"legal_entity"', 'XOR');
     raise exception 'invalid connector was accepted';
   exception when others then
     if sqlerrm like '%eligibility_conditions_connector_check%' then
@@ -138,7 +138,7 @@ do $$
 begin
   begin
     insert into public.eligibility_conditions (rule_set_id, sequence, fact_key, operator, expected_value)
-    values ('97000000-0000-0000-0000-000000000063', 5, 'annual_revenue', 'GTE', '"1500"');
+    values ('97000000-0000-0000-0000-000000000063', 5, 'dyn_annual_revenue', 'GTE', '"1500"');
     raise exception 'string expected value for NUMBER fact was accepted';
   exception when others then
     if sqlerrm like '%numeric facts require a numeric comparison value%' then
@@ -155,7 +155,7 @@ do $$
 begin
   begin
     insert into public.eligibility_conditions (rule_set_id, sequence, fact_key, operator, expected_value)
-    values ('97000000-0000-0000-0000-000000000063', 6, 'legal_person_type', 'IS_NULL', '"x"');
+    values ('97000000-0000-0000-0000-000000000063', 6, 'dyn_person_type', 'IS_NULL', '"x"');
     raise exception 'null-check operator with a value was accepted';
   exception when others then
     if sqlerrm like '%null-check operators do not accept an expected value%' then
@@ -199,7 +199,7 @@ $$;
 reset role;
 
 -- Evaluate as the tenant owner. Tenant values: legal_entity + revenue 1500 +
--- has_active_contracts true  →  rule 1 (AND) matches  →  ELIGIBLE.
+-- dyn_has_active_contracts true  →  rule 1 (AND) matches  →  ELIGIBLE.
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '97000000-0000-0000-0000-000000000001', true);
 select set_config('request.jwt.claims', '{"sub":"97000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}', true);
@@ -222,7 +222,7 @@ end
 $$;
 
 -- Lower revenue below the threshold: rule 1 (AND) must fail, rule 2 (OR) must
--- match through has_active_contracts = true.
+-- match through dyn_has_active_contracts = true.
 update public.company_field_values
 set value = '100', updated_at = now()
 where id = '97000000-0000-0000-0000-000000000041';
@@ -313,7 +313,7 @@ insert into public.eligibility_rule_sets (
 );
 
 insert into public.eligibility_conditions (id, rule_set_id, sequence, fact_key, operator, expected_value)
-values ('97000000-0000-0000-0000-000000000093', '97000000-0000-0000-0000-000000000092', 1, 'legal_person_type', 'EQ', '"legal_entity"');
+values ('97000000-0000-0000-0000-000000000093', '97000000-0000-0000-0000-000000000092', 1, 'dyn_person_type', 'EQ', '"legal_entity"');
 
 insert into public.tenant_obligation_fulfillments (id, tenant_id, obligation_id, status)
 values ('97000000-0000-0000-0000-000000000094', '97000000-0000-0000-0000-000000000010', '97000000-0000-0000-0000-000000000090', 'PENDING');
