@@ -18,6 +18,8 @@ import {
   type SelectionList, type SelectionListOption, type SelectionListDesign, type SelectionListSourceType,
 } from '../../lib/selectionLists'
 import FullScreenDialog from '../../components/FullScreenDialog'
+import KeyRegistryField from '../../components/KeyRegistryField'
+import { rawFromFullKey, syncRegistryAfterSave } from '../../lib/systemKeys'
 
 const BRAND = '#5B4DE6'
 
@@ -224,6 +226,21 @@ export default function SelectionListsPage() {
           }
         }
       }
+      if (saved.id && listForm.key?.trim()) {
+        try {
+          await syncRegistryAfterSave({
+            full_key: `selection_list.${String(listForm.key).trim().toLowerCase()}`,
+            title_fa: listForm.title.trim(),
+            entity_type: 'SELECTION_LIST',
+            module: 'selection',
+            form_name: listForm.is_dependent ? 'فهرست وابسته' : 'فهرست مستقل',
+            source_table: 'selection_lists',
+            source_record_id: saved.id,
+            locked: saved.status === 'PUBLISHED',
+            lock_reason: saved.status === 'PUBLISHED' ? 'پس از انتشار قفل است' : null,
+          })
+        } catch { /* advisory */ }
+      }
       toast.success(editingList ? 'فهرست بهروزرسانی شد.' : 'فهرست ساخته شد.')
       setListModalOpen(false)
       void load()
@@ -416,7 +433,20 @@ export default function SelectionListsPage() {
               {listStep === 1 && (
                 <>
                   <Field label="عنوان *"><Input value={listForm.title ?? ''} onChange={(e) => setListForm({ ...listForm, title: e.target.value })} className="h-10" placeholder="مثلاً نوع شخصیت" /></Field>
-                  <Field label="کلید ثابت *"><Input dir="ltr" value={listForm.key ?? ''} disabled={!!editingList && editingList.status === 'PUBLISHED'} onChange={(e) => setListForm({ ...listForm, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, '_') })} className="h-10" placeholder="legal_person_types" /></Field>
+                  <Field label="کلید ثابت *">
+                    <KeyRegistryField
+                      title={listForm.title ?? ''}
+                      entityType="SELECTION_LIST"
+                      module="selection"
+                      formName={listForm.is_dependent ? 'فهرست وابسته' : 'فهرست مستقل'}
+                      initialKey={listForm.key ?? ''}
+                      locked={!!editingList && editingList.status === 'PUBLISHED'}
+                      lockReason={!!editingList && editingList.status === 'PUBLISHED' ? 'پس از انتشار قابل تغییر نیست' : undefined}
+                      sourceTable="selection_lists"
+                      sourceRecordId={editingList?.id ?? null}
+                      onFullKeyChange={(fullKey) => setListForm({ ...listForm, key: rawFromFullKey(fullKey) })}
+                    />
+                  </Field>
                   <Field label="توضیح"><textarea rows={2} value={listForm.description ?? ''} onChange={(e) => setListForm({ ...listForm, description: e.target.value })} className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:ring-2 dark:border-zinc-700 dark:bg-[#1d1d20] dark:text-zinc-100" /></Field>
                   <Field label="نوع منبع">
                     <Select value={listForm.source_type ?? 'STATIC'} disabled={!!editingList && editingList.status === 'PUBLISHED'} onValueChange={(v) => setListForm({ ...listForm, source_type: v as SelectionListSourceType, is_dependent: false, parent_list_id: null, system_source_key: null })}>
@@ -662,6 +692,24 @@ function OptionsEditor({
           await (supabase as any).from('selection_list_options').update({ parent_option_id: idByKey[r.parent_key] }).eq('id', idByKey[r.key])
         }
       }
+      for (const r of valid) {
+        const oid = idByKey[r.key]
+        if (oid) {
+          try {
+            await syncRegistryAfterSave({
+              full_key: `selection_option.${String(list.key).toLowerCase()}.${r.key.toLowerCase()}`,
+              title_fa: r.label.trim(),
+              entity_type: 'SELECTION_OPTION',
+              module: 'selection',
+              form_name: 'گزینه‌های فهرست «' + list.title + '»',
+              source_table: 'selection_list_options',
+              source_record_id: oid,
+              locked: list.status === 'PUBLISHED',
+              lock_reason: list.status === 'PUBLISHED' ? 'پس از انتشار قفل است' : null,
+            })
+          } catch { /* advisory */ }
+        }
+      }
       toast.success('گزینهها ذخیره شدند.')
       onSaved()
     } catch (err) {
@@ -687,7 +735,19 @@ function OptionsEditor({
               {rows.map((row, index) => (
                 <tr key={index} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
                   <td className="px-2 py-1"><Input value={row.label} onChange={(e) => { const n = [...rows]; n[index] = { ...n[index], label: e.target.value }; setRows(n) }} className="h-8 text-xs" /></td>
-                  <td className="px-2 py-1"><Input dir="ltr" value={row.key} onChange={(e) => { const n = [...rows]; n[index] = { ...n[index], key: e.target.value.toLowerCase().replace(/[^a-z0-9_]+/g, '_') }; setRows(n) }} className="h-8 w-36 font-mono text-[11px]" /></td>
+                  <td className="px-2 py-1">
+                    <KeyRegistryField
+                      compact
+                      title={row.label}
+                      entityType="SELECTION_OPTION"
+                      module="selection"
+                      parentKey={list.key}
+                      initialKey={row.key}
+                      sourceTable="selection_list_options"
+                      sourceRecordId={row.id ?? null}
+                      onFullKeyChange={(fullKey) => { const n = [...rows]; n[index] = { ...n[index], key: rawFromFullKey(fullKey) }; setRows(n) }}
+                    />
+                  </td>
                   <td className="px-2 py-1">
                     <Select value={row.parent_key ?? ''} onValueChange={(v) => { const n = [...rows]; n[index] = { ...n[index], parent_key: v || undefined }; setRows(n) }}>
                       <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>

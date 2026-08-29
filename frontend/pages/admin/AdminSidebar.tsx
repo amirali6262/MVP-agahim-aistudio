@@ -61,6 +61,7 @@ const CORE_MENU: MenuSection[] = [
       { id: 'company-info', label: 'طراحی اطلاعات شرکت', path: '/admin/company-info', active: true },
       { id: 'selection-lists', label: 'فهرستهای انتخابی', path: '/admin/selection-lists', active: true },
       { id: 'company-menu', label: 'مدیریت منوی فضای شرکت', path: '/admin/company-menu', active: true },
+      { id: 'system-keys', label: 'فهرست کلیدهای سیستم', path: '/admin/system-keys', active: true },
     ],
   },
 ]
