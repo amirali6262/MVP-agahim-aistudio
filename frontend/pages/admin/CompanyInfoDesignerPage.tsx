@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+
 import { toast } from 'sonner'
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Calendar, CheckCircle2, Eye, FolderKanban, Loader2,
@@ -16,6 +17,9 @@ import {
   type CompanyFieldDefinition, type CompanyFieldOption, type CompanyFieldType, type CompanyFieldSection,
   type CompanyWidth, type CompanyWizardStep, type CompanyInfoDesign,
 } from '../../lib/companyInfo'
+import OptionSourcePicker from '../../components/selectionLists/OptionSourcePicker'
+import ConditionBuilder from '../../components/condition/ConditionBuilder'
+import { emptyGroup, type ConditionFieldDescriptor, type ConditionRuleModel, type ConditionRow } from '../../lib/conditionSchema'
 
 const BRAND = '#5B4DE6'
 const FIELD_TYPES: Array<{ value: CompanyFieldType; label: string }> = [
@@ -30,7 +34,7 @@ const FIELD_TYPES: Array<{ value: CompanyFieldType; label: string }> = [
 ]
 
 export default function CompanyInfoDesignerPage() {
-  const [design, setDesign] = useState<CompanyInfoDesign>({ definitions: [], options: [], steps: [] })
+  const [design, setDesign] = useState<CompanyInfoDesign>({ definitions: [], options: [], steps: [], selectionLists: [], selectionOptions: [] })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [tab, setTab] = useState<CompanyFieldSection>('INITIAL')
@@ -41,6 +45,18 @@ export default function CompanyInfoDesignerPage() {
   const [editingField, setEditingField] = useState<CompanyFieldDefinition | null>(null)
   const [fieldForm, setFieldForm] = useState<Record<string, any>>({})
   const [optionRows, setOptionRows] = useState<Array<{ id?: string; value: string; label: string }>>([])
+  const [condTestValues, setCondTestValues] = useState<Record<string, string>>({})
+
+  const conditionFieldDescriptors: ConditionFieldDescriptor[] = useMemo(() =>
+    design.definitions.filter((f) => f.status === 'PUBLISHED' || f.is_active).map((f) => ({
+      key: f.key,
+      title: f.title,
+      type: f.field_type as ConditionFieldDescriptor['type'],
+      section: f.section === 'BOTH' ? 'INITIAL' : f.section,
+      stepTitle: (design.steps.find((s) => s.id === f.wizard_step_id)?.title) ?? undefined,
+    })),
+    [design]
+  )
 
   // Wizard step modal state
   const [stepModalOpen, setStepModalOpen] = useState(false)
@@ -71,7 +87,7 @@ export default function CompanyInfoDesignerPage() {
 
   const openAddField = () => {
     setEditingField(null)
-    setFieldForm({ title: '', key: '', field_type: 'TEXT', help_text: '', required: true, section: tab, wizard_step_id: null, sort_order: 1, width: 'FULL', used_in_eligibility: false, is_active: true })
+    setFieldForm({ title: '', key: '', field_type: 'TEXT', help_text: '', required: true, section: tab, wizard_step_id: null, sort_order: 1, width: 'FULL', used_in_eligibility: false, is_active: true, selection_list_id: null, condition_model: null })
     setOptionRows([{ value: '', label: '' }])
     setFieldModalOpen(true)
   }
@@ -82,6 +98,8 @@ export default function CompanyInfoDesignerPage() {
       title: field.title, key: field.key, field_type: field.field_type, help_text: field.help_text ?? '',
       required: field.required, section: field.section, wizard_step_id: field.wizard_step_id, sort_order: field.sort_order,
       width: field.width, used_in_eligibility: field.used_in_eligibility, is_active: field.is_active,
+      selection_list_id: field.selection_list_id ?? null,
+      condition_model: field.condition_model ?? null,
     })
     setOptionRows((optionsByField[field.id] ?? []).map((o) => ({ id: o.id, value: o.value, label: o.label })))
     setFieldModalOpen(true)
@@ -96,9 +114,10 @@ export default function CompanyInfoDesignerPage() {
       return toast.error('فیلدهای سیستمی قابل غیرفعال/اختیاری‌کردن نیستند.')
     }
     const type = fieldForm.field_type as CompanyFieldType
-    if (type === 'SELECT' || type === 'MULTI_SELECT') {
+    const linkedListId = (fieldForm.selection_list_id as string | null) ?? null
+    if (type === 'SELECT' || type === 'MULTI_SELECT' && !linkedListId) {
       const valid = optionRows.filter((r) => r.value.trim() && r.label.trim())
-      if (valid.length === 0) return toast.error('برای فیلد انتخابی حداقل یک گزینه تعریف کنید.')
+      if (valid.length === 0) return toast.error('برای فیلد انتخابی، یا گزینه تعریف کنید یا به یک فهرست انتخابی منتشرشده متصل شوید.')
     }
     try {
       const saved = await saveCompanyFieldDefinition({
@@ -116,8 +135,10 @@ export default function CompanyInfoDesignerPage() {
         is_active: fieldForm.is_active !== false,
         is_system: editingField?.is_system ?? false,
         is_deletable: editingField?.is_deletable ?? true,
+        selection_list_id: linkedListId,
+        condition_model: (fieldForm.condition_model as ConditionRuleModel | null) ?? null,
       })
-      if (type === 'SELECT' || type === 'MULTI_SELECT') {
+      if ((type === 'SELECT' || type === 'MULTI_SELECT') && !linkedListId) {
         await saveCompanyFieldOptions(saved!.id, optionRows.filter((r) => r.value.trim() && r.label.trim()).map((r, i) => ({ ...(r.id ? { id: r.id } : {}), value: r.value.trim(), label: r.label.trim(), sort_order: i + 1 })))
       }
       toast.success(editingField ? 'فیلد به‌روزرسانی شد.' : 'فیلد افزوده شد.')
@@ -378,18 +399,40 @@ export default function CompanyInfoDesignerPage() {
                 <ToggleField label="استفاده در تشخیص تعهدات" checked={!!fieldForm.used_in_eligibility} onChange={(v) => setFieldForm({ ...fieldForm, used_in_eligibility: v })} />
               </div>
               {(fieldForm.field_type === 'SELECT' || fieldForm.field_type === 'MULTI_SELECT') && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-zinc-700 dark:text-zinc-200">گزینه‌ها</Label>
-                  {optionRows.map((row, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Input value={row.value} onChange={(e) => { const next = [...optionRows]; next[index] = { ...next[index], value: e.target.value }; setOptionRows(next) }} placeholder="مقدار ثابت" dir="ltr" className="h-9" />
-                      <Input value={row.label} onChange={(e) => { const next = [...optionRows]; next[index] = { ...next[index], label: e.target.value }; setOptionRows(next) }} placeholder="عنوان نمایشی" className="h-9" />
-                      <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-red-500" onClick={() => setOptionRows(optionRows.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                <div className="space-y-4">
+                  <OptionSourcePicker
+                    value={(fieldForm.selection_list_id as string | null) ?? null}
+                    onChange={(id) => setFieldForm({ ...fieldForm, selection_list_id: id })}
+                    contextLabel="منبع گزینه‌ها"
+                  />
+                  <div className="space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-zinc-700 dark:text-zinc-200">گزینه‌های ردیفی (در صورت عدم اتصال به فهرست)</Label>
                     </div>
-                  ))}
-                  <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setOptionRows([...optionRows, { value: '', label: '' }])}><Plus className="h-3.5 w-3.5" />افزودن گزینه</Button>
+                    {optionRows.map((row, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <Input value={row.value} onChange={(e) => { const next = [...optionRows]; next[index] = { ...next[index], value: e.target.value }; setOptionRows(next) }} placeholder="مقدار ثابت" dir="ltr" className="h-9" />
+                        <Input value={row.label} onChange={(e) => { const next = [...optionRows]; next[index] = { ...next[index], label: e.target.value }; setOptionRows(next) }} placeholder="عنوان نمایشی" className="h-9" />
+                        <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-red-500" onClick={() => setOptionRows(optionRows.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                    ))}
+                    <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => setOptionRows([...optionRows, { value: '', label: '' }])}><Plus className="h-3.5 w-3.5" />افزودن گزینه</Button>
+                  </div>
                 </div>
               )}
+              <div className="space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-200">شرط نمایش / شمول (اختیاری — ConditionBuilder مشترک)</p>
+                <ConditionBuilder
+                  model={(fieldForm.condition_model as ConditionRuleModel) || { version: 1, groups: [emptyGroup(fieldForm.key ?? 'field')] }}
+                  onChange={(m) => setFieldForm({ ...fieldForm, condition_model: m })}
+                  fields={conditionFieldDescriptors}
+                  selectionLists={design.selectionLists}
+                  selectionOptions={design.selectionOptions}
+                  sourceKey={fieldForm.key ?? 'field'}
+                  testValues={condTestValues}
+                  onTestValuesChange={setCondTestValues}
+                />
+              </div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
               <Button variant="outline" size="sm" onClick={() => setFieldModalOpen(false)} className="border-zinc-300 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">انصراف</Button>
