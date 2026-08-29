@@ -307,6 +307,7 @@ export type Database = {
           closed_at: string | null
           created_at: string
           current_step_id: string | null
+          fiscal_year_id: string | null
           id: string
           obligation_version_id: string
           opened_at: string
@@ -321,6 +322,7 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           current_step_id?: string | null
+          fiscal_year_id?: string | null
           id?: string
           obligation_version_id: string
           opened_at?: string
@@ -335,6 +337,7 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           current_step_id?: string | null
+          fiscal_year_id?: string | null
           id?: string
           obligation_version_id?: string
           opened_at?: string

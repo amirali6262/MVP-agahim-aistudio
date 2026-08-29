@@ -58,6 +58,7 @@ const CORE_MENU: MenuSection[] = [
     children: [
       { id: 'compliance-studio', label: 'استودیوی تعهدات و مراحل', path: '/admin/studio', active: true },
       { id: 'circular-center', label: 'مرکز مهلت و بخشنامه', path: '/admin/circulars', active: true },
+      { id: 'company-info', label: 'طراحی اطلاعات شرکت', path: '/admin/company-info', active: true },
       { id: 'company-menu', label: 'مدیریت منوی فضای شرکت', path: '/admin/company-menu', active: true },
     ],
   },

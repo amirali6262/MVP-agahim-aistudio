@@ -215,6 +215,44 @@ export async function deleteFiscalYear(id: string): Promise<boolean> {
   return !error
 }
 
+export type FiscalYearStatus = 'CURRENT' | 'UPCOMING' | 'ENDED' | 'CLOSED' | 'DRAFT'
+
+export function jalaaliToday(): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+    const get = (type: any) => parts.find((p) => p.type === type)?.value ?? ''
+    return `${get('year')}/${get('month')}/${get('day')}`
+  } catch {
+    return ''
+  }
+}
+
+// Dates are stored as zero-padded Jalali "YYYY/MM/DD" text, so string
+// comparison matches chronological order without a date library.
+export function describeFiscalYearState(year: Pick<TenantFiscalYear, 'start_date' | 'end_date' | 'status'>): { key: FiscalYearStatus; label: string } {
+  if (year.status === 'CLOSED') return { key: 'CLOSED', label: 'بسته‌شده' }
+  if (!year.start_date || !year.end_date) return { key: 'DRAFT', label: 'پیش‌نویس' }
+  const today = jalaaliToday()
+  if (today !== '') {
+    if (today < year.start_date) return { key: 'UPCOMING', label: 'آینده' }
+    if (today > year.end_date) return { key: 'ENDED', label: 'پایان‌یافته' }
+  }
+  return { key: 'CURRENT', label: 'جاری' }
+}
+
+export function fiscalYearOptionLabel(year: Pick<TenantFiscalYear, 'title' | 'start_date' | 'end_date' | 'status'>) {
+  const state = describeFiscalYearState(year)
+  return `${year.title} — از ${year.start_date} تا ${year.end_date} (${state.label})`
+}
+
+// Securely link a fiscal year to an obligation case (permission checked server-side).
+export async function setCaseFiscalYear(caseId: string, fiscalYearId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured) return { ok: false, error: 'اتصال به پایگاه‌داده برقرار نیست.' }
+  const { error } = await (supabase as any).rpc('set_case_fiscal_year', { p_case_id: caseId, p_fiscal_year_id: fiscalYearId })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 // ---------------------------------------------------------------------------
 // Corporate Tax Filings
 // ---------------------------------------------------------------------------
@@ -1011,6 +1049,7 @@ export interface ObligationFormPreview {
   is_active: boolean
   version_number: number
   version_status: string
+  version_id: string | null
   published_at: string | null
   effective_from: string | null
   effective_to: string | null
@@ -1022,7 +1061,7 @@ export async function fetchObligationFormPreview(obligationId: string): Promise<
   if (!isSupabaseConfigured) return null
   const { data, error } = await (supabase as any)
     .from('obligations')
-    .select('*, family:obligation_families(domain, title), versions:obligation_versions(status, version_number, published_at, effective_from, effective_to, legal_reference)')
+    .select('*, family:obligation_families(domain, title), versions:obligation_versions(id, status, version_number, published_at, effective_from, effective_to, legal_reference)')
     .eq('id', obligationId)
     .eq('versions.status', 'PUBLISHED')
     .order('version_number', { foreignTable: 'versions', ascending: false })
@@ -1039,12 +1078,110 @@ export async function fetchObligationFormPreview(obligationId: string): Promise<
     is_active: data.is_active ?? true,
     version_number: version?.version_number ?? 1,
     version_status: version?.status ?? 'NONE',
+    version_id: version?.id ?? null,
     published_at: version?.published_at ?? null,
     effective_from: version?.effective_from ?? null,
     effective_to: version?.effective_to ?? null,
     legal_reference: version?.legal_reference ?? null,
     official_action_url: data.official_action_url ?? null,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Obligation workflow steps + scope (eligibility) for the company form page
+// ---------------------------------------------------------------------------
+
+export interface ObligationWorkflowField {
+  key: string
+  label: string
+  type: string
+  required: boolean
+}
+
+export interface ObligationWorkflowStep {
+  id: string
+  code: string
+  title: string
+  sequence: number
+  is_optional: boolean
+  actor: string
+  instructions: string | null
+  fields: ObligationWorkflowField[]
+  field_count: number
+  required_field_count: number
+}
+
+export type ObligationEligibilityState =
+  | { outcome: 'ELIGIBLE'; explanation: string }
+  | { outcome: 'NOT_ELIGIBLE'; explanation: string }
+  | { outcome: 'REVIEW'; explanation: string }
+  | { outcome: 'PROFILE_REQUIRED'; explanation: string }
+  | { outcome: 'UNAVAILABLE'; explanation: string }
+
+export async function fetchObligationWorkflowSteps(versionId: string): Promise<ObligationWorkflowStep[]> {
+  if (!isSupabaseConfigured || !versionId) return []
+  const { data: templates, error } = await (supabase as any)
+    .from('workflow_templates')
+    .select('id')
+    .eq('obligation_version_id', versionId)
+    .limit(1)
+  if (error || !templates || templates.length === 0) return []
+  const templateId = templates[0].id
+  const { data: steps, error: stepsError } = await (supabase as any)
+    .from('workflow_steps')
+    .select('id, code, title, sequence, is_optional, actor, instructions, form_schema')
+    .eq('workflow_template_id', templateId)
+    .order('sequence', { ascending: true })
+  if (stepsError) return []
+  return (steps ?? []).map((step: any): ObligationWorkflowStep => {
+    const rawFields = Array.isArray(step.form_schema?.fields) ? step.form_schema.fields : []
+    const fields = rawFields
+      .filter((item: any) => item && typeof item.key === 'string' && typeof item.label === 'string')
+      .map((item: any): ObligationWorkflowField => ({
+        key: item.key,
+        label: item.label,
+        type: String(item.type ?? 'text'),
+        required: item.required === true,
+      }))
+    return {
+      id: step.id,
+      code: step.code ?? '',
+      title: step.title,
+      sequence: step.sequence,
+      is_optional: step.is_optional === true,
+      actor: step.actor ?? '',
+      instructions: step.instructions ?? null,
+      fields,
+      field_count: fields.length,
+      required_field_count: fields.filter((field: ObligationWorkflowField) => field.required).length,
+    }
+  })
+}
+
+export async function evaluateObligationEligibility(tenantId: string, versionId: string): Promise<ObligationEligibilityState> {
+  if (!isSupabaseConfigured || !tenantId || !versionId) {
+    return { outcome: 'UNAVAILABLE', explanation: 'ارزیابی مشمولیت در دسترس نیست.' }
+  }
+  const { data, error } = await (supabase as any).rpc('evaluate_tenant_eligibility', { requested_tenant_id: tenantId })
+  if (error) {
+    const message = error.message ?? ''
+    if (/profile required/i.test(message) || message.includes('P0002')) {
+      return {
+        outcome: 'PROFILE_REQUIRED',
+        explanation: 'برای تشخیص شمولیت، ابتدا مشخصات کسب‌وکار شرکت را در بخش «کسب‌وکار و مشمولیت» ثبت و تکمیل کنید.',
+      }
+    }
+    return { outcome: 'UNAVAILABLE', explanation: message }
+  }
+  const row = (data ?? []).find((item: any) => item.obligation_version_id === versionId)
+  if (!row) {
+    return { outcome: 'REVIEW', explanation: 'ارزیابی شمولیت برای این نسخه انجام نشده است؛ لطفاً دوباره بررسی کنید.' }
+  }
+  const outcome = row.outcome
+  const explanation = row.explanation ?? ''
+  if (outcome === 'ELIGIBLE') return { outcome: 'ELIGIBLE', explanation }
+  if (outcome === 'NOT_ELIGIBLE') return { outcome: 'NOT_ELIGIBLE', explanation }
+  return { outcome: 'REVIEW', explanation }
 }
 
 // Publish the validated tree snapshot into the published menu table.

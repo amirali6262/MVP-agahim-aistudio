@@ -17,6 +17,7 @@ import CommercialBooksAdminPage from './pages/admin/books/CommercialBooksAdminPa
 import ChecklistAdminPage from './pages/admin/checklists/ChecklistAdminPage'
 import ObjectionTemplatesPage from './pages/admin/objections/ObjectionTemplatesPage'
 import CompanyMenuManagerPage from './pages/admin/CompanyMenuManagerPage'
+import CompanyInfoDesignerPage from './pages/admin/CompanyInfoDesignerPage'
 import DeadlineExtensionsPage from './pages/admin/extensions/DeadlineExtensionsPage'
 import AdminUserAccessPage from './pages/admin/AdminUserAccessPage'
 import UserAuth from './pages/auth/UserAuth'
@@ -27,6 +28,9 @@ import PanelPlaceholderPage from './pages/panel/PanelPlaceholderPage'
 import CompanyMembersPage from './pages/panel/CompanyMembersPage'
 import CompanyMenuFormPage from './pages/panel/CompanyMenuFormPage'
 import CompanyBusinessProfile from './components/CompanyBusinessProfile'
+import CompanySettingsPage from './pages/panel/CompanySettingsPage'
+import CompanyFiscalYearsPage from './pages/panel/CompanyFiscalYearsPage'
+import CompanyInfoWizardPage from './pages/panel/CompanyInfoWizardPage'
 
 import './styles/persian.css'
 
@@ -257,6 +261,15 @@ export default function App() {
             />
 
             <Route
+              path="/admin/company-info"
+              element={
+                <AdminPage>
+                  <CompanyInfoDesignerPage />
+                </AdminPage>
+              }
+            />
+
+            <Route
               path="/admin/company-menu"
               element={
                 <AdminPage>
@@ -347,17 +360,10 @@ export default function App() {
                 }
               />
               <Route path="business" element={<CompanyBusinessProfileView />} />
+              <Route path="company-info" element={<CompanyInfoWizardPage />} />
               <Route path="members" element={<CompanyMembersPage />} />
-              <Route
-                path="settings"
-                element={
-                  <PanelPlaceholderPage
-                    pageKey="settings"
-                    title="تنظیمات شرکت"
-                    description="تنظیمات شرکت و ترجیحات فضای کاری در این مرحله ارائه نمی‌شود."
-                  />
-                }
-              />
+              <Route path="settings" element={<CompanySettingsPage />} />
+              <Route path="fiscal-years" element={<CompanyFiscalYearsPage />} />
               <Route
                 path="help"
                 element={
