@@ -2,9 +2,16 @@ import type { CompanyFieldDefinition, CompanyFieldOption } from '../../lib/compa
 
 export type CompanyFieldValues = Record<string, string>
 
+export type SlimSelectionList = { id: string; key: string; title: string; is_dependent: boolean; parent_list_id: string | null }
+export type SlimSelectionOption = { id: string; list_id: string; key: string; label: string; parent_option_id: string | null; sort_order: number; is_active: boolean }
+
 interface Props {
   definitions: CompanyFieldDefinition[]
+  /** Inline options keyed to field_id (legacy / non-list-linked fields). */
   options: CompanyFieldOption[]
+  /** Published central selection lists + options, used when a field is list-linked. */
+  selectionLists?: SlimSelectionList[]
+  selectionOptions?: SlimSelectionOption[]
   values: CompanyFieldValues
   onChange: (fieldId: string, value: string) => void
   columns?: 1 | 2
@@ -39,7 +46,7 @@ function conditionMatched(
   }
 }
 
-export default function CompanyDynamicFields({ definitions, options, values, onChange, columns = 1, readOnly = false }: Props) {
+export default function CompanyDynamicFields({ definitions, options, selectionLists = [], selectionOptions = [], values, onChange, columns = 1, readOnly = false }: Props) {
   const visible = definitions.filter((d) => conditionMatched(d, definitions, values))
 
   return (
@@ -48,7 +55,9 @@ export default function CompanyDynamicFields({ definitions, options, values, onC
         <div key={def.id} className={def.width === 'HALF' && columns === 2 ? 'md:col-span-1' : ''}>
           <CompanyFieldInput
             def={def}
-            options={options}
+            inlineOptions={options}
+            selectionLists={selectionLists}
+            selectionOptions={selectionOptions}
             value={values[def.id] ?? ''}
             onChange={(v) => onChange(def.id, v)}
             readOnly={readOnly}
@@ -59,15 +68,26 @@ export default function CompanyDynamicFields({ definitions, options, values, onC
   )
 }
 
-export function CompanyFieldInput({ def, options, value, onChange, readOnly }: {
+export function CompanyFieldInput({ def, inlineOptions, selectionLists = [], selectionOptions = [], value, onChange, readOnly }: {
   def: CompanyFieldDefinition
-  options: CompanyFieldOption[]
+  inlineOptions: CompanyFieldOption[]
+  selectionLists?: SlimSelectionList[]
+  selectionOptions?: SlimSelectionOption[]
   value: string
   onChange: (value: string) => void
   readOnly?: boolean
 }) {
   const disabled = readOnly
-  const fieldOptions = options.filter((o) => o.field_id === def.id).sort((a, b) => a.sort_order - b.sort_order)
+  // If the module is linked to a central list, options come from that list
+  // (stored key = logical value; label is presentation-only). Otherwise fall
+  // back to inline options defined directly on the field.
+  const linkedList = selectionLists.find((l) => l.id === def.selection_list_id)
+  const listOpts = linkedList
+    ? selectionOptions.filter((o) => o.list_id === linkedList.id && o.is_active).sort((a, b) => a.sort_order - b.sort_order)
+    : []
+  const fieldOptions: Array<{ id: string; value: string; label: string }> = linkedList
+    ? listOpts.map((o) => ({ id: o.key, value: o.key, label: o.label }))
+    : inlineOptions.filter((o) => o.field_id === def.id && o.is_active !== false).sort((a, b) => a.sort_order - b.sort_order).map((o) => ({ id: o.id, value: o.value, label: o.label }))
   const label = (
     <span className="text-xs font-medium text-zinc-700 dark:text-zinc-200">
       {def.title} {def.required && <span className="text-red-500">*</span>}

@@ -18,6 +18,7 @@ import ChecklistAdminPage from './pages/admin/checklists/ChecklistAdminPage'
 import ObjectionTemplatesPage from './pages/admin/objections/ObjectionTemplatesPage'
 import CompanyMenuManagerPage from './pages/admin/CompanyMenuManagerPage'
 import CompanyInfoDesignerPage from './pages/admin/CompanyInfoDesignerPage'
+import SelectionListsPage from './pages/admin/SelectionListsPage'
 import DeadlineExtensionsPage from './pages/admin/extensions/DeadlineExtensionsPage'
 import AdminUserAccessPage from './pages/admin/AdminUserAccessPage'
 import UserAuth from './pages/auth/UserAuth'
@@ -256,6 +257,15 @@ export default function App() {
               element={
                 <AdminPage>
                   <ObjectionTemplatesPage />
+                </AdminPage>
+              }
+            />
+
+            <Route
+              path="/admin/selection-lists"
+              element={
+                <AdminPage>
+                  <SelectionListsPage />
                 </AdminPage>
               }
             />

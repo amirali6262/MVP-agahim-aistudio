@@ -155,6 +155,8 @@ export default function AddTenantForm({ onBack, onSuccess }: Props) {
           <CompanyDynamicFields
             definitions={initialDefinitions}
             options={design.options}
+            selectionLists={design.selectionLists}
+            selectionOptions={design.selectionOptions}
             values={values}
             onChange={(fieldId, v) => setValues((prev) => ({ ...prev, [fieldId]: v }))}
             columns={1}
