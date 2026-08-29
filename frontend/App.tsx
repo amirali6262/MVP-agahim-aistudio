@@ -21,8 +21,12 @@ import DeadlineExtensionsPage from './pages/admin/extensions/DeadlineExtensionsP
 import AdminUserAccessPage from './pages/admin/AdminUserAccessPage'
 import UserAuth from './pages/auth/UserAuth'
 import WorkspacePage from './pages/workspace/WorkspacePage'
-import PanelDashboard from './pages/panel/PanelDashboard'
+import CompanyWorkspaceShell from './pages/panel/CompanyWorkspaceShell'
+import CompanyDashboard from './pages/panel/CompanyDashboard'
+import PanelPlaceholderPage from './pages/panel/PanelPlaceholderPage'
+import CompanyMembersPage from './pages/panel/CompanyMembersPage'
 import CompanyMenuFormPage from './pages/panel/CompanyMenuFormPage'
+import CompanyBusinessProfile from './components/CompanyBusinessProfile'
 
 import './styles/persian.css'
 
@@ -35,6 +39,12 @@ function AdminPage({ children }: { children: React.ReactNode }) {
       <AdminLayout key={location.pathname}>{children}</AdminLayout>
     </ProtectedRoute>
   )
+}
+
+function CompanyBusinessProfileView() {
+  const { selectedTenant } = useTenant()
+  if (!selectedTenant) return null
+  return <CompanyBusinessProfile tenantId={selectedTenant.id} tenantName={selectedTenant.name} />
 }
 
 function TenantPage({ children }: { children: React.ReactNode }) {
@@ -283,38 +293,73 @@ export default function App() {
               }
             />
 
-            <Route
-              path="/panel/dashboard"
-              element={
-                <ProtectedRoute>
-                  <TenantPage>
-                    <PanelDashboard />
-                  </TenantPage>
-                </ProtectedRoute>
-              }
-            />
-
+            {/* ── Company workspace (shared shell: fixed menu + dynamic published menu) ── */}
             <Route
               path="/panel"
               element={
                 <ProtectedRoute>
                   <TenantPage>
-                    <Navigate to="/panel/dashboard" replace />
+                    <CompanyWorkspaceShell />
                   </TenantPage>
                 </ProtectedRoute>
               }
-            />
-
-            <Route
-              path="/panel/company-form/:obligationId"
-              element={
-                <ProtectedRoute>
-                  <TenantPage>
-                    <CompanyMenuFormPage />
-                  </TenantPage>
-                </ProtectedRoute>
-              }
-            />
+            >
+              <Route index element={<Navigate to="/panel/dashboard" replace />} />
+              <Route path="dashboard" element={<CompanyDashboard />} />
+              <Route
+                path="calendar"
+                element={
+                  <PanelPlaceholderPage
+                    pageKey="calendar"
+                    title="تقویم و مهلت‌ها"
+                    description="نمایش شمسی مهلت‌های قانونی، سررسیدها و تمدیدها به‌صورت تقویمی در این مرحله ارائه نمی‌شود."
+                  />
+                }
+              />
+              <Route
+                path="tasks"
+                element={
+                  <PanelPlaceholderPage
+                    pageKey="tasks"
+                    title="کارتابل کارها"
+                    description="فهرست کامل کارهای قابل‌انجام به‌صورت کارتابلی در این مرحله ارائه نمی‌شود؛ اقدامات ضروری در داشبورد قابل مشاهده است."
+                  />
+                }
+              />
+              <Route
+                path="documents"
+                element={
+                  <PanelPlaceholderPage
+                    pageKey="documents"
+                    title="اسناد و مدارک"
+                    description="مرکز اسناد و مدارک بارگذاری‌شده در این مرحله ارائه نمی‌شود."
+                  />
+                }
+              />
+              <Route
+                path="reports"
+                element={
+                  <PanelPlaceholderPage
+                    pageKey="reports"
+                    title="گزارش‌ها"
+                    description="گزارش‌های انطباق و وضعیت تعهدات در این مرحله ارائه نمی‌شود."
+                  />
+                }
+              />
+              <Route path="business" element={<CompanyBusinessProfileView />} />
+              <Route path="members" element={<CompanyMembersPage />} />
+              <Route
+                path="settings"
+                element={
+                  <PanelPlaceholderPage
+                    pageKey="settings"
+                    title="تنظیمات شرکت"
+                    description="تنظیمات شرکت و ترجیحات فضای کاری در این مرحله ارائه نمی‌شود."
+                  />
+                }
+              />
+              <Route path="company-form/:obligationId" element={<CompanyMenuFormPage />} />
+            </Route>
 
             {/* ── Fallbacks ── */}
             <Route path="/" element={<Navigate to="/login" replace />} />
