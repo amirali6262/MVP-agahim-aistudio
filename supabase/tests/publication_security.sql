@@ -520,6 +520,112 @@ end
 $$;
 reset role;
 
+-- ── Retirement (RETIRED) lifecycle ───────────────────────────────────────────
+-- Only a published version can be retired, and only through the audited RPC.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '91000000-0000-0000-0000-000000000005', true);
+select set_config('request.jwt.claims', '{"sub":"91000000-0000-0000-0000-000000000005","role":"authenticated","is_anonymous":false}', true);
+
+do $$
+declare retired_row public.obligation_versions;
+begin
+  select * into retired_row
+  from public.retire_obligation_version('95000000-0000-0000-0000-000000000001');
+  if retired_row.status <> 'RETIRED'
+     or retired_row.retired_by <> '91000000-0000-0000-0000-000000000005'
+     or retired_row.retired_at is null
+     or retired_row.published_by <> '91000000-0000-0000-0000-000000000005'
+     or retired_row.published_at is null
+     or retired_row.legal_reference <> 'مرجع قانونی آزمایشی بازبینی‌شده' then
+    raise exception 'retirement RPC did not preserve the frozen legal definition';
+  end if;
+end
+$$;
+
+-- Retiring again must fail.
+do $$
+begin
+  begin
+    perform public.retire_obligation_version('95000000-0000-0000-0000-000000000001');
+    raise exception 'retire_obligation_version accepted an already retired version';
+  exception when invalid_parameter_value then
+    null;
+  end;
+end
+$$;
+
+-- A retired version is terminal: content cannot change, it cannot be deleted,
+-- and it cannot re-enter the review lifecycle.
+do $retired_freeze$
+begin
+  begin
+    update public.obligation_versions
+    set legal_reference = 'نباید در نسخه منسوخ تغییر کند'
+    where id = '95000000-0000-0000-0000-000000000001';
+    raise exception 'RETIRED allowed content update';
+  exception when check_violation then null;
+  end;
+
+  begin
+    delete from public.obligation_versions
+    where id = '95000000-0000-0000-0000-000000000001';
+    raise exception 'RETIRED version was deleted';
+  exception when check_violation then null;
+  end;
+
+  begin
+    perform public.transition_obligation_version_status(
+      '95000000-0000-0000-0000-000000000001', 'DRAFT'
+    );
+    raise exception 'RETIRED version re-entered the review lifecycle';
+  exception when invalid_parameter_value then null;
+  end;
+end
+$retired_freeze$;
+
+-- A non-published version cannot be retired.
+do $$
+begin
+  begin
+    perform public.retire_obligation_version('95000000-0000-0000-0000-000000000002');
+    raise exception 'retire_obligation_version accepted a non-published version';
+  exception when invalid_parameter_value then null;
+  end;
+end
+$$;
+reset role;
+
+-- A regular user cannot retire.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '91000000-0000-0000-0000-000000000003', true);
+select set_config('request.jwt.claims', '{"sub":"91000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":false}', true);
+do $$
+begin
+  begin
+    perform public.retire_obligation_version('95000000-0000-0000-0000-000000000001');
+    raise exception 'non-admin retired an obligation version';
+  exception when insufficient_privilege then null;
+  end;
+end
+$$;
+reset role;
+
+do $$
+begin
+  if not exists (
+    select 1 from public.obligation_versions
+    where id = '95000000-0000-0000-0000-000000000001'
+      and status = 'RETIRED'
+      and retired_by = '91000000-0000-0000-0000-000000000005'
+      and retired_at is not null
+      and published_by = '91000000-0000-0000-0000-000000000005'
+      and published_at is not null
+  ) then
+    raise exception 'retired obligation version did not persist its audit columns';
+  end if;
+end
+$$;
+
 do $$
 begin
   if (
@@ -545,13 +651,16 @@ begin
   end if;
 
   if has_column_privilege('authenticated', 'public.obligation_versions', 'status', 'UPDATE')
-     or has_column_privilege('authenticated', 'public.legal_circulars', 'status', 'UPDATE') then
+     or has_column_privilege('authenticated', 'public.legal_circulars', 'status', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.obligation_versions', 'retired_by', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.obligation_versions', 'retired_at', 'UPDATE') then
     raise exception 'sensitive publication columns are directly writable';
   end if;
 
   if has_function_privilege('anon', 'public.publish_obligation_version(uuid)', 'EXECUTE')
      or has_function_privilege('anon', 'public.publish_circular_and_notify(uuid,text)', 'EXECUTE')
-     or has_function_privilege('anon', 'public.estimate_case_penalty(uuid,numeric,date,numeric,numeric)', 'EXECUTE') then
+     or has_function_privilege('anon', 'public.estimate_case_penalty(uuid,numeric,date,numeric,numeric)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.retire_obligation_version(uuid)', 'EXECUTE') then
     raise exception 'anon can execute a sensitive compliance RPC';
   end if;
 end

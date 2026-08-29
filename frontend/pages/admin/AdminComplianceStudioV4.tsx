@@ -33,6 +33,7 @@ import {
   UserCheck,
   Inbox,
   Copy,
+  Archive,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
@@ -154,11 +155,13 @@ export default function AdminComplianceStudio() {
     item: CatalogItem | null
     dependencies: Array<{ formName: string; details: string; iconType?: 'extension' | 'penalty' | 'workflow' | 'template' | 'obligation' }>
     isDeleting: boolean
+    hasPublished: boolean
   }>({
     isOpen: false,
     item: null,
     dependencies: [],
     isDeleting: false,
+    hasPublished: false,
   })
   const [deleteRuleGuard, setDeleteRuleGuard] = useState<{
     isOpen: boolean
@@ -221,6 +224,7 @@ export default function AdminComplianceStudio() {
       item,
       dependencies: deps,
       isDeleting: false,
+      hasPublished: item.versions.some((v) => v.status === 'PUBLISHED' || v.status === 'RETIRED'),
     })
   }
 
@@ -228,6 +232,11 @@ export default function AdminComplianceStudio() {
     const item = deleteObligationGuard.item
     if (!item) return
     
+    if (deleteObligationGuard.hasPublished) {
+      toast.error('این تعهد دارای نسخه منتشرشده یا منسوخ است و طبق قواعد تغییرناپذیری داده‌های حقوقی قابل حذف نیست.')
+      return
+    }
+
     const targetObligationId = item.obligation.id
     const targetTitle = item.obligation.title
 
@@ -236,61 +245,59 @@ export default function AdminComplianceStudio() {
       return
     }
 
-    // Delete in Supabase before updating the local view.
+    // Delete related rows in Supabase, then refresh the local view.
+    setDeleteObligationGuard((g) => ({ ...g, isDeleting: true }))
     try {
-      if (isSupabaseConfigured) {
-        const versionIds = item.versions.map((v) => v.id)
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-        
-        const deleteAsync = async () => {
-          let templateIds: string[] = []
-          let ruleSetIds: string[] = []
+      const versionIds = item.versions.map((v) => v.id)
 
-          if (versionIds.length > 0) {
-            const [tmplRes, rulesRes] = await Promise.all([
-              supabase.from('workflow_templates').select('id').in('obligation_version_id', versionIds),
-              supabase.from('eligibility_rule_sets').select('id').in('obligation_version_id', versionIds),
-            ])
-            templateIds = (tmplRes.data ?? []).map((t) => t.id)
-            ruleSetIds = (rulesRes.data ?? []).map((r) => r.id)
+      let templateIds: string[] = []
+      let ruleSetIds: string[] = []
+      if (versionIds.length > 0) {
+        const [tmplRes, rulesRes] = await Promise.all([
+          supabase.from('workflow_templates').select('id').in('obligation_version_id', versionIds),
+          supabase.from('eligibility_rule_sets').select('id').in('obligation_version_id', versionIds),
+        ])
+        if (tmplRes.error) throw new Error('دریافت قالب‌های فرایند ناموفق بود: ' + tmplRes.error.message)
+        if (rulesRes.error) throw new Error('دریافت قواعد مشمولیت ناموفق بود: ' + rulesRes.error.message)
+        templateIds = (tmplRes.data ?? []).map((t) => t.id)
+        ruleSetIds = (rulesRes.data ?? []).map((r) => r.id)
 
-            if (ruleSetIds.length > 0) {
-              await supabase.from('eligibility_conditions').delete().in('rule_set_id', ruleSetIds)
-              await supabase.from('eligibility_rule_sets').delete().in('id', ruleSetIds)
-            }
-
-            if (templateIds.length > 0) {
-              await supabase.from('workflow_transitions').delete().in('workflow_template_id', templateIds)
-              await supabase.from('workflow_steps').delete().in('workflow_template_id', templateIds)
-              await supabase.from('workflow_templates').delete().in('id', templateIds)
-            }
-
-            try {
-              await supabase.from('obligation_version_penalties').delete().in('obligation_version_id', versionIds)
-            } catch {
-              // ignore
-            }
-            try {
-              await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
-            } catch {
-              // ignore
-            }
-            await supabase.from('obligation_versions').delete().eq('obligation_id', targetObligationId)
-          } else {
-            try {
-              await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
-            } catch {
-              // ignore
-            }
-          }
-
-          await supabase.from('obligations').delete().eq('id', targetObligationId)
+        if (ruleSetIds.length > 0) {
+          const cRes = await supabase.from('eligibility_conditions').delete().in('rule_set_id', ruleSetIds)
+          if (cRes.error) throw new Error('حذف شرایط مشمولیت ناموفق بود: ' + cRes.error.message)
+          const rRes = await supabase.from('eligibility_rule_sets').delete().in('id', ruleSetIds)
+          if (rRes.error) throw new Error('حذف قواعد مشمولیت ناموفق بود: ' + rRes.error.message)
         }
 
-        await Promise.race([deleteAsync(), timeoutPromise]).catch(() => {})
+        if (templateIds.length > 0) {
+          const trRes = await supabase.from('workflow_transitions').delete().in('workflow_template_id', templateIds)
+          if (trRes.error) throw new Error('حذف انتقال‌ها ناموفق بود: ' + trRes.error.message)
+          const stRes = await supabase.from('workflow_steps').delete().in('workflow_template_id', templateIds)
+          if (stRes.error) throw new Error('حذف مراحل فرایند ناموفق بود: ' + stRes.error.message)
+          const tmRes = await supabase.from('workflow_templates').delete().in('id', templateIds)
+          if (tmRes.error) throw new Error('حذف قالب فرایند ناموفق بود: ' + tmRes.error.message)
+        }
+
+        const pRes = await supabase.from('obligation_version_penalties').delete().in('obligation_version_id', versionIds)
+        if (pRes.error) throw new Error('حذف جرایم نسخه ناموفق بود: ' + pRes.error.message)
+        const tRes = await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
+        if (tRes.error) throw new Error('حذف ارتباط شرکت‌ها ناموفق بود: ' + tRes.error.message)
+        const vRes = await supabase.from('obligation_versions').delete().eq('obligation_id', targetObligationId)
+        if (vRes.error) throw new Error('حذف نسخه‌های تعهد ناموفق بود: ' + vRes.error.message)
+      } else {
+        const tRes = await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
+        if (tRes.error) throw new Error('حذف ارتباط شرکت‌ها ناموفق بود: ' + tRes.error.message)
       }
+
+      const oRes = await supabase.from('obligations').delete().eq('id', targetObligationId)
+      if (oRes.error) throw new Error('حذف تعهد ناموفق بود: ' + oRes.error.message)
+
+      await loadCatalog()
+      setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false, hasPublished: false })
+      toast.success(`تعهد «${targetTitle}» به همراه موارد مرتبط حذف شد.`)
     } catch (err) {
-      console.warn('Background obligation deletion error:', err)
+      setDeleteObligationGuard((g) => ({ ...g, isDeleting: false }))
+      toast.error(err instanceof Error ? err.message : 'حذف تعهد انجام نشد.')
     }
   }
 
@@ -906,6 +913,30 @@ export default function AdminComplianceStudio() {
     }
   }
 
+  const retire = async () => {
+    if (!selectedVersionId) return
+    if (!window.confirm('نسخه منسوخ می‌شود و دیگر برای تشخیص شرکت‌ها استفاده نخواهد شد. محتوای آن به‌عنوان سند تاریخی منتشرشده حفظ می‌شود و قابل بازگشت نیست. ادامه می‌دهید؟')) return
+    setBusy(true)
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await (supabase as any).rpc('retire_obligation_version', {
+          requested_version_id: selectedVersionId,
+        })
+        if (error) throw error
+      } else {
+        throw new Error('برای منسوخ‌سازی نسخه اتصال Supabase الزامی است.')
+      }
+
+      toast.success('نسخه منسوخ شد و دیگر برای تشخیص شرکت‌ها استفاده نمی‌شود.')
+      await loadCatalog()
+      await loadDefinition()
+    } catch (err) {
+      toast.error(errorMessage(err, 'منسوخ‌سازی نسخه انجام نشد.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) return <div className="flex justify-center p-24 text-zinc-400"><Loader2 className="h-7 w-7 animate-spin" /></div>
 
   return (
@@ -1030,6 +1061,7 @@ export default function AdminComplianceStudio() {
           onDecideReview={decideReview}
           onWithdrawReview={withdrawReview}
           onPublish={publish}
+          onRetire={retire}
           onEditVersion={() => setActiveSubModule(null)}
           onClose={() => setActiveSubModule(null)}
           onSaved={async () => { await loadCatalog(); await loadDefinition() }}
@@ -1092,7 +1124,9 @@ export default function AdminComplianceStudio() {
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     selectedVersion.status === 'PUBLISHED'
                       ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
-                      : 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
+                      : selectedVersion.status === 'RETIRED'
+                        ? 'bg-zinc-800 text-zinc-300 border border-zinc-600/60'
+                        : 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
                   }`}>
                     نسخه {selectedVersion.version_number} ({versionStatusLabel(selectedVersion.status)})
                   </span>
@@ -1222,7 +1256,7 @@ export default function AdminComplianceStudio() {
 
       <DeleteGuardModal
         isOpen={deleteObligationGuard.isOpen}
-        onClose={() => setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false })}
+        onClose={() => setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false, hasPublished: false })}
         onConfirm={confirmDeleteObligation}
         onConfirmDelete={confirmDeleteObligation}
         title={deleteObligationGuard.item?.obligation.title ?? 'تعهد قانونی'}
@@ -1232,6 +1266,7 @@ export default function AdminComplianceStudio() {
           hasDependencies: deleteObligationGuard.dependencies.length > 0,
           dependencies: deleteObligationGuard.dependencies as any,
         }}
+        allowCascadeDelete={!deleteObligationGuard.hasPublished}
         isDeleting={deleteObligationGuard.isDeleting}
       />
 
@@ -2023,6 +2058,7 @@ function PublishReadinessModal({
   onSeed,
   onTransitionStatus,
   onPublish,
+  onRetire,
   onClose,
   onSaved,
 }: {
@@ -2036,6 +2072,7 @@ function PublishReadinessModal({
   onSeed: () => Promise<void>
   onTransitionStatus: (status: 'DRAFT' | 'REVIEW' | 'TESTING', note: string) => Promise<void>
   onPublish: () => Promise<void>
+  onRetire: () => Promise<void>
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
@@ -2051,6 +2088,11 @@ function PublishReadinessModal({
                   <span className="flex items-center gap-1 rounded-full bg-emerald-950 px-3 py-1 text-xs text-emerald-300 border border-emerald-800/60">
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     منتشرشده و قفل
+                  </span>
+                ) : version.status === 'RETIRED' ? (
+                  <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-300 border border-zinc-600/60">
+                    <Archive className="h-3.5 w-3.5" />
+                    منسوخ‌شده و قفل
                   </span>
                 ) : (
                   <span className="rounded-full bg-amber-950/80 px-2.5 py-0.5 text-xs text-amber-300 border border-amber-800/60">
@@ -2104,6 +2146,17 @@ function PublishReadinessModal({
                     انتشار نهایی نسخه
                   </Button>
                 </>
+              )}
+              {version.status === 'PUBLISHED' && mode === 'EDIT' && (
+                <Button
+                  variant="outline"
+                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 gap-1.5 text-xs"
+                  onClick={() => void onRetire()}
+                  disabled={busy}
+                >
+                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                  منسوخ‌سازی نسخه
+                </Button>
               )}
             </div>
           </div>

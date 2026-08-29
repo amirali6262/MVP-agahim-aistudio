@@ -9,6 +9,7 @@ import {
   Loader2,
   MessageSquare,
   Rocket,
+  Archive,
   ShieldAlert,
   Sparkles,
   UserCheck,
@@ -40,6 +41,7 @@ type Props = {
   onDecideReview: (decision: 'approve' | 'reject') => Promise<void>
   onWithdrawReview: () => Promise<void>
   onPublish: () => Promise<void>
+  onRetire: () => Promise<void>
   onEditVersion: () => void
   onClose: () => void
   onSaved: () => Promise<void>
@@ -70,6 +72,7 @@ export default function PublishReadinessWorkflowModal({
   onDecideReview,
   onWithdrawReview,
   onPublish,
+  onRetire,
   onEditVersion,
   onClose,
 }: Props) {
@@ -84,7 +87,7 @@ export default function PublishReadinessWorkflowModal({
     if (version.status === 'REVIEW' && activeRequest?.status === 'REQUESTED') return s.key === 'REQUESTED'
     if (version.status === 'REVIEW' && activeRequest?.status === 'IN_REVIEW') return s.key === 'IN_REVIEW'
     if (version.status === 'TESTING') return s.key === 'TESTING'
-    if (version.status === 'PUBLISHED') return s.key === 'PUBLISHED'
+    if (version.status === 'PUBLISHED' || version.status === 'RETIRED') return s.key === 'PUBLISHED'
     return false
   })
 
@@ -166,6 +169,12 @@ export default function PublishReadinessWorkflowModal({
                     انتشار نهایی
                   </Button>
                 )}
+                {canEdit && version.status === 'PUBLISHED' && (
+                  <Button onClick={() => void onRetire()} disabled={busy} size="sm" variant="outline" className="gap-1.5 border-zinc-600 text-zinc-300 hover:bg-zinc-800">
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                    منسوخ‌سازی نسخه
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -176,7 +185,7 @@ export default function PublishReadinessWorkflowModal({
           <h4 className="text-sm font-semibold text-zinc-400 mb-4">مسیر انتشار</h4>
           <div className="flex items-center justify-between gap-1 overflow-x-auto pb-2">
             {WORKFLOW_STEPS.map((step, idx) => {
-              const isCompleted = idx < currentStepIndex || (version.status === 'PUBLISHED')
+              const isCompleted = idx < currentStepIndex || version.status === 'PUBLISHED' || version.status === 'RETIRED'
               const isCurrent = idx === currentStepIndex
               const isPending = idx > currentStepIndex
               const StepIcon = step.icon
