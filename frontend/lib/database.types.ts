@@ -14,6 +14,93 @@ export type Database = {
   }
   public: {
     Tables: {
+      company_menu: {
+        Row: {
+          code: string
+          created_at: string
+          form_obligation_id: string | null
+          icon: string | null
+          id: string
+          is_active: boolean
+          item_type: string
+          parent_code: string | null
+          published_at: string
+          sort_order: number
+          title_fa: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          form_obligation_id?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          item_type: string
+          parent_code?: string | null
+          published_at?: string
+          sort_order?: number
+          title_fa: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          form_obligation_id?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          item_type?: string
+          parent_code?: string | null
+          published_at?: string
+          sort_order?: number
+          title_fa?: string
+        }
+        Relationships: []
+      }
+      company_menu_drafts: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string
+          form_obligation_id: string | null
+          icon: string | null
+          id: string
+          is_active: boolean
+          item_type: string
+          parent_id: string | null
+          sort_order: number
+          title_fa: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string
+          form_obligation_id?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          item_type: string
+          parent_id?: string | null
+          sort_order?: number
+          title_fa: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string
+          form_obligation_id?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          item_type?: string
+          parent_id?: string | null
+          sort_order?: number
+          title_fa?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       case_deadlines: {
         Row: {
           case_id: string
@@ -1169,6 +1256,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      replace_company_menu: {
+        Args: { p_items: Json }
+        Returns: string
+      },
       complete_case_task: {
         Args: { requested_response?: Json; requested_task_id: string; requested_transition_id: string }
         Returns: {
