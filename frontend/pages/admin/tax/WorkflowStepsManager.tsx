@@ -10,6 +10,7 @@ import type { Obligation, WorkflowStep, WorkflowStepField } from '../../../lib/s
 import { cn } from '../../../lib/shadcn/utils'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import FullScreenDialog from '../../../components/FullScreenDialog'
+import KeyRegistryField from '../../../components/KeyRegistryField'
 
 interface StepRow extends WorkflowStep {
   isNew?: boolean
@@ -608,12 +609,15 @@ export default function WorkflowStepsManager({ obligation, onBack, onSaved }: Pr
                       {/* Field Key */}
                       <div className="sm:col-span-3 flex flex-col gap-1">
                         <Label className="text-zinc-300 text-[11px]">شناسه لاتین (Key)</Label>
-                        <Input
-                          value={field.key}
-                          onChange={(e) => handleUpdateField(field.id, 'key', e.target.value)}
+                        <KeyRegistryField
+                          raw
+                          compact
+                          title={field.label}
+                          entityType="WORKFLOW_STEP"
+                          module="workflow"
+                          initialKey={field.key}
                           placeholder="taxable_income"
-                          className="bg-zinc-950 border-zinc-700 text-zinc-200 font-mono h-8 text-xs"
-                          dir="ltr"
+                          onFullKeyChange={(k) => handleUpdateField(field.id, 'key', k)}
                         />
                       </div>
 

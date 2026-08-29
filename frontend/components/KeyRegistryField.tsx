@@ -4,7 +4,7 @@ import { CheckCircle2, Copy, Loader2, Lock, RefreshCw, TriangleAlert, XCircle } 
 import { Input } from '../lib/shadcn/input'
 import { Button } from '../lib/shadcn/button'
 import {
-  suggestKey, checkRegistryKey, isValidKeyPattern, KEY_FORMAT_HINT,
+  suggestKey, checkRegistryKey, isValidKeyPattern, rawFromFullKey, KEY_FORMAT_HINT,
   type KeyEntityType, type KeyStatus, type SystemKeyRecord,
 } from '../lib/systemKeys'
 
@@ -36,15 +36,25 @@ interface KeyRegistryFieldProps {
   /** Compact table-row mode: input + suggestion only, no buttons/status/hint. */
   compact?: boolean
   placeholder?: string
+  /**
+   * Raw internal fact-key mode: emits and stores only the semantic segment
+   * (e.g. `tracking_code`) instead of a fully-namespaced key, and does NOT run
+   * the global registry uniqueness check (these keys are scoped to a single
+   * form/template). Used for per-step/per-field keys inside workflow and
+   * objection forms where references must stay intact.
+   */
+  raw?: boolean
 }
 
 export default function KeyRegistryField({
   title, entityType, module, formName, parentKey, initialKey,
   locked = false, lockReason, onFullKeyChange, autoApply = true, placeholder,
   sourceTable, sourceRecordId, compact = false,
+  raw = false,
 }: KeyRegistryFieldProps) {
   const [value, setValue] = useState<string>(() => {
     if (!initialKey) return ''
+    if (raw) return rawFromFullKey(initialKey)
     // If the passed key is already namespaced keep it; otherwise namespace it.
     if (initialKey.includes('.')) return initialKey
     const s = suggestKey({ title: initialKey, entityType, module, parentKey })
@@ -68,21 +78,21 @@ export default function KeyRegistryField({
       return
     }
     const s = suggestKey({ title, entityType, module, parentKey })
-    setAlternatives(s.alternatives)
-    setValue((prev) => {
-      const next = s.key
-      if (prev && prev === next) return prev
-      return next
-    })
+    const next = raw ? rawFromFullKey(s.key) : s.key
+    setAlternatives(raw ? s.alternatives.map((a) => rawFromFullKey(a)) : s.alternatives)
+    setValue((prev) => (prev && prev === next ? prev : next))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, entityType, module, parentKey, locked])
+  }, [title, entityType, module, parentKey, locked, raw])
 
   // Mirror to parent (either continuously or on blur).
   const emit = (next: string) => { if (autoApply || next) onFullKeyChange(next) }
   useEffect(() => { if (value) emit(value) }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Debounced uniqueness check.
+  // Debounced uniqueness check (skipped in raw mode: these are per-form fact
+  // keys scoped to a single workflow/objection template, so a global registry
+  // collision across forms is not an error here).
   useEffect(() => {
+    if (raw) { setCheck(value ? { kind: 'free' } : { kind: 'free' }); return }
     if (locked || !value) {
       setCheck(value ? { kind: 'free' } : { kind: 'free' })
       return
@@ -106,11 +116,12 @@ export default function KeyRegistryField({
       }
     }, 350)
     return () => { if (timer.current) clearTimeout(timer.current) }
-  }, [value, locked])
+  }, [value, locked, raw])
 
   const update = (next: string) => {
     // Strip invalid chars / spaces live.
-    const cleaned = next.toLowerCase().replace(/[^a-z0-9._]+/g, '_')
+    let cleaned = next.toLowerCase().replace(/[^a-z0-9._]+/g, '_')
+    if (raw) cleaned = cleaned.replace(/\./g, '') // raw keys are dot-free
     setManuallyEdited(true)
     setValue(cleaned)
   }
@@ -118,13 +129,15 @@ export default function KeyRegistryField({
   const regenerate = async () => {
     // Cycle through semantic alternatives (no `_2` unless exhausted).
     const base = suggestKey({ title: titleRef.current || value, entityType, module, parentKey })
-    const pool = [base.key, ...alternatives]
+    let pool = [base.key, ...alternatives].map((c) => (raw ? rawFromFullKey(c) : c))
+    pool = [...new Set(pool)]
     for (const candidate of pool) {
       if (candidate === value) continue
+      setManuallyEdited(true)
+      setValue(candidate)
+      if (raw) { toast.success(`کلید پیشنهادی: ${candidate}`); return }
       try {
         const existing = await checkRegistryKey(candidate)
-        setManuallyEdited(true)
-        setValue(candidate)
         if (!existing) { toast.success(`کلید پیشنهادی: ${candidate}`); return }
       } catch { /* keep searching */ }
     }

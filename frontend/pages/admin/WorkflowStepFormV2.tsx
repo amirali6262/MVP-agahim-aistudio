@@ -8,6 +8,7 @@ import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
 import { Switch } from '../../lib/shadcn/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
+import KeyRegistryField from '../../components/KeyRegistryField'
 
 type Version = Tables<'obligation_versions'> | any
 type WorkflowStep = Tables<'workflow_steps'> | any
@@ -274,7 +275,18 @@ export default function WorkflowStepFormV2({
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label="عنوان فیلد"><Input value={field.label} onChange={(event) => updateField(field.id, { label: event.target.value })} placeholder="کد رهگیری اظهارنامه" /></Field>
-                <Field label="کلید انگلیسی"><Input value={field.key} onChange={(event) => updateField(field.id, { key: normalizeFieldKey(event.target.value) })} dir="ltr" placeholder="tracking_code" /></Field>
+                <Field label="کلید انگلیسی">
+                  <KeyRegistryField
+                    raw
+                    compact
+                    title={field.label}
+                    entityType="WORKFLOW_STEP"
+                    module="workflow"
+                    initialKey={field.key}
+                    placeholder="tracking_code"
+                    onFullKeyChange={(k) => updateField(field.id, { key: normalizeFieldKey(k) })}
+                  />
+                </Field>
                 <Field label="نوع فیلد">
                   <Select value={field.type} onValueChange={(value) => updateField(field.id, { type: value })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
