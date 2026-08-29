@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
   CalendarClock,
-  CheckCircle2,
   ChevronLeft,
   ClipboardList,
+  FileX2,
+  Inbox,
+  Layers,
   Loader2,
   RefreshCw,
   Scale,
-  ShieldCheck,
-  CircleDashed,
-  Inbox,
+  Workflow,
 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
-import type { Database, Json, Tables } from '../../lib/database.types'
+import type { Json, Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Label } from '../../lib/shadcn/label'
@@ -24,7 +25,10 @@ import { useTenant } from '../../context/TenantContext'
 
 const BRAND = '#5B4DE6'
 const BRAND_SOFT = '#EEECFC'
-const BRAND_LIGHT = '#F7F6FB'
+
+const RISK_RED = '#E5484D'
+const RISK_ORANGE = '#F59E0B'
+const RISK_GRAY = '#A1A1AA'
 
 type ComplianceCase = Tables<'compliance_cases'>
 type CaseTask = Tables<'case_tasks'>
@@ -44,7 +48,7 @@ interface FormField {
   placeholder?: string
 }
 
-type RowStatus = 'NEEDS_ACTION' | 'IN_PROGRESS' | 'WAITING' | 'COMPLETED' | 'CANCELLED' | 'OVERDUE'
+type RowStatus = 'NEEDS_ACTION' | 'IN_PROGRESS' | 'WAITING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'CANCELLED' | 'OVERDUE'
 type Risk = 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE'
 
 interface ActionRow {
@@ -63,18 +67,16 @@ interface ActionRow {
   assignee: string
 }
 
-interface DeadlineItem {
-  id: string
-  caseTitle: string
-  period: string
-  dueAt: string
-}
-
 const DOMAIN_LABEL: Record<string, string> = { TAX: 'مالیات', INSURANCE: 'بیمه' }
+
+function domainLabel(domain: string) {
+  return DOMAIN_LABEL[domain] ?? (domain || '—')
+}
 
 export default function CompanyDashboard() {
   const { selectedTenant } = useTenant()
   const tenantId = selectedTenant?.id ?? ''
+  const navigate = useNavigate()
 
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -83,11 +85,18 @@ export default function CompanyDashboard() {
   const [completedCases, setCompletedCases] = useState(0)
   const [overdueCount, setOverdueCount] = useState(0)
   const [penaltyTotal, setPenaltyTotal] = useState(0)
-  const [deadlines, setDeadlines] = useState<DeadlineItem[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [dataVersion, setDataVersion] = useState(0)
+  const [bottomTab, setBottomTab] = useState<'deadlines' | 'cases'>('deadlines')
 
   const reload = useCallback(() => setDataVersion((v) => v + 1), [])
+
+  // The shell's top-bar refresh button dispatches this event on the window.
+  useEffect(() => {
+    const onRefresh = () => reload()
+    window.addEventListener('agahim:data-refresh', onRefresh)
+    return () => window.removeEventListener('agahim:data-refresh', onRefresh)
+  }, [reload])
 
   const load = useCallback(async () => {
     if (!tenantId) return
@@ -193,7 +202,7 @@ export default function CompanyDashboard() {
         if (c.status === 'COMPLETED') status = 'COMPLETED'
         else if (c.status === 'CANCELLED') status = 'CANCELLED'
         else if (overdue) status = 'OVERDUE'
-        else if (task) status = c.status === 'IN_PROGRESS' || c.status === 'BLOCKED' ? 'IN_PROGRESS' : 'NEEDS_ACTION'
+        else if (task) status = step?.actor === 'PLATFORM_ADMIN' ? 'WAITING_APPROVAL' : c.status === 'IN_PROGRESS' || c.status === 'BLOCKED' ? 'IN_PROGRESS' : 'NEEDS_ACTION'
 
         let risk: Risk = 'NONE'
         if (due) {
@@ -226,24 +235,11 @@ export default function CompanyDashboard() {
       const overdue = computedRows.filter((r) => r.status === 'OVERDUE').length
       const penaltySum = computedRows.reduce((sum, r) => sum + Number(r.penalty?.estimated_amount ?? 0), 0)
 
-      // Nearest upcoming deadlines (per open case, latest deadline each).
-      const deadlineItems: DeadlineItem[] = computedRows
-        .filter((r) => r.deadline && r.case.status !== 'COMPLETED' && r.case.status !== 'CANCELLED')
-        .map((r) => ({
-          id: r.deadline!.id,
-          caseTitle: r.title,
-          period: r.period,
-          dueAt: r.deadline!.due_at,
-        }))
-        .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
-        .slice(0, 6)
-
       setRows(computedRows)
       setTotalCases(nonCancelled.length)
       setCompletedCases(completed)
       setOverdueCount(overdue)
       setPenaltyTotal(penaltySum)
-      setDeadlines(deadlineItems)
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'دریافت اطلاعات داشبورد ناموفق بود.')
     } finally {
@@ -257,7 +253,7 @@ export default function CompanyDashboard() {
 
   // Sort: overdue first, then by deadline, then waiting.
   const sortedRows = useMemo(() => {
-    const rank = { OVERDUE: 0, NEEDS_ACTION: 1, IN_PROGRESS: 2, WAITING: 3, COMPLETED: 4, CANCELLED: 5 } as const
+    const rank = { OVERDUE: 0, NEEDS_ACTION: 1, WAITING_APPROVAL: 2, IN_PROGRESS: 3, WAITING: 4, COMPLETED: 5, CANCELLED: 6 } as const
     return [...rows].sort((a, b) => {
       const r = rank[a.status] - rank[b.status]
       if (r !== 0) return r
@@ -271,24 +267,35 @@ export default function CompanyDashboard() {
   }, [rows])
 
   const compliancePercent = totalCases > 0 ? Math.round((completedCases / totalCases) * 100) : null
-  const activeCases = sortedRows.filter((r) => r.case.status !== 'COMPLETED' && r.case.status !== 'CANCELLED')
+  const activeRows = sortedRows.filter((r) => r.case.status !== 'COMPLETED' && r.case.status !== 'CANCELLED')
+
+  const inProgressCount = activeRows.length
+  const highRiskCount = activeRows.filter((r) => r.risk === 'HIGH').length
+  const nearDeadlineCount = activeRows.filter((r) => {
+    const due = r.deadline?.due_at ?? r.task?.due_at
+    if (!due) return false
+    const days = Math.ceil((new Date(due).getTime() - Date.now()) / 86_400_000)
+    return days >= 0 && days <= 7
+  }).length
+  const waitingApprovalCount = activeRows.filter((r) => r.status === 'WAITING_APPROVAL').length
+  const penaltyCount = rows.filter((r) => r.penalty).length
+
+  const upcomingRows = activeRows
+    .filter((r) => r.deadline)
+    .map((r) => ({
+      id: r.deadline!.id,
+      title: r.title,
+      domain: domainLabel(r.domain),
+      period: r.period,
+      dueAt: r.deadline!.due_at,
+      status: r.status,
+      risk: r.risk,
+    }))
+    .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+    .slice(0, 6)
 
   return (
-    <div className="space-y-6" dir="rtl">
-      {/* ── Page header ── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-xl font-extrabold text-zinc-900 dark:text-zinc-50 sm:text-2xl">داشبورد شرکت</h1>
-          <p className="mt-1.5 max-w-2xl text-xs leading-6 text-zinc-500 dark:text-zinc-400 sm:text-sm">
-            {selectedTenant?.name} — در یک نگاه بدانید چه کاری باید انجام دهید، کدام مهلت نزدیک است، کدام مورد خطر دارد و وضعیت کلی تعهدات چیست.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={reload} disabled={loading} className="w-fit gap-2 border-zinc-300 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: BRAND }} /> : <RefreshCw className="h-4 w-4" />}
-          به‌روزرسانی
-        </Button>
-      </div>
-
+    <div className="space-y-5" dir="rtl">
       {loading ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-white py-20 text-xs text-zinc-400 dark:border-zinc-800 dark:bg-[#161618]">
           <Loader2 className="h-7 w-7 animate-spin" style={{ color: BRAND }} />
@@ -306,64 +313,85 @@ export default function CompanyDashboard() {
         </div>
       ) : (
         <>
-          {/* ── Summary strip (single horizontal level with simple dividers) ── */}
-          <section className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
-            <div className="flex min-w-max items-stretch divide-x divide-x-reverse divide-zinc-100 dark:divide-zinc-800">
-              <SummaryCell
-                label="وضعیت کلی انطباق"
-                value={compliancePercent === null ? '—' : `${compliancePercent.toLocaleString('fa-IR')}٪`}
-                hint={totalCases === 0 ? 'پرونده‌ای ثبت نشده است' : `${completedCases.toLocaleString('fa-IR')} از ${totalCases.toLocaleString('fa-IR')} پرونده`}
-                icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-              />
-              <SummaryCell
-                label="هشدارهای بحرانی"
-                value={overdueCount.toLocaleString('fa-IR')}
-                hint="مهلت‌های گذشته"
-                danger={overdueCount > 0}
-                icon={<AlertTriangle className={overdueCount > 0 ? 'h-4 w-4 text-red-500' : 'h-4 w-4 text-zinc-400'} />}
-              />
-              <SummaryCell
-                label="اقدامات در جریان"
-                value={activeCases.filter((r) => r.task).length.toLocaleString('fa-IR')}
-                hint="نیازمند اقدام شما"
-                icon={<ClipboardList className="h-4 w-4 text-zinc-400" style={{ color: BRAND }} />}
-              />
-              <SummaryCell
-                label="تکمیل‌شده"
-                value={completedCases.toLocaleString('fa-IR')}
-                hint="پرونده مختومه"
-                icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-              />
-              <SummaryCell
-                label="در انتظار تأیید مدیر"
-                value="۰"
-                hint="گردش تأیید هنوز فعال نیست"
-                icon={<CircleDashed className="h-4 w-4 text-amber-500" />}
-              />
-              {penaltyTotal > 0 && (
-                <SummaryCell
-                  label="برآورد جریمه"
-                  value={penaltyTotal.toLocaleString('fa-IR')}
-                  hint="ریال — برآورد، نه مبلغ قطعی"
-                  icon={<Scale className="h-4 w-4 text-amber-500" />}
+          {/* ── Top row: three summary cards ── */}
+          <div className="grid gap-4 lg:grid-cols-3">
+            {/* Card 1 — خلاصه وضعیت */}
+            <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
+              <h2 className="border-b border-zinc-100 px-5 py-3.5 text-xs font-extrabold text-zinc-800 dark:border-zinc-800 dark:text-zinc-100">خلاصه وضعیت</h2>
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                <StatRow
+                  icon={<ClipboardList className="h-4 w-4" style={{ color: BRAND }} />}
+                  label="اقدامات در جریان"
+                  value={inProgressCount.toLocaleString('fa-IR')}
                 />
-              )}
-            </div>
-          </section>
+                <StatRow
+                  icon={<Layers className="h-4 w-4 text-emerald-600" />}
+                  label="اقدامات تکمیل‌شده"
+                  value={completedCases.toLocaleString('fa-IR')}
+                  tone="green"
+                />
+                <StatRow
+                  icon={<FileX2 className="h-4 w-4 text-zinc-400" />}
+                  label="اسناد نامعتبر / منقضی"
+                  value="۰"
+                  hint="مرکز اسناد هنوز فعال نیست"
+                />
+                <StatRow
+                  icon={<Scale className="h-4 w-4 text-amber-500" />}
+                  label="جرائم و بدهی‌های ثبت‌شده"
+                  value={penaltyCount.toLocaleString('fa-IR')}
+                  hint={penaltyTotal > 0 ? `برآورد ${penaltyTotal.toLocaleString('fa-IR')} ریال` : 'برآوردی ثبت نشده'}
+                  tone="orange"
+                />
+              </div>
+            </section>
+
+            {/* Card 2 — هشدارهای بحرانی */}
+            <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
+              <h2 className="border-b border-zinc-100 px-5 py-3.5 text-xs font-extrabold text-zinc-800 dark:border-zinc-800 dark:text-zinc-100">هشدارهای بحرانی</h2>
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                <StatRow
+                  icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
+                  label="موارد با ریسک بالا"
+                  value={highRiskCount.toLocaleString('fa-IR')}
+                  tone="red"
+                />
+                <StatRow
+                  icon={<AlertTriangle className="h-4 w-4 text-amber-500" />}
+                  label="موارد با مهلت ≤ ۷ روز"
+                  value={nearDeadlineCount.toLocaleString('fa-IR')}
+                  tone="orange"
+                />
+                <StatRow
+                  icon={<Workflow className="h-4 w-4 text-amber-500" />}
+                  label="موارد در انتظار تأیید مدیر"
+                  value={waitingApprovalCount.toLocaleString('fa-IR')}
+                  hint={waitingApprovalCount === 0 ? 'گردش تأیید هنوز فعال نیست' : undefined}
+                  tone="orange"
+                />
+              </div>
+            </section>
+
+            {/* Card 3 — وضعیت انطباق کلی */}
+            <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
+              <h2 className="border-b border-zinc-100 px-5 py-3.5 text-xs font-extrabold text-zinc-800 dark:border-zinc-800 dark:text-zinc-100">وضعیت انطباق کلی</h2>
+              <ComplianceGauge percent={compliancePercent} total={totalCases} completed={completedCases} />
+            </section>
+          </div>
 
           {/* ── Essential actions table ── */}
           <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
             <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
-              <div>
+              <div className="flex items-center gap-2.5">
                 <h2 className="text-sm font-extrabold text-zinc-900 dark:text-zinc-50">اقدامات ضروری</h2>
-                <p className="mt-0.5 text-[11px] text-zinc-400">اقدامات فوری و پرریسک در بالای جدول مرتب شده‌اند.</p>
+                <span className="flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white" style={{ background: RISK_RED }}>
+                  {activeRows.length.toLocaleString('fa-IR')}
+                </span>
               </div>
-              <span className="rounded-full px-3 py-1 text-[11px] font-bold" style={{ background: BRAND_SOFT, color: BRAND }}>
-                {activeCases.length.toLocaleString('fa-IR')} اقدام
-              </span>
+              <p className="text-[11px] text-zinc-400">اقدامات فوری و پرریسک در بالای جدول مرتب شده‌اند.</p>
             </div>
 
-            {activeCases.length === 0 ? (
+            {activeRows.length === 0 ? (
               <div className="flex flex-col items-center gap-3 p-10 text-center">
                 <Inbox className="h-8 w-8 text-zinc-300 dark:text-zinc-600" />
                 <p className="text-sm font-bold text-zinc-700 dark:text-zinc-200">فعلاً اقدامی برای انجام ندارید</p>
@@ -371,7 +399,7 @@ export default function CompanyDashboard() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[860px] border-collapse text-right">
+                <table className="w-full min-w-[880px] border-collapse text-right">
                   <thead>
                     <tr className="border-b border-zinc-100 text-[11px] text-zinc-400 dark:border-zinc-800">
                       <th className="px-5 py-3 font-bold">عنوان اقدام</th>
@@ -384,87 +412,142 @@ export default function CompanyDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedRows
-                      .filter((r) => r.case.status !== 'COMPLETED' && r.case.status !== 'CANCELLED')
-                      .map((row) => {
-                        const expanded = expandedId === row.case.id
-                        return (
-                          <ActionRowView
-                            key={row.case.id}
-                            row={row}
-                            expanded={expanded}
-                            onToggle={() => setExpandedId(expanded ? null : row.case.id)}
-                            onDone={reload}
-                          />
-                        )
-                      })}
+                    {activeRows.map((row) => {
+                      const expanded = expandedId === row.case.id
+                      return (
+                        <ActionRowView
+                          key={row.case.id}
+                          row={row}
+                          expanded={expanded}
+                          onToggle={() => setExpandedId(expanded ? null : row.case.id)}
+                          onDone={reload}
+                        />
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
+
+            {activeRows.length > 0 && (
+              <div className="flex items-center justify-end border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
+                <button onClick={() => navigate('/panel/tasks')} className="inline-flex items-center gap-1 text-xs font-bold transition hover:opacity-80" style={{ color: BRAND }}>
+                  مشاهده همه اقدامات
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </section>
 
-          {/* ── Bottom support sections ── */}
-          <div className="grid gap-5 xl:grid-cols-2">
-            {/* Nearest deadlines */}
-            <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
+          {/* ── Bottom: upcoming items & active cases ── */}
+          <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
               <h2 className="flex items-center gap-2 text-sm font-extrabold text-zinc-900 dark:text-zinc-50">
                 <CalendarClock className="h-4 w-4" style={{ color: BRAND }} />
-                نزدیک‌ترین مهلت‌ها
+                موارد پیش‌رو و پرونده‌های فعال
               </h2>
-              {deadlines.length === 0 ? (
-                <div className="mt-4 rounded-xl border border-dashed border-zinc-200 p-6 text-center text-xs text-zinc-400 dark:border-zinc-700">
-                  مهلت ثبت‌شده‌ای برای پرونده‌های باز وجود ندارد.
-                </div>
-              ) : (
-                <ul className="mt-3 divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {deadlines.map((d) => {
-                    const days = Math.ceil((new Date(d.dueAt).getTime() - Date.now()) / 86_400_000)
-                    const overdue = days < 0
-                    return (
-                      <li key={d.id} className="flex items-center justify-between gap-3 py-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-bold text-zinc-800 dark:text-zinc-100">{d.caseTitle}</p>
-                          <p className="mt-0.5 text-[10px] text-zinc-400">دوره {d.period}</p>
-                        </div>
-                        <div className="shrink-0 text-left">
-                          <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-200">{formatDate(d.dueAt)}</p>
-                          <p className={`mt-0.5 text-[10px] font-bold ${overdue ? 'text-red-600 dark:text-red-400' : days <= 7 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                            {overdue ? `${Math.abs(days).toLocaleString('fa-IR')} روز گذشته` : days === 0 ? 'مهلت امروز' : `${days.toLocaleString('fa-IR')} روز مانده`}
-                          </p>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </section>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setBottomTab('deadlines')}
+                  className={`pb-1 text-xs font-bold transition ${bottomTab === 'deadlines' ? '' : 'text-zinc-400 hover:text-zinc-600'}`}
+                  style={bottomTab === 'deadlines' ? { color: BRAND, borderBottom: `2px solid ${BRAND}` } : { borderBottom: '2px solid transparent' }}
+                >
+                  مهلت‌های پیش‌رو
+                </button>
+                <button
+                  onClick={() => setBottomTab('cases')}
+                  className={`pb-1 text-xs font-bold transition ${bottomTab === 'cases' ? '' : 'text-zinc-400 hover:text-zinc-600'}`}
+                  style={bottomTab === 'cases' ? { color: BRAND, borderBottom: `2px solid ${BRAND}` } : { borderBottom: '2px solid transparent' }}
+                >
+                  پرونده‌های فعال {activeRows.length.toLocaleString('fa-IR')}
+                </button>
+              </div>
+            </div>
 
-            {/* Active processes */}
-            <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-[#161618]">
-              <h2 className="flex items-center gap-2 text-sm font-extrabold text-zinc-900 dark:text-zinc-50">
-                <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                پرونده‌ها و فرایندهای فعال
-              </h2>
-              {activeCases.length === 0 ? (
-                <div className="mt-4 rounded-xl border border-dashed border-zinc-200 p-6 text-center text-xs text-zinc-400 dark:border-zinc-700">
-                  پرونده فعالی برای این شرکت وجود ندارد.
+            {bottomTab === 'deadlines' ? (
+              upcomingRows.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 p-10 text-center">
+                  <CalendarClock className="h-7 w-7 text-zinc-300 dark:text-zinc-600" />
+                  <p className="text-xs text-zinc-400">مهلت ثبت‌شده‌ای برای پرونده‌های باز وجود ندارد.</p>
                 </div>
               ) : (
-                <ul className="mt-3 divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {activeCases.slice(0, 6).map((row) => (
-                    <li key={row.case.id} className="flex items-center justify-between gap-3 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-bold text-zinc-800 dark:text-zinc-100">{row.title}</p>
-                        <p className="mt-0.5 text-[10px] text-zinc-400">دوره {row.period}</p>
-                      </div>
-                      <StatusPill status={row.status} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] border-collapse text-right">
+                    <thead>
+                      <tr className="border-b border-zinc-100 text-[11px] text-zinc-400 dark:border-zinc-800">
+                        <th className="px-5 py-3 font-bold">عنوان</th>
+                        <th className="px-3 py-3 font-bold">حوزه</th>
+                        <th className="px-3 py-3 font-bold">مهلت</th>
+                        <th className="px-3 py-3 font-bold">مانده</th>
+                        <th className="px-3 py-3 font-bold">اولویت</th>
+                        <th className="px-5 py-3 font-bold">وضعیت</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {upcomingRows.map((item) => (
+                        <tr key={item.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/60 dark:border-zinc-800 dark:hover:bg-zinc-800/20">
+                          <td className="px-5 py-3.5">
+                            <p className="max-w-[260px] truncate text-xs font-bold text-zinc-800 dark:text-zinc-100">{item.title}</p>
+                            <p className="mt-0.5 text-[10px] text-zinc-400">دوره {item.period}</p>
+                          </td>
+                          <td className="px-3 py-3.5"><DomainTag domain={item.domain} /></td>
+                          <td className="px-3 py-3.5 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">{formatDate(item.dueAt)}</td>
+                          <td className="px-3 py-3.5 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{deadlineMeta(item.dueAt).text}</td>
+                          <td className="px-3 py-3.5"><RiskBadge risk={item.risk} /></td>
+                          <td className="px-5 py-3.5"><StatusPill status={item.status} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : activeRows.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 p-10 text-center">
+                <Inbox className="h-7 w-7 text-zinc-300 dark:text-zinc-600" />
+                <p className="text-xs text-zinc-400">پرونده فعالی برای این شرکت وجود ندارد.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] border-collapse text-right">
+                  <thead>
+                    <tr className="border-b border-zinc-100 text-[11px] text-zinc-400 dark:border-zinc-800">
+                      <th className="px-5 py-3 font-bold">عنوان</th>
+                      <th className="px-3 py-3 font-bold">حوزه</th>
+                      <th className="px-3 py-3 font-bold">مهلت</th>
+                      <th className="px-3 py-3 font-bold">مانده</th>
+                      <th className="px-3 py-3 font-bold">اولویت</th>
+                      <th className="px-5 py-3 font-bold">وضعیت</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeRows.slice(0, 6).map((row) => {
+                      const due = row.deadline?.due_at ?? row.task?.due_at ?? null
+                      return (
+                        <tr key={row.case.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/60 dark:border-zinc-800 dark:hover:bg-zinc-800/20">
+                          <td className="px-5 py-3.5">
+                            <p className="max-w-[260px] truncate text-xs font-bold text-zinc-800 dark:text-zinc-100">{row.title}</p>
+                            <p className="mt-0.5 text-[10px] text-zinc-400">دوره {row.period}</p>
+                          </td>
+                          <td className="px-3 py-3.5"><DomainTag domain={domainLabel(row.domain)} /></td>
+                          <td className="px-3 py-3.5 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">{due ? formatDate(due) : '—'}</td>
+                          <td className="px-3 py-3.5 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">{due ? deadlineMeta(due).text : '—'}</td>
+                          <td className="px-3 py-3.5"><RiskBadge risk={row.risk} /></td>
+                          <td className="px-5 py-3.5"><StatusPill status={row.status} /></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
+              <button onClick={() => navigate('/panel/calendar')} className="inline-flex items-center gap-1 text-xs font-bold transition hover:opacity-80" style={{ color: BRAND }}>
+                مشاهده همه مهلت‌ها و پرونده‌ها
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            </div>
+          </section>
         </>
       )}
     </div>
@@ -475,16 +558,63 @@ export default function CompanyDashboard() {
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SummaryCell({ label, value, hint, icon, danger = false }: { label: string; value: string; hint: string; icon: React.ReactNode; danger?: boolean }) {
+function StatRow({ icon, label, value, hint, tone = 'default' }: { icon: React.ReactNode; label: string; value: string; hint?: string; tone?: 'default' | 'red' | 'orange' | 'green' }) {
+  const valueColor = tone === 'red' ? RISK_RED : tone === 'orange' ? RISK_ORANGE : tone === 'green' ? '#16A34A' : '#18181B'
   return (
-    <div className="w-44 px-5 py-4">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between gap-3 px-5 py-3">
+      <div className="flex min-w-0 items-center gap-2.5">
         {icon}
-        <p className="text-[11px] font-bold text-zinc-500 dark:text-zinc-400">{label}</p>
+        <p className="truncate text-[11px] font-bold text-zinc-500 dark:text-zinc-400">{label}</p>
       </div>
-      <p className={`mt-2 text-xl font-black ${danger ? 'text-red-600 dark:text-red-400' : 'text-zinc-900 dark:text-zinc-50'}`}>{value}</p>
-      <p className="mt-0.5 truncate text-[10px] text-zinc-400">{hint}</p>
+      <div className="shrink-0 text-left">
+        <p className="text-lg font-black" style={{ color: valueColor }}>{value}</p>
+        {hint && <p className="text-[9px] text-zinc-400">{hint}</p>}
+      </div>
     </div>
+  )
+}
+
+function ComplianceGauge({ percent, total, completed }: { percent: number | null; total: number; completed: number }) {
+  const pct = percent ?? 0
+  const color = percent === null ? '#d4d4d8' : pct >= 70 ? '#16A34A' : pct >= 40 ? RISK_ORANGE : RISK_RED
+  const statusLabel = percent === null ? 'بدون پرونده' : pct >= 70 ? 'وضعیت خوب' : pct >= 40 ? 'نیازمند توجه' : 'نگران‌کننده'
+  const r = 42
+  const circumference = 2 * Math.PI * r
+  const dashOffset = circumference * (1 - pct / 100)
+
+  return (
+    <div className="flex flex-col items-center px-5 py-6">
+      <div className="relative h-[116px] w-[116px]">
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+          <circle cx="50" cy="50" r={r} fill="none" stroke="#F1F0F6" strokeWidth="9" />
+          <circle
+            cx="50"
+            cy="50"
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth="9"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <p className="text-2xl font-black" style={{ color }}>{percent === null ? '—' : `${pct.toLocaleString('fa-IR')}٪`}</p>
+          <p className="mt-0.5 text-[10px] text-zinc-400">انطباق کلی</p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs font-bold" style={{ color }}>{statusLabel}</p>
+      {total > 0 && <p className="mt-1 text-[10px] text-zinc-400">{completed.toLocaleString('fa-IR')} از {total.toLocaleString('fa-IR')} پرونده تکمیل‌شده</p>}
+    </div>
+  )
+}
+
+function DomainTag({ domain }: { domain: string }) {
+  return (
+    <span className="rounded-md px-2 py-1 text-[10px] font-bold" style={{ background: BRAND_SOFT, color: BRAND }}>
+      {domain || '—'}
+    </span>
   )
 }
 
@@ -493,19 +623,17 @@ function ActionRowView({ row, expanded, onToggle, onDone }: { row: ActionRow; ex
     <>
       <tr className={`border-b border-zinc-100 transition last:border-0 hover:bg-zinc-50/60 dark:border-zinc-800 dark:hover:bg-zinc-800/20 ${expanded ? 'bg-violet-50/40 dark:bg-violet-950/10' : ''}`}>
         <td className="px-5 py-4">
-          <p className="max-w-[220px] truncate text-xs font-bold text-zinc-800 dark:text-zinc-100">{row.title}</p>
+          <p className="max-w-[240px] truncate text-xs font-bold text-zinc-800 dark:text-zinc-100">{row.title}</p>
           <p className="mt-1 text-[10px] text-zinc-400">دوره {row.period}</p>
         </td>
-        <td className="px-3 py-4">
-          <span className="rounded-md px-2 py-1 text-[10px] font-bold" style={{ background: BRAND_SOFT, color: BRAND }}>
-            {DOMAIN_LABEL[row.domain] ?? (row.domain || '—')}
-          </span>
-        </td>
+        <td className="px-3 py-4"><DomainTag domain={domainLabel(row.domain)} /></td>
         <td className="px-3 py-4">
           {row.deadline ? (
             <div>
               <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-200">{formatDate(row.deadline.due_at)}</p>
-              <p className="mt-0.5 text-[10px] text-zinc-400">{daysLabel(row.deadline.due_at)}</p>
+              <p className="mt-0.5 text-[10px] font-bold" style={{ color: deadlineMeta(row.deadline.due_at).color }}>
+                {deadlineMeta(row.deadline.due_at).text}
+              </p>
             </div>
           ) : (
             <span className="text-[11px] text-zinc-400">مهلت ثبت نشده</span>
@@ -672,30 +800,42 @@ function parseFields(schema: Json): FormField[] {
 }
 
 function RiskBadge({ risk }: { risk: Risk }) {
-  if (risk === 'HIGH') return <span className="rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600 dark:bg-red-950/40 dark:text-red-300">بالا</span>
-  if (risk === 'MEDIUM') return <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-600 dark:bg-amber-950/40 dark:text-amber-300">متوسط</span>
-  if (risk === 'LOW') return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300">کم</span>
+  if (risk === 'HIGH') return <Dot label="بالا" color={RISK_RED} />
+  if (risk === 'MEDIUM') return <Dot label="متوسط" color={RISK_ORANGE} />
+  if (risk === 'LOW') return <Dot label="پایین" color={RISK_GRAY} />
   return <span className="text-[10px] text-zinc-400">—</span>
+}
+
+function Dot({ label, color }: { label: string; color: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold" style={{ color }}>
+      <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+      {label}
+    </span>
+  )
 }
 
 function StatusPill({ status }: { status: RowStatus }) {
   const map: Record<RowStatus, { label: string; cls: string }> = {
-    OVERDUE: { label: 'دارای تأخیر', cls: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300' },
-    NEEDS_ACTION: { label: 'نیازمند اقدام', cls: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300' },
-    IN_PROGRESS: { label: 'در حال انجام', cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' },
-    WAITING: { label: 'در انتظار مرحله بعد', cls: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400' },
-    COMPLETED: { label: 'تکمیل‌شده', cls: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300' },
-    CANCELLED: { label: 'لغوشده', cls: 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500' },
+    OVERDUE: { label: 'دارای تأخیر', cls: 'border-red-300 bg-red-50 text-red-600 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300' },
+    NEEDS_ACTION: { label: 'در انتظار اقدام', cls: 'border-red-200 bg-red-50/50 text-red-600 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-300' },
+    WAITING_APPROVAL: { label: 'در انتظار تأیید مدیر', cls: 'border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
+    IN_PROGRESS: { label: 'در حال انجام', cls: 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300' },
+    WAITING: { label: 'در انتظار مرحله بعد', cls: 'border-zinc-200 bg-zinc-50 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400' },
+    COMPLETED: { label: 'تکمیل‌شده', cls: 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300' },
+    CANCELLED: { label: 'لغوشده', cls: 'border-zinc-200 bg-zinc-50 text-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-500' },
   }
   const item = map[status]
-  return <span className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-bold ${item.cls}`}>{item.label}</span>
+  return <span className={`inline-block whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold ${item.cls}`}>{item.label}</span>
 }
 
-function daysLabel(dueAt: string) {
+function deadlineMeta(dueAt: string) {
   const days = Math.ceil((new Date(dueAt).getTime() - Date.now()) / 86_400_000)
-  if (days < 0) return `${Math.abs(days).toLocaleString('fa-IR')} روز گذشته`
-  if (days === 0) return 'مهلت امروز'
-  return `${days.toLocaleString('fa-IR')} روز مانده`
+  if (days < 0) return { text: `${Math.abs(days).toLocaleString('fa-IR')} روز گذشته`, color: RISK_RED }
+  if (days === 0) return { text: 'مهلت امروز', color: RISK_RED }
+  if (days <= 7) return { text: `${days.toLocaleString('fa-IR')} روز مانده`, color: RISK_RED }
+  if (days <= 14) return { text: `${days.toLocaleString('fa-IR')} روز مانده`, color: RISK_ORANGE }
+  return { text: `${days.toLocaleString('fa-IR')} روز مانده`, color: RISK_GRAY }
 }
 
 function formatDate(value: string) {
