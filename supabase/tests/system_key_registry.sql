@@ -47,6 +47,16 @@ begin
 exception when check_violation then null;
 end $$;
 
+-- 3b) a segment starting with a digit (e.g. a raw UUID scope) must be rejected
+--     too; the backfill migration must letter-prefix UUID scopes.
+do $$
+begin
+  insert into public.system_key_registry (full_key, title_fa, entity_type, module, status)
+  values ('objection.step.41e8ddd2b4f64575baab47757a8df201.appeal_case_id', 'پرونده تجدیدنظر', 'OBJECTION_STEP', 'objection', 'DRAFT');
+  raise exception 'FAIL: digit-leading key segment was accepted';
+  exception when check_violation then null;
+end $$;
+
 -- 4) publish then attempt rename → must fail (lock)
 update public.system_key_registry set status = 'PUBLISHED' where full_key = 'company_profile.field.test_ownership';
 do $$

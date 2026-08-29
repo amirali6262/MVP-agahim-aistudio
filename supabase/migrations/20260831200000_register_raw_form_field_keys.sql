@@ -40,8 +40,11 @@ begin
       end if;
       v_slug := lower(btrim(coalesce(r.code, '')));
       v_slug := regexp_replace(v_slug, '[^a-z0-9_]', '_', 'g');
-      if v_slug = '' then
-        v_slug := replace(r.id::text, '-', '');
+      -- Every full_key segment must start with a lowercase letter (enforced by
+      -- system_key_registry_key_check). A UUID starts with a digit, so when the
+      -- step has no usable code we disambiguate the scope with a letter prefix.
+      if v_slug = '' or v_slug !~ '^[a-z][a-z0-9_]*$' then
+        v_slug := 'uuid_' || replace(r.id::text, '-', '');
       end if;
       v_full := 'workflow.step.' || v_slug || '.' || v_raw;
       insert into public.system_key_registry
@@ -79,7 +82,10 @@ begin
       if v_raw = '' or v_raw !~ '^[a-z][a-z0-9_]*$' then
         continue;
       end if;
-      v_slug := replace(r.id::text, '-', '');
+      -- Scope is disambiguated by the stage id. A UUID segment starts with a
+      -- digit, which violates system_key_registry_key_check, so it is encoded
+      -- under a letter-leading prefix (uuid_<hex>). Stored raw value is untouched.
+      v_slug := 'uuid_' || replace(r.id::text, '-', '');
       v_full := 'objection.step.' || v_slug || '.' || v_raw;
       insert into public.system_key_registry
         (full_key, title_fa, entity_type, module, form_name, form_id, source_table, status)
