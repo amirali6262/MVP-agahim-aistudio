@@ -246,7 +246,10 @@ $$;
 
 -- Legacy fact: ENTITY_TYPE EQ 'حقوقی' still resolves from the tenants table.
 -- (Inserting a new condition into a PUBLISHED version is intentionally blocked
--- by the immutability trigger, so only the matcher itself is exercised here.)
+-- by the immutability trigger, so only the matcher itself is exercised here.
+-- The private helper is not executable by authenticated roles, so this check
+-- runs as the test superuser.)
+reset role;
 do $$
 declare
   legacy_match boolean;
