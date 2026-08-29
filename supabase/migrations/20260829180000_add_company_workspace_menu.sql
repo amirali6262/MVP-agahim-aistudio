@@ -14,7 +14,7 @@ begin;
 -- --------------------------------------------------------------------------
 -- 1. Draft table (admin editing surface)
 -- --------------------------------------------------------------------------
-create table public.company_menu_drafts (
+create table if not exists public.company_menu_drafts (
   id uuid primary key default extensions.gen_random_uuid(),
   -- Stable, predictable english code used for parent references on publish.
   code text not null unique
@@ -33,15 +33,15 @@ create table public.company_menu_drafts (
   updated_at timestamptz not null default now()
 );
 
-create index company_menu_drafts_parent_idx on public.company_menu_drafts(parent_id);
-create index company_menu_drafts_form_idx on public.company_menu_drafts(form_obligation_id);
+create index if not exists company_menu_drafts_parent_idx on public.company_menu_drafts(parent_id);
+create index if not exists company_menu_drafts_form_idx on public.company_menu_drafts(form_obligation_id);
 
 -- --------------------------------------------------------------------------
 -- 2. Published snapshot table (company workspace reads this)
 --    parent_code is the stable english code of the parent item (GROUP only),
 --    so the tree can be rebuilt without identity remapping on each publish.
 -- --------------------------------------------------------------------------
-create table public.company_menu (
+create table if not exists public.company_menu (
   id uuid primary key default extensions.gen_random_uuid(),
   code text not null unique
     constraint company_menu_code_check check (code ~ '^[A-Z][A-Z0-9_]{1,79}$'),
@@ -58,8 +58,8 @@ create table public.company_menu (
   created_at timestamptz not null default now()
 );
 
-create index company_menu_parent_idx on public.company_menu(parent_code);
-create index company_menu_form_idx on public.company_menu(form_obligation_id);
+create index if not exists company_menu_parent_idx on public.company_menu(parent_code);
+create index if not exists company_menu_form_idx on public.company_menu(form_obligation_id);
 
 -- --------------------------------------------------------------------------
 -- 3. Publish function: validates the whole tree, then replaces the published

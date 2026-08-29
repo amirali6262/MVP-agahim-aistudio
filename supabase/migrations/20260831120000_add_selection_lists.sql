@@ -13,7 +13,7 @@ begin;
 -- --------------------------------------------------------------------------
 -- 1. selection_lists
 -- --------------------------------------------------------------------------
-create table public.selection_lists (
+create table if not exists public.selection_lists (
   id uuid primary key default extensions.gen_random_uuid(),
   key text not null constraint selection_lists_key_check check (btrim(key) <> ''),
   title text not null constraint selection_lists_title_check check (btrim(title) <> ''),
@@ -38,14 +38,14 @@ create table public.selection_lists (
   updated_at timestamptz not null default now(),
   constraint selection_lists_not_self_parent check (parent_list_id is distinct from id)
 );
-create unique index selection_lists_key_uidx on public.selection_lists (lower(key));
+create unique index if not exists selection_lists_key_uidx on public.selection_lists (lower(key));
 comment on table public.selection_lists is
   'Central list of selectable options (static or system-backed) used by field definitions.';
 comment on column public.selection_lists.system_source_key is
   'For SYSTEM lists only: identifies a real system source; options are fetched live and never stored in static option rows.';
 
 -- Depth guard for dependent lists (max 5 levels for the current version).
-create function public.selection_lists_check_cycle()
+create or replace function public.selection_lists_check_cycle()
 returns trigger
 language plpgsql
 security definer
@@ -77,13 +77,14 @@ end;
 $$;
 revoke all on function public.selection_lists_check_cycle() from public, anon, authenticated, service_role;
 
+drop trigger if exists selection_lists_check_cycle on public.selection_lists;
 create trigger selection_lists_check_cycle
   before insert or update of parent_list_id, source_type, id on public.selection_lists
   for each row execute function public.selection_lists_check_cycle();
 
 -- Prevent destructive changes after publication/use: key, source_type,
 -- parent and simple/published status flip are immutable once PUBLISHED.
-create function public.selection_lists_protect_published()
+create or replace function public.selection_lists_protect_published()
 returns trigger
 language plpgsql
 security definer
@@ -126,6 +127,7 @@ end;
 $$;
 revoke all on function public.selection_lists_protect_published() from public, anon, authenticated, service_role;
 
+drop trigger if exists selection_lists_protect_published on public.selection_lists;
 create trigger selection_lists_protect_published
   before update or delete on public.selection_lists
   for each row execute function public.selection_lists_protect_published();
@@ -133,7 +135,7 @@ create trigger selection_lists_protect_published
 -- --------------------------------------------------------------------------
 -- 2. selection_list_options
 -- --------------------------------------------------------------------------
-create table public.selection_list_options (
+create table if not exists public.selection_list_options (
   id uuid primary key default extensions.gen_random_uuid(),
   list_id uuid not null references public.selection_lists(id) on delete cascade,
   key text not null constraint selection_list_options_key_check check (btrim(key) <> ''),
@@ -146,19 +148,19 @@ create table public.selection_list_options (
   updated_at timestamptz not null default now(),
   constraint selection_list_options_not_self_parent check (parent_option_id is distinct from id)
 );
-create unique index selection_list_options_list_key_uidx on public.selection_list_options (list_id, lower(key));
+create unique index if not exists selection_list_options_list_key_uidx on public.selection_list_options (list_id, lower(key));
 comment on column public.selection_list_options.key is
   'Stable key used as the logical stored value. label is presentation-only and may change.';
 comment on column public.selection_list_options.parent_option_id is
   'Parent option (by id, never by Persian label) for linking within a dependent chain.';
 
-create index selection_list_options_list_idx on public.selection_list_options(list_id, sort_order, is_active);
-create index selection_list_options_parent_idx on public.selection_list_options(parent_option_id);
+create index if not exists selection_list_options_list_idx on public.selection_list_options(list_id, sort_order, is_active);
+create index if not exists selection_list_options_parent_idx on public.selection_list_options(parent_option_id);
 
 -- A child option must belong to a child list whose parent list matches the
 -- parent option's list (the "parent field uses the correct parent list" rule),
 -- and option parent chains must be cycle-free and bounded.
-create function public.selection_list_options_validate_parent()
+create or replace function public.selection_list_options_validate_parent()
 returns trigger
 language plpgsql
 security definer
@@ -197,13 +199,14 @@ end;
 $$;
 revoke all on function public.selection_list_options_validate_parent() from public, anon, authenticated, service_role;
 
+drop trigger if exists selection_list_options_validate_parent on public.selection_list_options;
 create trigger selection_list_options_validate_parent
   before insert or update of parent_option_id, id, list_id on public.selection_list_options
   for each row execute function public.selection_list_options_validate_parent();
 
 -- Options that are used as parents are already protected by FK restrict.
 -- Keys are immutable once the option (or its list) is published or used.
-create function public.selection_list_options_protect_key()
+create or replace function public.selection_list_options_protect_key()
 returns trigger
 language plpgsql
 security definer
@@ -221,6 +224,7 @@ end;
 $$;
 revoke all on function public.selection_list_options_protect_key() from public, anon, authenticated, service_role;
 
+drop trigger if exists selection_list_options_protect_key on public.selection_list_options;
 create trigger selection_list_options_protect_key
   before update of key on public.selection_list_options
   for each row execute function public.selection_list_options_protect_key();
@@ -233,27 +237,35 @@ alter table public.selection_list_options enable row level security;
 
 -- Authenticated users may read published, active lists/options (workspace
 -- form rendering). Only platform admins see drafts, and only admins write.
-create policy selection_lists_read on public.selection_lists
-  for select to authenticated
-  using (private.is_platform_admin() or (status = 'PUBLISHED' and is_active));
-create policy selection_lists_admin_write on public.selection_lists
-  for all to authenticated
-  using (private.is_platform_admin())
-  with check (private.is_platform_admin());
+do $$ begin
+  create policy selection_lists_read on public.selection_lists
+    for select to authenticated
+    using (private.is_platform_admin() or (status = 'PUBLISHED' and is_active));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy selection_lists_admin_write on public.selection_lists
+    for all to authenticated
+    using (private.is_platform_admin())
+    with check (private.is_platform_admin());
+exception when duplicate_object then null; end $$;
 
-create policy selection_list_options_read on public.selection_list_options
-  for select to authenticated
-  using (
-    private.is_platform_admin()
-    or exists (
-      select 1 from public.selection_lists l
-      where l.id = list_id and l.status = 'PUBLISHED'
-    )
-  );
-create policy selection_list_options_admin_write on public.selection_list_options
-  for all to authenticated
-  using (private.is_platform_admin())
-  with check (private.is_platform_admin());
+do $$ begin
+  create policy selection_list_options_read on public.selection_list_options
+    for select to authenticated
+    using (
+      private.is_platform_admin()
+      or exists (
+        select 1 from public.selection_lists l
+        where l.id = list_id and l.status = 'PUBLISHED'
+      )
+    );
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy selection_list_options_admin_write on public.selection_list_options
+    for all to authenticated
+    using (private.is_platform_admin())
+    with check (private.is_platform_admin());
+exception when duplicate_object then null; end $$;
 
 grant select, insert, update, delete on table public.selection_lists to authenticated;
 grant select, insert, update, delete on table public.selection_list_options to authenticated;

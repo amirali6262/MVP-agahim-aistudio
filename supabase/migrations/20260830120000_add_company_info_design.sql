@@ -12,7 +12,7 @@ begin;
 -- --------------------------------------------------------------------------
 -- 1. Wizard steps (complementary onboarding wizard)
 -- --------------------------------------------------------------------------
-create table public.company_wizard_steps (
+create table if not exists public.company_wizard_steps (
   id uuid primary key default extensions.gen_random_uuid(),
   title text not null constraint company_wizard_steps_title_check check (btrim(title) <> ''),
   description text,
@@ -26,12 +26,12 @@ create table public.company_wizard_steps (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index company_wizard_steps_sort_idx on public.company_wizard_steps(status, sort_order);
+create index if not exists company_wizard_steps_sort_idx on public.company_wizard_steps(status, sort_order);
 
 -- --------------------------------------------------------------------------
 -- 2. Company field definitions
 -- --------------------------------------------------------------------------
-create table public.company_field_definitions (
+create table if not exists public.company_field_definitions (
   id uuid primary key default extensions.gen_random_uuid(),
   key text not null constraint company_field_definitions_key_check check (btrim(key) <> ''),
   title text not null constraint company_field_definitions_title_check check (btrim(title) <> ''),
@@ -59,14 +59,14 @@ create table public.company_field_definitions (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create unique index company_field_definitions_key_uidx on public.company_field_definitions(lower(key));
-create index company_field_definitions_section_idx on public.company_field_definitions(section, status, sort_order);
-create index company_field_definitions_step_idx on public.company_field_definitions(wizard_step_id);
+create unique index if not exists company_field_definitions_key_uidx on public.company_field_definitions(lower(key));
+create index if not exists company_field_definitions_section_idx on public.company_field_definitions(section, status, sort_order);
+create index if not exists company_field_definitions_step_idx on public.company_field_definitions(wizard_step_id);
 
 -- --------------------------------------------------------------------------
 -- 3. Field options (incl. the natural/legal person options)
 -- --------------------------------------------------------------------------
-create table public.company_field_options (
+create table if not exists public.company_field_options (
   id uuid primary key default extensions.gen_random_uuid(),
   field_id uuid not null references public.company_field_definitions(id) on delete cascade,
   value text not null constraint company_field_options_value_check check (btrim(value) <> ''),
@@ -76,12 +76,12 @@ create table public.company_field_options (
   -- unique per field so re-running the seed never creates duplicate stable values
   constraint company_field_options_field_value_key unique (field_id, value)
 );
-create index company_field_options_field_idx on public.company_field_options(field_id, sort_order);
+create index if not exists company_field_options_field_idx on public.company_field_options(field_id, sort_order);
 
 -- --------------------------------------------------------------------------
 -- 4. Per-company field values (one row per company+field)
 -- --------------------------------------------------------------------------
-create table public.company_field_values (
+create table if not exists public.company_field_values (
   id uuid primary key default extensions.gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   field_id uuid not null references public.company_field_definitions(id) on delete restrict,
@@ -91,17 +91,20 @@ create table public.company_field_values (
   updated_at timestamptz not null default now(),
   constraint company_field_values_tenant_field_key unique (tenant_id, field_id)
 );
-create index company_field_values_tenant_idx on public.company_field_values(tenant_id);
+create index if not exists company_field_values_tenant_idx on public.company_field_values(tenant_id);
 
 -- --------------------------------------------------------------------------
 -- Triggers: keep updated_at current
 -- --------------------------------------------------------------------------
+drop trigger if exists company_field_definitions_set_updated_at on public.company_field_definitions;
 create trigger company_field_definitions_set_updated_at
   before update on public.company_field_definitions
   for each row execute function public.set_updated_at();
+drop trigger if exists company_wizard_steps_set_updated_at on public.company_wizard_steps;
 create trigger company_wizard_steps_set_updated_at
   before update on public.company_wizard_steps
   for each row execute function public.set_updated_at();
+drop trigger if exists company_field_values_set_updated_at on public.company_field_values;
 create trigger company_field_values_set_updated_at
   before update on public.company_field_values
   for each row execute function public.set_updated_at();
@@ -116,65 +119,97 @@ alter table public.company_field_values enable row level security;
 
 -- Definitions: anyone authenticated reads (workspace filters PUBLISHED), only
 -- platform admins manage (incl. drafts).
-create policy company_field_definitions_select
-  on public.company_field_definitions for select to authenticated
-  using (private.is_platform_admin() or status = 'PUBLISHED');
-create policy company_field_definitions_insert
-  on public.company_field_definitions for insert to authenticated
-  with check ((select private.is_platform_admin()));
-create policy company_field_definitions_update
-  on public.company_field_definitions for update to authenticated
-  using ((select private.is_platform_admin()))
-  with check ((select private.is_platform_admin()));
-create policy company_field_definitions_delete
-  on public.company_field_definitions for delete to authenticated
-  using ((select private.is_platform_admin()));
+do $$ begin
+  create policy company_field_definitions_select
+    on public.company_field_definitions for select to authenticated
+    using (private.is_platform_admin() or status = 'PUBLISHED');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_field_definitions_insert
+    on public.company_field_definitions for insert to authenticated
+    with check ((select private.is_platform_admin()));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_field_definitions_update
+    on public.company_field_definitions for update to authenticated
+    using ((select private.is_platform_admin()))
+    with check ((select private.is_platform_admin()));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_field_definitions_delete
+    on public.company_field_definitions for delete to authenticated
+    using ((select private.is_platform_admin()));
+exception when duplicate_object then null; end $$;
 
-create policy company_wizard_steps_select
-  on public.company_wizard_steps for select to authenticated
-  using (private.is_platform_admin() or status = 'PUBLISHED');
-create policy company_wizard_steps_insert
-  on public.company_wizard_steps for insert to authenticated
-  with check ((select private.is_platform_admin()));
-create policy company_wizard_steps_update
-  on public.company_wizard_steps for update to authenticated
-  using ((select private.is_platform_admin()))
-  with check ((select private.is_platform_admin()));
-create policy company_wizard_steps_delete
-  on public.company_wizard_steps for delete to authenticated
-  using ((select private.is_platform_admin()));
+do $$ begin
+  create policy company_wizard_steps_select
+    on public.company_wizard_steps for select to authenticated
+    using (private.is_platform_admin() or status = 'PUBLISHED');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_wizard_steps_insert
+    on public.company_wizard_steps for insert to authenticated
+    with check ((select private.is_platform_admin()));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_wizard_steps_update
+    on public.company_wizard_steps for update to authenticated
+    using ((select private.is_platform_admin()))
+    with check ((select private.is_platform_admin()));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_wizard_steps_delete
+    on public.company_wizard_steps for delete to authenticated
+    using ((select private.is_platform_admin()));
+exception when duplicate_object then null; end $$;
 
-create policy company_field_options_select
-  on public.company_field_options for select to authenticated
-  using (true);
-create policy company_field_options_insert
-  on public.company_field_options for insert to authenticated
-  with check ((select private.is_platform_admin()));
-create policy company_field_options_update
-  on public.company_field_options for update to authenticated
-  using ((select private.is_platform_admin()))
-  with check ((select private.is_platform_admin()));
-create policy company_field_options_delete
-  on public.company_field_options for delete to authenticated
-  using ((select private.is_platform_admin()));
+do $$ begin
+  create policy company_field_options_select
+    on public.company_field_options for select to authenticated
+    using (true);
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_field_options_insert
+    on public.company_field_options for insert to authenticated
+    with check ((select private.is_platform_admin()));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_field_options_update
+    on public.company_field_options for update to authenticated
+    using ((select private.is_platform_admin()))
+    with check ((select private.is_platform_admin()));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_field_options_delete
+    on public.company_field_options for delete to authenticated
+    using ((select private.is_platform_admin()));
+exception when duplicate_object then null; end $$;
 
 -- Company values: members of that company only (USING + WITH CHECK).
-create policy company_field_values_select
-  on public.company_field_values for select to authenticated
-  using (private.is_tenant_member(tenant_id));
-create policy company_field_values_insert
-  on public.company_field_values for insert to authenticated
-  with check (
-    private.is_tenant_member(tenant_id)
-    and (select private.is_tenant_member(tenant_id))
-  );
-create policy company_field_values_update
-  on public.company_field_values for update to authenticated
-  using (private.is_tenant_member(tenant_id))
-  with check (private.is_tenant_member(tenant_id));
-create policy company_field_values_delete
-  on public.company_field_values for delete to authenticated
-  using (private.is_tenant_member(tenant_id));
+do $$ begin
+  create policy company_field_values_select
+    on public.company_field_values for select to authenticated
+    using (private.is_tenant_member(tenant_id));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_field_values_insert
+    on public.company_field_values for insert to authenticated
+    with check (
+      private.is_tenant_member(tenant_id)
+      and (select private.is_tenant_member(tenant_id))
+    );
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_field_values_update
+    on public.company_field_values for update to authenticated
+    using (private.is_tenant_member(tenant_id))
+    with check (private.is_tenant_member(tenant_id));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy company_field_values_delete
+    on public.company_field_values for delete to authenticated
+    using (private.is_tenant_member(tenant_id));
+exception when duplicate_object then null; end $$;
 
 -- RLS restricts all writes to platform admins; these grants let that role's
 -- requests pass the privilege layer (definitions/steps/options are admin-owned).
