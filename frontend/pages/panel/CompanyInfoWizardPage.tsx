@@ -261,8 +261,6 @@ export default function CompanyInfoWizardPage() {
           <CompanyDynamicFields
             definitions={currentFields}
             options={design.options}
-            selectionLists={design.selectionLists}
-            selectionOptions={design.selectionOptions}
             values={values}
             onChange={(fieldId, v) => setValues((prev) => ({ ...prev, [fieldId]: v }))}
             columns={steps[activeStepIdx].columns as 1 | 2}
@@ -271,7 +269,7 @@ export default function CompanyInfoWizardPage() {
           {unassignedFields.length > 0 && (
             <div className="mt-6 border-t border-zinc-800 pt-5">
               <p className="mb-3 text-[11px] font-bold text-zinc-300">سایر اطلاعات تکمیلی</p>
-              <CompanyDynamicFields definitions={unassignedFields} options={design.options} selectionLists={design.selectionLists} selectionOptions={design.selectionOptions} values={values} onChange={(fieldId, v) => setValues((prev) => ({ ...prev, [fieldId]: v }))} columns={1} />
+              <CompanyDynamicFields definitions={unassignedFields} options={design.options} values={values} onChange={(fieldId, v) => setValues((prev) => ({ ...prev, [fieldId]: v }))} columns={1} />
             </div>
           )}
         </div>

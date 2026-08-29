@@ -23,8 +23,6 @@ export interface CompanyFieldDefinition {
   is_deletable: boolean
   used_in_eligibility: boolean
   status: CompanyStatus
-  selection_list_id: string | null
-  condition_model: unknown | null
   created_at: string
   updated_at: string
 }
@@ -66,10 +64,6 @@ export interface CompanyInfoDesign {
   definitions: CompanyFieldDefinition[]
   options: CompanyFieldOption[]
   steps: CompanyWizardStep[]
-  // Published central selection lists + their options, resolved for list-linked
-  // SELECT/MULTI_SELECT fields at render/definition time.
-  selectionLists: Array<{ id: string; key: string; title: string; source_type: string; is_dependent: boolean; parent_list_id: string | null }>
-  selectionOptions: Array<{ id: string; list_id: string; key: string; label: string; parent_option_id: string | null; sort_order: number; is_active: boolean }>
 }
 
 function mapRow<T>(row: any, fallback: T): T {
@@ -78,7 +72,7 @@ function mapRow<T>(row: any, fallback: T): T {
 
 // Admin designer: all statuses (drafts + published), plus options and steps.
 export async function fetchCompanyInfoDesign(): Promise<CompanyInfoDesign> {
-  const empty: CompanyInfoDesign = { definitions: [], options: [], steps: [], selectionLists: [], selectionOptions: [] }
+  const empty: CompanyInfoDesign = { definitions: [], options: [], steps: [] }
   if (!isSupabaseConfigured) return empty
   const [defsRes, optsRes, stepsRes] = await Promise.all([
     (supabase as any).from('company_field_definitions').select('*').order('sort_order', { ascending: true }),
@@ -92,32 +86,25 @@ export async function fetchCompanyInfoDesign(): Promise<CompanyInfoDesign> {
     definitions: defsRes.data ?? [],
     options: optsRes.data ?? [],
     steps: stepsRes.data ?? [],
-    selectionLists: [],
-    selectionOptions: [],
   }
 }
 
-// Workspace: only the published, active definitions (all sections) + steps +
-// the published selection lists those fields may be linked to.
+// Workspace: only the published, active definitions (all sections) + steps.
 export async function fetchPublishedCompanyFields(): Promise<CompanyInfoDesign> {
-  const empty: CompanyInfoDesign = { definitions: [], options: [], steps: [], selectionLists: [], selectionOptions: [] }
+  const empty: CompanyInfoDesign = { definitions: [], options: [], steps: [] }
   if (!isSupabaseConfigured) return empty
-  const [defsRes, optsRes, stepsRes, listsRes, listOptsRes] = await Promise.all([
+  const [defsRes, optsRes, stepsRes] = await Promise.all([
     (supabase as any).from('company_field_definitions').select('*').eq('status', 'PUBLISHED').eq('is_active', true).order('sort_order', { ascending: true }),
     (supabase as any).from('company_field_options').select('*').eq('is_active', true).order('sort_order', { ascending: true }),
     (supabase as any).from('company_wizard_steps').select('*').eq('status', 'PUBLISHED').eq('is_active', true).order('sort_order', { ascending: true }),
-    (supabase as any).from('selection_lists').select('*').eq('status', 'PUBLISHED').eq('is_active', true).order('title', { ascending: true }),
-    (supabase as any).from('selection_list_options').select('*').eq('is_active', true).order('sort_order', { ascending: true }),
   ])
-  if (defsRes.error || optsRes.error || stepsRes.error || listsRes.error || listOptsRes.error) {
-    throw new Error(defsRes.error?.message ?? optsRes.error?.message ?? stepsRes.error?.message ?? listsRes.error?.message ?? listOptsRes.error?.message ?? 'دریافت تعاریف ناموفق بود.')
+  if (defsRes.error || optsRes.error || stepsRes.error) {
+    throw new Error(defsRes.error?.message ?? optsRes.error?.message ?? stepsRes.error?.message ?? 'دریافت تعاریف ناموفق بود.')
   }
   return {
     definitions: defsRes.data ?? [],
     options: optsRes.data ?? [],
     steps: stepsRes.data ?? [],
-    selectionLists: (listsRes.data ?? []).map((l: any) => ({ id: l.id, key: l.key, title: l.title, source_type: l.source_type, is_dependent: l.is_dependent, parent_list_id: l.parent_list_id })),
-    selectionOptions: listOptsRes.data ?? [],
   }
 }
 
@@ -139,8 +126,6 @@ export async function saveCompanyFieldDefinition(def: Partial<CompanyFieldDefini
     is_system: def.is_system ?? false,
     is_deletable: def.is_deletable ?? true,
     used_in_eligibility: def.used_in_eligibility ?? false,
-    selection_list_id: def.selection_list_id ?? null,
-    condition_model: def.condition_model ?? null,
   }
   const { data, error } = await (supabase as any)
     .from('company_field_definitions')
