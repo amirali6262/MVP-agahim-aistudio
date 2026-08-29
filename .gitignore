@@ -12,3 +12,4 @@ dist/
 .cache/
 **/.cache/
 npm-debug.log*
+supabase/.temp/
