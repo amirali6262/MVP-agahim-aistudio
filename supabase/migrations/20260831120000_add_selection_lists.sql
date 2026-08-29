@@ -315,15 +315,14 @@ values (
   now(),
   null
 )
-on conflict (lower(key)) do update
-  set title = excluded.title,
-      description = excluded.description;
--- note: must not overwrite edited publisher/timestamps beyond title/description.
+on conflict (lower(key)) do nothing;
+-- note: idempotent and non-destructive — never overwrite admin-edited titles,
+-- status, or publisher/timestamps on re-run.
 
 insert into public.selection_list_options (id, list_id, key, label, sort_order, is_active)
 values
   ('e0000002-0000-0000-0000-000000000001', 'e0000001-0000-0000-0000-000000000001', 'natural_person', 'حقیقی', 1, true),
   ('e0000003-0000-0000-0000-000000000002', 'e0000001-0000-0000-0000-000000000001', 'legal_entity',  'حقوقی', 2, true)
-on conflict (list_id, lower(key)) do update set label = excluded.label;
+on conflict (list_id, lower(key)) do nothing;
 
 commit;
