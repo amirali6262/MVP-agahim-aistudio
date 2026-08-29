@@ -45,6 +45,8 @@ import { Label } from '../../lib/shadcn/label'
 import { Switch } from '../../lib/shadcn/switch'
 import { Badge } from '../../lib/shadcn/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
+import { Checkbox } from '../../lib/shadcn/checkbox'
+import { Popover, PopoverContent, PopoverTrigger } from '../../lib/shadcn/popover'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../lib/shadcn/table'
 import DeleteGuardModal from '../../components/DeleteGuardModal'
 import KeyRegistryField from '../../components/KeyRegistryField'
@@ -100,6 +102,22 @@ const numericFacts = new Set(['EMPLOYEE_COUNT', 'ANNUAL_REVENUE', 'BRANCH_COUNT'
 const booleanFacts = new Set(['HAS_ACTIVE_CONTRACTS', 'PAYS_SALARIES'])
 const arrayFacts = new Set(['ACTIVITY_CODES', 'CONTRACT_TYPES'])
 
+// فکت‌های قدیمی (پیش از طراح اطلاعات شرکت) به نوع مقدار خود نگاشت می‌شوند تا
+// فیلتر عملگرها با قواعد اعتبارسنجی دیتابیس هماهنگ بماند.
+function legacyFactType(fact: string): string {
+  if (numericFacts.has(fact)) return 'NUMBER'
+  if (booleanFacts.has(fact)) return 'BOOLEAN'
+  if (arrayFacts.has(fact)) return 'MULTI_SELECT'
+  return 'SELECT'
+}
+
+export interface EligibilityFactEntry {
+  key: string
+  title: string
+  field_type: string
+  options: Array<{ value: string; label: string }>
+}
+
 const OBLIGATION_TYPE_OPTIONS = [
   ['TAX_CORPORATE', 'مالیات بر عملکرد اشخاص حقوقی'],
   ['TAX_INDIVIDUAL', 'مالیات بر عملکرد اشخاص حقیقی'],
@@ -118,6 +136,7 @@ interface DraftCondition {
   fact: string
   operator: string
   expected: string
+  connector: 'AND' | 'OR'
 }
 
 export default function AdminComplianceStudio() {
@@ -184,6 +203,46 @@ export default function AdminComplianceStudio() {
     dependencies: [],
     isDeleting: false,
   })
+
+  // فکت‌های ویرایشگر قاعده: فکت‌های legacy + فیلدهای منتشرشدهٔ طراح اطلاعات شرکت
+  // که در تشخیص تعهدات استفاده می‌شوند (used_in_eligibility).
+  const [eligibilityFacts, setEligibilityFacts] = useState<EligibilityFactEntry[]>([])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const [defsRes, optsRes] = await Promise.all([
+          (supabase as any).from('company_field_definitions').select('*').eq('used_in_eligibility', true).eq('is_active', true).eq('status', 'PUBLISHED').order('sort_order', { ascending: true }),
+          (supabase as any).from('company_field_options').select('*').eq('is_active', true).order('sort_order', { ascending: true }),
+        ])
+        if (defsRes.error || optsRes.error) return
+        const optionsByField: Record<string, Array<{ value: string; label: string }>> = {}
+        for (const option of (optsRes.data ?? []) as any[]) {
+          (optionsByField[option.field_id] = optionsByField[option.field_id] ?? []).push({ value: option.value, label: option.label })
+        }
+        const facts: EligibilityFactEntry[] = ((defsRes.data ?? []) as any[]).map((definition) => ({
+          key: definition.key,
+          title: definition.title,
+          field_type: definition.field_type,
+          options: optionsByField[definition.id] ?? [],
+        }))
+        if (!cancelled) setEligibilityFacts(facts)
+      } catch {
+        // اگر دریافت فیلدها ناموفق بود، فقط فهرست legacy نمایش داده می‌شود.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  const factCatalog = useMemo<EligibilityFactEntry[]>(() => {
+    const combined: EligibilityFactEntry[] = FACTS.map(([key, title]) => ({ key, title, field_type: legacyFactType(key), options: [] }))
+    for (const fact of eligibilityFacts) {
+      if (!combined.some((entry) => entry.key === fact.key)) combined.push(fact)
+    }
+    return combined
+  }, [eligibilityFacts])
 
   const selectedVersion = useMemo(
     () => catalog.flatMap((item) => item.versions).find((version) => version.id === selectedVersionId) ?? null,
@@ -278,56 +337,14 @@ export default function AdminComplianceStudio() {
       return
     }
 
-    // Delete related rows in Supabase, then refresh the local view.
+    // Cascade delete runs server-side in one transaction (platform admin only):
+    // it removes versions, rules, workflow, penalties and soft references
+    // (fulfillments, extensions), then the obligation itself. Live references
+    // and published/retired versions are rejected before anything is deleted.
     setDeleteObligationGuard((g) => ({ ...g, isDeleting: true }))
     try {
-      const versionIds = item.versions.map((v) => v.id)
-
-      let templateIds: string[] = []
-      let ruleSetIds: string[] = []
-      if (versionIds.length > 0) {
-        const [tmplRes, rulesRes] = await Promise.all([
-          supabase.from('workflow_templates').select('id').in('obligation_version_id', versionIds),
-          supabase.from('eligibility_rule_sets').select('id').in('obligation_version_id', versionIds),
-        ])
-        if (tmplRes.error) throw new Error('دریافت قالب‌های فرایند ناموفق بود: ' + tmplRes.error.message)
-        if (rulesRes.error) throw new Error('دریافت قواعد مشمولیت ناموفق بود: ' + rulesRes.error.message)
-        templateIds = (tmplRes.data ?? []).map((t) => t.id)
-        ruleSetIds = (rulesRes.data ?? []).map((r) => r.id)
-
-        if (ruleSetIds.length > 0) {
-          const cRes = await supabase.from('eligibility_conditions').delete().in('rule_set_id', ruleSetIds)
-          if (cRes.error) throw new Error('حذف شرایط مشمولیت ناموفق بود: ' + cRes.error.message)
-          const rRes = await supabase.from('eligibility_rule_sets').delete().in('id', ruleSetIds)
-          if (rRes.error) throw new Error('حذف قواعد مشمولیت ناموفق بود: ' + rRes.error.message)
-        }
-
-        if (templateIds.length > 0) {
-          const trRes = await supabase.from('workflow_transitions').delete().in('workflow_template_id', templateIds)
-          if (trRes.error) throw new Error('حذف انتقال‌ها ناموفق بود: ' + trRes.error.message)
-          const stRes = await supabase.from('workflow_steps').delete().in('workflow_template_id', templateIds)
-          if (stRes.error) throw new Error('حذف مراحل فرایند ناموفق بود: ' + stRes.error.message)
-          const tmRes = await supabase.from('workflow_templates').delete().in('id', templateIds)
-          if (tmRes.error) throw new Error('حذف قالب فرایند ناموفق بود: ' + tmRes.error.message)
-        }
-
-        const pRes = await supabase.from('obligation_version_penalties').delete().in('obligation_version_id', versionIds)
-        if (pRes.error) throw new Error('حذف جرایم نسخه ناموفق بود: ' + pRes.error.message)
-        const fRes = await (supabase as any).from('tenant_obligation_fulfillments').delete().eq('obligation_id', targetObligationId)
-        if (fRes.error) throw new Error('حذف اجراهای تعهد در شرکت‌ها ناموفق بود: ' + fRes.error.message)
-        const eRes = await (supabase as any).from('deadline_extensions').delete().eq('obligation_id', targetObligationId)
-        if (eRes.error) throw new Error('حذف تمدیدهای مهلت ناموفق بود: ' + eRes.error.message)
-        const vRes = await supabase.from('obligation_versions').delete().eq('obligation_id', targetObligationId)
-        if (vRes.error) throw new Error('حذف نسخه‌های تعهد ناموفق بود: ' + vRes.error.message)
-      } else {
-        const fRes = await (supabase as any).from('tenant_obligation_fulfillments').delete().eq('obligation_id', targetObligationId)
-        if (fRes.error) throw new Error('حذف اجراهای تعهد در شرکت‌ها ناموفق بود: ' + fRes.error.message)
-        const eRes = await (supabase as any).from('deadline_extensions').delete().eq('obligation_id', targetObligationId)
-        if (eRes.error) throw new Error('حذف تمدیدهای مهلت ناموفق بود: ' + eRes.error.message)
-      }
-
-      const oRes = await supabase.from('obligations').delete().eq('id', targetObligationId)
-      if (oRes.error) throw new Error('حذف تعهد ناموفق بود: ' + oRes.error.message)
+      const { error } = await (supabase as any).rpc('delete_obligation_cascade', { p_obligation_id: targetObligationId })
+      if (error) throw new Error('حذف تعهد ناموفق بود: ' + error.message)
 
       await loadCatalog()
       setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false, hasPublished: false })
@@ -1140,6 +1157,7 @@ export default function AdminComplianceStudio() {
           onSeed={seedStandardCorporateTaxData}
           busy={busy}
           mode={mode}
+          factCatalog={factCatalog}
           onClose={() => { setEditingRule(null); setActiveSubModule(null) }}
           onSaved={loadDefinition}
         />
@@ -2308,6 +2326,7 @@ function EligibilityModal({
   onSeed,
   busy,
   mode,
+  factCatalog,
   onClose,
   onSaved,
 }: {
@@ -2321,6 +2340,7 @@ function EligibilityModal({
   onSeed: () => Promise<void>
   busy: boolean
   mode: StudioMode
+  factCatalog: EligibilityFactEntry[]
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
@@ -2401,8 +2421,7 @@ function EligibilityModal({
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {conds.length > 0 ? (
                         conds.map((c: any, cIdx: number) => {
-                          const factEntry = FACTS.find(([k]) => k === c.fact_key)
-                          const factTitle = factEntry ? factEntry[1] : c.fact_key
+                          const factTitle = factCatalog.find((entry) => entry.key === c.fact_key)?.title ?? c.fact_key
                           const opEntry = OPERATORS.find(([k]) => k === c.operator)
                           const opTitle = opEntry ? opEntry[1] : c.operator
                           const val = Array.isArray(c.expected_value)
@@ -2411,8 +2430,13 @@ function EligibilityModal({
                               ? String(c.expected_value)
                               : ''
                           return (
-                            <span key={c.id ?? cIdx} className="rounded bg-zinc-800 px-2 py-0.5 text-[11px] text-amber-300">
-                              شرط: {factTitle} {opTitle} {val}
+                            <span key={c.id ?? cIdx} className="flex items-center gap-1.5">
+                              <span className="rounded bg-zinc-800 px-2 py-0.5 text-[11px] text-amber-300">
+                                شرط: {factTitle} {opTitle} {val}
+                              </span>
+                              {cIdx < conds.length - 1 && (
+                                <span className="text-[10px] font-bold text-zinc-500">{c.connector === 'OR' ? 'یا' : 'و'}</span>
+                              )}
                             </span>
                           )
                         })
@@ -2433,6 +2457,7 @@ function EligibilityModal({
                 nextPriority={rules.length + 1}
                 editingRule={editingRule}
                 editingConditions={editingRule ? ruleConditions[editingRule.id] : undefined}
+                factCatalog={factCatalog}
                 onCancelEdit={() => setEditingRule(null)}
                 onSaved={async () => {
                   setEditingRule(null)
@@ -3742,13 +3767,15 @@ function EligibilityRuleForm({
   nextPriority,
   editingRule,
   editingConditions,
+  factCatalog,
   onCancelEdit,
   onSaved,
 }: {
   versionId: string
   nextPriority: number
   editingRule?: RuleSet | null
-  editingConditions?: Array<{ fact_key: string; operator: string; expected_value: any }>
+  editingConditions?: Array<{ fact_key: string; operator: string; expected_value: any; connector?: 'AND' | 'OR' | null }>
+  factCatalog: EligibilityFactEntry[]
   onCancelEdit?: () => void
   onSaved: () => Promise<void>
 }) {
@@ -3758,8 +3785,10 @@ function EligibilityRuleForm({
   const [explanation, setExplanation] = useState('')
   const [outcome, setOutcome] = useState('ELIGIBLE')
   const [conditions, setConditions] = useState<DraftCondition[]>([
-    { fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' },
+    { fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی', connector: 'AND' },
   ])
+
+  const factEntry = (fact: string) => factCatalog.find((entry) => entry.key === fact)
 
   useEffect(() => {
     if (editingRule) {
@@ -3778,10 +3807,11 @@ function EligibilityRuleForm({
               : c.expected_value !== null && c.expected_value !== undefined
                 ? String(c.expected_value)
                 : '',
+            connector: c.connector ?? 'AND',
           }))
         )
       } else {
-        setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' }])
+        setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی', connector: 'AND' }])
       }
     } else {
       setPriority(nextPriority)
@@ -3800,7 +3830,7 @@ function EligibilityRuleForm({
       setTitle('')
       setExplanation('')
       setOutcome('ELIGIBLE')
-      setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' }])
+      setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی', connector: 'AND' }])
       onCancelEdit?.()
     }
   }
@@ -3815,7 +3845,8 @@ function EligibilityRuleForm({
         toast.error('مقدار همهٔ شرط‌ها را وارد کنید.')
         return
       }
-      if (numericFacts.has(condition.fact) && !Number.isFinite(Number(condition.expected))) {
+      const conditionType = factEntry(condition.fact)?.field_type ?? legacyFactType(condition.fact)
+      if (conditionType === 'NUMBER' && !Number.isFinite(Number(condition.expected))) {
         toast.error('مقدار شرط عددی معتبر نیست.')
         return
       }
@@ -3847,7 +3878,8 @@ function EligibilityRuleForm({
         const rows = conditions.map((condition, index) => {
           let expectedValue: Json | undefined
           if (!noValueOperators.has(condition.operator)) {
-            expectedValue = numericFacts.has(condition.fact)
+            const conditionType = factEntry(condition.fact)?.field_type ?? legacyFactType(condition.fact)
+            expectedValue = conditionType === 'NUMBER'
               ? Number(condition.expected)
               : condition.operator === 'IN'
                 ? condition.expected.split(',').map((value) => value.trim()).filter(Boolean)
@@ -3859,9 +3891,10 @@ function EligibilityRuleForm({
             fact_key: condition.fact,
             operator: condition.operator,
             expected_value: expectedValue,
+            connector: condition.connector,
           }
         })
-        const { error: conditionError } = await supabase.from('eligibility_conditions').insert(rows)
+        const { error: conditionError } = await (supabase as any).from('eligibility_conditions').insert(rows)
         if (conditionError) {
           toast.error(conditionError.message)
           return
@@ -3888,7 +3921,8 @@ function EligibilityRuleForm({
       const rows = conditions.map((condition, index) => {
         let expectedValue: Json | undefined
         if (!noValueOperators.has(condition.operator)) {
-          expectedValue = numericFacts.has(condition.fact)
+          const conditionType = factEntry(condition.fact)?.field_type ?? legacyFactType(condition.fact)
+          expectedValue = conditionType === 'NUMBER'
             ? Number(condition.expected)
             : condition.operator === 'IN'
               ? condition.expected.split(',').map((value) => value.trim()).filter(Boolean)
@@ -3900,9 +3934,10 @@ function EligibilityRuleForm({
           fact_key: condition.fact,
           operator: condition.operator,
           expected_value: expectedValue,
+          connector: condition.connector,
         }
       })
-      const { error: conditionError } = await supabase.from('eligibility_conditions').insert(rows)
+      const { error: conditionError } = await (supabase as any).from('eligibility_conditions').insert(rows)
       if (conditionError) { await supabase.from('eligibility_rule_sets').delete().eq('id', rule.id); toast.error(conditionError.message); return }
       toast.success('قاعده تشخیص ثبت شد.')
       setOpen(false)
@@ -3914,7 +3949,7 @@ function EligibilityRuleForm({
     }
   }
 
-  if (!open && !editingRule) return <Button variant="outline" className="mt-4 w-full border-zinc-700 gap-2" onClick={() => { setOpen(true); setTitle(''); setExplanation(''); setOutcome('ELIGIBLE'); setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی' }]) }}><Plus className="h-4 w-4" />افزودن قاعده جدید</Button>
+  if (!open && !editingRule) return <Button variant="outline" className="mt-4 w-full border-zinc-700 gap-2" onClick={() => { setOpen(true); setTitle(''); setExplanation(''); setOutcome('ELIGIBLE'); setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی', connector: 'AND' }]) }}><Plus className="h-4 w-4" />افزودن قاعده جدید</Button>
   return (
     <div data-studio-dirty="true" className="mt-4 space-y-3 rounded-xl border border-zinc-800 bg-[#161817] p-4">
       <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
@@ -3936,21 +3971,75 @@ function EligibilityRuleForm({
       <Field label="نتیجه مشمولیت"><Select value={outcome} onValueChange={setOutcome}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ELIGIBLE">مشمول قطعی (ELIGIBLE)</SelectItem><SelectItem value="NOT_ELIGIBLE">غیرمشمول (NOT_ELIGIBLE)</SelectItem><SelectItem value="REVIEW">نیازمند بررسی (REVIEW)</SelectItem></SelectContent></Select></Field>
       <div className="space-y-3">
         {conditions.map((condition, index) => {
-          const operatorOptions = allowedOperators(condition.fact)
+          const conditionField = factEntry(condition.fact)
+          const operatorOptions = allowedOperators(condition.fact, conditionField?.field_type)
+          const optionList = conditionField?.options ?? []
+          const selectedValues = condition.expected.split(',').map((value) => value.trim()).filter(Boolean)
           return (
             <div key={index} className="rounded-lg border border-zinc-800 bg-[#121413] p-3">
-              <p className="mb-3 text-xs text-zinc-500">شرط {index + 1} (همهٔ شرط‌ها باید برقرار باشند)</p>
+              {index > 0 ? (
+                <div className="mb-3 flex items-center gap-2 text-xs text-zinc-500">
+                  <span>اتصال به شرط قبلی</span>
+                  <Select value={condition.connector} onValueChange={(value) => updateCondition(index, { connector: value as 'AND' | 'OR' })}>
+                    <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AND">و (AND)</SelectItem>
+                      <SelectItem value="OR">یا (OR)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <p className="mb-3 text-xs text-zinc-500">شرط {index + 1} (اولین شرط قاعده)</p>
+              )}
               <div className="space-y-3">
-                <Field label="بر اساس فکت"><Select value={condition.fact} onValueChange={(fact) => updateCondition(index, { fact, operator: allowedOperators(fact)[0]?.[0] ?? 'EQ', expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{FACTS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label="بر اساس فکت"><Select value={condition.fact} onValueChange={(fact) => updateCondition(index, { fact, operator: allowedOperators(fact, factEntry(fact)?.field_type)[0]?.[0] ?? 'EQ', expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{factCatalog.map((entry) => <SelectItem key={entry.key} value={entry.key}>{entry.title}</SelectItem>)}</SelectContent></Select></Field>
                 <Field label="عملگر شرط"><Select value={condition.operator} onValueChange={(operator) => updateCondition(index, { operator, expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{operatorOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
-                {!noValueOperators.has(condition.operator) && <Field label={condition.operator === 'IN' ? 'مقادیر (با ویرگول جدا کنید)' : 'مقدار مورد انتظار'}><Input value={condition.expected} onChange={(event) => updateCondition(index, { expected: event.target.value })} /></Field>}
+                {!noValueOperators.has(condition.operator) && (
+                  <Field label={condition.operator === 'IN' ? 'گزینه‌های مورد انتظار' : 'مقدار مورد انتظار'}>
+                    {condition.operator === 'IN' && optionList.length > 0 ? (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-between border-zinc-700 text-xs h-9 font-normal">
+                            <span className="truncate">
+                              {selectedValues.length > 0
+                                ? selectedValues.map((value) => optionList.find((option) => option.value === value)?.label ?? value).join('، ')
+                                : 'انتخاب گزینه‌ها...'}
+                            </span>
+                            <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72" align="start">
+                          <div className="space-y-1.5">
+                            {optionList.map((option) => {
+                              const checked = selectedValues.includes(option.value)
+                              return (
+                                <label key={option.value} className="flex items-center gap-2.5 cursor-pointer rounded px-1.5 py-1 hover:bg-zinc-800/70">
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(next) => {
+                                      const updated = next ? [...selectedValues, option.value] : selectedValues.filter((value) => value !== option.value)
+                                      updateCondition(index, { expected: updated.join(',') })
+                                    }}
+                                  />
+                                  <span className="text-xs text-zinc-200">{option.label}</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    ) : (
+                      <Input value={condition.expected} onChange={(event) => updateCondition(index, { expected: event.target.value })} placeholder={condition.operator === 'IN' ? 'مقادیر (با ویرگول جدا کنید)' : undefined} />
+                    )}
+                  </Field>
+                )}
                 {conditions.length > 1 && <Button variant="ghost" className="text-red-400 text-xs" onClick={() => setConditions((current) => current.filter((_, position) => position !== index))}>حذف این شرط</Button>}
               </div>
             </div>
           )
         })}
       </div>
-      <Button variant="outline" className="w-full border-zinc-700 text-xs gap-1" onClick={() => setConditions((current) => [...current, { fact: 'ENTITY_TYPE', operator: 'EQ', expected: '' }])}><Plus className="h-3.5 w-3.5" />افزودن شرط دیگر</Button>
+      <Button variant="outline" className="w-full border-zinc-700 text-xs gap-1" onClick={() => setConditions((current) => [...current, { fact: 'ENTITY_TYPE', operator: 'EQ', expected: '', connector: 'AND' }])}><Plus className="h-3.5 w-3.5" />افزودن شرط دیگر</Button>
       <Field label="توضیح ساده برای کاربر"><Input value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="توضیح قانونی برای شرکت‌ها..." /></Field>
       <div className="flex gap-2">
         <SaveButton onClick={save} />
@@ -4195,13 +4284,14 @@ function studioDeadlineLabel(version: Version) { const recurrence = jsonRecord(v
 function isMissingSchemaObject(error: { code?: string; message?: string } | null) { return Boolean(error && (error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('schema cache'))) }
 function penaltyItems(value: Json): Array<{ id: string; title: string; type: string; value: string }> { if (!value || Array.isArray(value) || typeof value !== 'object') return []; if (value['type'] === 'MULTIPLE' && Array.isArray(value['items'])) return value['items'].flatMap((item, index) => { if (!item || Array.isArray(item) || typeof item !== 'object') return []; const type = String(item['type'] ?? 'PERCENTAGE'); const amount = type === 'FIXED' ? item['amount'] : item['rate_percent']; return [{ id: String(item['id'] ?? `penalty-${index}`), title: String(item['title'] ?? ''), type, value: amount == null ? '' : String(amount) }] }); const type = String(value['type'] ?? 'NONE'); if (type === 'NONE') return []; return [{ id: 'legacy-penalty', title: 'جریمه قانونی', type, value: String(type === 'FIXED' ? value['amount'] ?? '' : value['rate_percent'] ?? '') }] }
 function penaltyLabel(value: Json) { const items = penaltyItems(value); if (items.length > 1) return `${items.length.toLocaleString('fa-IR')} جریمه تعریف‌شده`; if (items.length === 1) { const item = items[0]; return item.type === 'FIXED' ? `${Number(item.value).toLocaleString('fa-IR')} ریال` : `${Number(item.value).toLocaleString('fa-IR')} درصد${item.type === 'DAILY_PERCENTAGE' ? ' روزانه' : ''}` } return 'بدون جریمه' }
-function allowedOperators(fact: string) {
-  const allowed = booleanFacts.has(fact)
+function allowedOperators(fact: string, fieldType?: string) {
+  const type = fieldType ?? legacyFactType(fact)
+  const allowed = type === 'BOOLEAN'
     ? new Set(['IS_TRUE', 'IS_FALSE', 'IS_NULL', 'NOT_NULL'])
-    : numericFacts.has(fact)
+    : type === 'NUMBER'
       ? new Set(['EQ', 'NEQ', 'GT', 'GTE', 'LT', 'LTE', 'IS_NULL', 'NOT_NULL'])
-      : arrayFacts.has(fact)
-        ? new Set(['CONTAINS', 'IS_NULL', 'NOT_NULL'])
+      : type === 'MULTI_SELECT'
+        ? new Set(['EQ', 'NEQ', 'IN', 'CONTAINS', 'IS_NULL', 'NOT_NULL'])
         : new Set(['EQ', 'NEQ', 'IN', 'IS_NULL', 'NOT_NULL'])
   return OPERATORS.filter(([value]) => allowed.has(value))
 }
