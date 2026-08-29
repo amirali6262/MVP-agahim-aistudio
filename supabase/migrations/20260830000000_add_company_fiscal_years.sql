@@ -39,7 +39,7 @@ create index if not exists compliance_cases_fiscal_year_idx
 --      re-titled/re-dated,
 --    * a period already used by a case cannot be deleted.
 -- --------------------------------------------------------------------------
-create function private.fiscal_year_write_guard()
+create or replace function private.fiscal_year_write_guard()
 returns trigger
 language plpgsql
 set search_path = pg_catalog

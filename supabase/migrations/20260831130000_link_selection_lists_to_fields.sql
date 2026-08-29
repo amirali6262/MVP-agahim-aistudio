@@ -19,7 +19,7 @@ alter table public.company_field_definitions
 
 -- A SELECT/MULTI_SELECT field may be linked to a list; any other field type
 -- must not carry a list reference (kept as a soft check, not enforced by fk).
-create index company_field_definitions_selection_list_idx
+create index if not exists company_field_definitions_selection_list_idx
   on public.company_field_definitions(selection_list_id)
   where selection_list_id is not null;
 
