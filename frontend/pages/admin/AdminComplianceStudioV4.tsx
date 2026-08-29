@@ -33,6 +33,7 @@ import {
   UserCheck,
   Inbox,
   Copy,
+  Archive,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
@@ -223,7 +224,7 @@ export default function AdminComplianceStudio() {
       item,
       dependencies: deps,
       isDeleting: false,
-      hasPublished: item.versions.some((v) => v.status === 'PUBLISHED'),
+      hasPublished: item.versions.some((v) => v.status === 'PUBLISHED' || v.status === 'RETIRED'),
     })
   }
 
@@ -232,7 +233,7 @@ export default function AdminComplianceStudio() {
     if (!item) return
     
     if (deleteObligationGuard.hasPublished) {
-      toast.error('این تعهد دارای نسخه منتشرشده است و طبق قواعد تغییرناپذیری داده‌های حقوقی قابل حذف نیست.')
+      toast.error('این تعهد دارای نسخه منتشرشده یا منسوخ است و طبق قواعد تغییرناپذیری داده‌های حقوقی قابل حذف نیست.')
       return
     }
 
@@ -912,6 +913,30 @@ export default function AdminComplianceStudio() {
     }
   }
 
+  const retire = async () => {
+    if (!selectedVersionId) return
+    if (!window.confirm('نسخه منسوخ می‌شود و دیگر برای تشخیص شرکت‌ها استفاده نخواهد شد. محتوای آن به‌عنوان سند تاریخی منتشرشده حفظ می‌شود و قابل بازگشت نیست. ادامه می‌دهید؟')) return
+    setBusy(true)
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await (supabase as any).rpc('retire_obligation_version', {
+          requested_version_id: selectedVersionId,
+        })
+        if (error) throw error
+      } else {
+        throw new Error('برای منسوخ‌سازی نسخه اتصال Supabase الزامی است.')
+      }
+
+      toast.success('نسخه منسوخ شد و دیگر برای تشخیص شرکت‌ها استفاده نمی‌شود.')
+      await loadCatalog()
+      await loadDefinition()
+    } catch (err) {
+      toast.error(errorMessage(err, 'منسوخ‌سازی نسخه انجام نشد.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) return <div className="flex justify-center p-24 text-zinc-400"><Loader2 className="h-7 w-7 animate-spin" /></div>
 
   return (
@@ -1036,6 +1061,7 @@ export default function AdminComplianceStudio() {
           onDecideReview={decideReview}
           onWithdrawReview={withdrawReview}
           onPublish={publish}
+          onRetire={retire}
           onEditVersion={() => setActiveSubModule(null)}
           onClose={() => setActiveSubModule(null)}
           onSaved={async () => { await loadCatalog(); await loadDefinition() }}
@@ -1098,7 +1124,9 @@ export default function AdminComplianceStudio() {
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     selectedVersion.status === 'PUBLISHED'
                       ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
-                      : 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
+                      : selectedVersion.status === 'RETIRED'
+                        ? 'bg-zinc-800 text-zinc-300 border border-zinc-600/60'
+                        : 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
                   }`}>
                     نسخه {selectedVersion.version_number} ({versionStatusLabel(selectedVersion.status)})
                   </span>
@@ -2030,6 +2058,7 @@ function PublishReadinessModal({
   onSeed,
   onTransitionStatus,
   onPublish,
+  onRetire,
   onClose,
   onSaved,
 }: {
@@ -2043,6 +2072,7 @@ function PublishReadinessModal({
   onSeed: () => Promise<void>
   onTransitionStatus: (status: 'DRAFT' | 'REVIEW' | 'TESTING', note: string) => Promise<void>
   onPublish: () => Promise<void>
+  onRetire: () => Promise<void>
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
@@ -2058,6 +2088,11 @@ function PublishReadinessModal({
                   <span className="flex items-center gap-1 rounded-full bg-emerald-950 px-3 py-1 text-xs text-emerald-300 border border-emerald-800/60">
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     منتشرشده و قفل
+                  </span>
+                ) : version.status === 'RETIRED' ? (
+                  <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-300 border border-zinc-600/60">
+                    <Archive className="h-3.5 w-3.5" />
+                    منسوخ‌شده و قفل
                   </span>
                 ) : (
                   <span className="rounded-full bg-amber-950/80 px-2.5 py-0.5 text-xs text-amber-300 border border-amber-800/60">
@@ -2111,6 +2146,17 @@ function PublishReadinessModal({
                     انتشار نهایی نسخه
                   </Button>
                 </>
+              )}
+              {version.status === 'PUBLISHED' && mode === 'EDIT' && (
+                <Button
+                  variant="outline"
+                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 gap-1.5 text-xs"
+                  onClick={() => void onRetire()}
+                  disabled={busy}
+                >
+                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                  منسوخ‌سازی نسخه
+                </Button>
               )}
             </div>
           </div>
