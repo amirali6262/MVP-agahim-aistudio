@@ -536,7 +536,7 @@ begin
      or retired_row.retired_at is null
      or retired_row.published_by <> '91000000-0000-0000-0000-000000000005'
      or retired_row.published_at is null
-     or retired_row.legal_reference <> 'مرجع قانونی آزمایشی' then
+     or retired_row.legal_reference <> 'مرجع قانونی آزمایشی بازبینیشده' then
     raise exception 'retirement RPC did not preserve the frozen legal definition';
   end if;
 end
