@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Plus, Eye, Send, Pencil, Trash2,  GripVertical, ChevronDown, ChevronUp,
@@ -92,14 +92,20 @@ export default function CompanyMenuManagerPage() {
     setLoading(true)
     setLoadError(null)
     try {
-      const [d, f, pub] = await Promise.all([
+      const [d, pub] = await Promise.all([
         fetchMenuDrafts(),
-        fetchSelectableObligations(),
         fetchMenuPublishStatus(),
       ])
       setDrafts(d)
-      setForms(f)
       setPublishStatus(pub)
+      // Forms list is best-effort on page load; the picker refetches fresh and
+      // surfaces any real error (e.g. missing GRANT/RLS) instead of a silent empty.
+      try {
+        setForms(await fetchSelectableObligations())
+      } catch (fe: any) {
+        console.error('[menu] fetchSelectableObligations:', fe?.message)
+        setForms([])
+      }
     } catch (e: any) {
       setLoadError(e?.message ?? 'خطا در بارگذاری داده‌ها')
     } finally {
@@ -264,6 +270,11 @@ export default function CompanyMenuManagerPage() {
     setPickerTarget(itemId)
     setPickerOpen(true)
   }
+
+  // Stabilized so the picker's one-shot fetch never loops.
+  const handleFormsLoaded = useCallback((list: SelectableObligation[]) => {
+    setForms(list)
+  }, [])
 
   const selectForm = (form: SelectableObligation) => {
     const item = drafts.find((d) => d.id === pickerTarget)
@@ -475,13 +486,13 @@ export default function CompanyMenuManagerPage() {
           />
         )}
 
-        {/* Form picker modal */}
+        {/* Form picker modal (refetches selectable forms fresh each open) */}
         {pickerOpen && (
           <FormPickerModal
-            forms={forms}
             onClose={() => setPickerOpen(false)}
             onSelect={selectForm}
             onPreview={previewThisForm}
+            onLoaded={handleFormsLoaded}
           />
         )}
 
@@ -668,17 +679,49 @@ function TypeChip({ active, label, desc, onClick, color }: { active: boolean; la
 // ---------------------------------------------------------------------------
 // Form picker modal
 // ---------------------------------------------------------------------------
-function FormPickerModal({ forms, onClose, onSelect, onPreview }: {
-  forms: SelectableObligation[]
+function FormPickerModal({ onClose, onSelect, onPreview, onLoaded }: {
   onClose: () => void
   onSelect: (f: SelectableObligation) => void
   onPreview: (id: string) => void
+  onLoaded?: (list: SelectableObligation[]) => void
 }) {
   const [q, setQ] = useState('')
   const [domain, setDomain] = useState('ALL')
+  const [list, setList] = useState<SelectableObligation[]>([])
+  const [loadingList, setLoadingList] = useState(true)
+  const [listError, setListError] = useState<string | null>(null)
   const [loadingPreview, setLoadingPreview] = useState<string | null>(null)
 
-  const filtered = forms.filter((f) => {
+  const loadForms = useCallback(async () => {
+    setLoadingList(true)
+    setListError(null)
+    try {
+      // Timeout guard: never leave the picker stuck on an endless spinner.
+      const data = await Promise.race([
+        fetchSelectableObligations(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('دریافت پاسخ از پایگاه‌داده زمان‌بر شد؛ اتصال را بررسی کنید.')), 20000)
+        ),
+      ])
+      setList(data)
+      onLoaded?.(data)
+    } catch (e: any) {
+      setListError(e?.message ?? 'خطا در بارگذاری فرم‌ها')
+    } finally {
+      setLoadingList(false)
+    }
+  }, [onLoaded])
+
+  // Fetch exactly once on open (stabilized via ref to avoid refetch loops).
+  const didLoad = useRef(false)
+  useEffect(() => {
+    if (didLoad.current) return
+    didLoad.current = true
+    void loadForms()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const filtered = list.filter((f) => {
     if (domain !== 'ALL' && f.domain !== domain) return false
     const name = (f.title + ' ' + f.code).toLowerCase()
     return name.includes(q.trim().toLowerCase())
@@ -706,9 +749,18 @@ function FormPickerModal({ forms, onClose, onSelect, onPreview }: {
       </p>
 
       <div className="mt-3 max-h-[50vh] space-y-2 overflow-y-auto">
-        {filtered.length === 0 ? (
+        {loadingList ? (
+          <div className="flex flex-col items-center gap-3 py-10 text-sm text-zinc-400">
+            <Loader2 className="h-6 w-6 animate-spin" style={{ color: BRAND }} /> در حال بارگذاری فرم‌ها...
+          </div>
+        ) : listError ? (
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-6 text-center dark:border-red-500/30 dark:bg-red-500/10">
+            <p className="text-sm font-semibold text-red-600 dark:text-red-300">{listError}</p>
+            <Button variant="outline" size="sm" onClick={() => void loadForms()}>تلاش دوباره</Button>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="rounded-lg border border-dashed border-zinc-300 py-10 text-center text-sm text-zinc-400 dark:border-zinc-700">
-            فرم انتخاب‌شده‌ای یافت نشد. ابتدا در استودیوی تعهدات یک فرم را منتشر کنید.
+            فرم انتخاب‌شده‌ای یافت نشد. ابتدا در استودیوی تعهدات یک فرم را منتشر کنید یا فیلتر را تغییر دهید.
           </div>
         ) : filtered.map((f) => (
           <div key={f.id} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900">

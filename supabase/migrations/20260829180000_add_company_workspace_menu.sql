@@ -168,7 +168,9 @@ begin
   end loop;
 
   -- Atomically replace the published snapshot with the validated tree.
-  delete from public.company_menu;
+  -- (WHERE clause keeps the project's safeupdate-style guard happy and is a
+  --  deliberate full-table clear before inserting the new snapshot.)
+  delete from public.company_menu where id is not null;
 
   for it in select * from jsonb_array_elements(p_items) loop
     v_code   := it->>'code';
