@@ -398,7 +398,9 @@ begin
 end
 $$;
 
--- ── Rollback guard ──────────────────────────────────────────────────────────
+rollback;
+
+-- ── Rollback guard (after rollback, like the other security tests) ──────────
 do $$
 begin
   if exists (
@@ -414,5 +416,3 @@ end
 $$;
 
 select 'eligibility_dynamic_facts_and_delete_ok' as eligibility_regression_result;
-
-rollback;
