@@ -686,6 +686,44 @@ end
 $$;
 reset role;
 
+-- ── Usage report: platform admin sees every reference of an obligation ──────
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '91000000-0000-0000-0000-000000000005', true);
+select set_config('request.jwt.claims', '{"sub":"91000000-0000-0000-0000-000000000005","role":"authenticated","is_anonymous":false}', true);
+do $$
+declare usage jsonb;
+begin
+  usage := public.get_obligation_usage('94000000-0000-0000-0000-000000000001');
+  if (usage->>'versions')::int <> 2
+     or (usage->>'cases')::int <> 1
+     or (usage->>'case_tasks')::int <> 0
+     or (usage->>'assessments')::int <> 1
+     or (usage->>'reviews')::int <> 0
+     or (usage->>'penalties')::int <> 3
+     or (usage->>'circulars')::int <> 1
+     or (usage->>'notifications')::int <> 3
+     or (usage->>'menu_published')::int <> 0 then
+    raise exception 'get_obligation_usage returned unexpected counts: %', usage;
+  end if;
+end
+$$;
+reset role;
+
+-- A regular user cannot read the usage report.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '91000000-0000-0000-0000-000000000003', true);
+select set_config('request.jwt.claims', '{"sub":"91000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":false}', true);
+do $$
+begin
+  begin
+    perform public.get_obligation_usage('94000000-0000-0000-0000-000000000001');
+    raise exception 'non-admin read the obligation usage report';
+  exception when insufficient_privilege then null;
+  end;
+end
+$$;
+reset role;
+
 do $$
 begin
   if (
@@ -721,7 +759,8 @@ begin
      or has_function_privilege('anon', 'public.publish_circular_and_notify(uuid,text)', 'EXECUTE')
      or has_function_privilege('anon', 'public.estimate_case_penalty(uuid,numeric,date,numeric,numeric)', 'EXECUTE')
      or has_function_privilege('anon', 'public.retire_obligation_version(uuid)', 'EXECUTE')
-     or has_function_privilege('anon', 'public.reopen_obligation_version(uuid)', 'EXECUTE') then
+     or has_function_privilege('anon', 'public.reopen_obligation_version(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.get_obligation_usage(uuid)', 'EXECUTE') then
     raise exception 'anon can execute a sensitive compliance RPC';
   end if;
 end

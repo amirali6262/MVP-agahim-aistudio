@@ -211,7 +211,7 @@ export default function AdminComplianceStudio() {
     setMode(nextMode)
   }
 
-  const handleDeleteObligationClick = (item: CatalogItem) => {
+  const handleDeleteObligationClick = async (item: CatalogItem) => {
     const deps: Array<{ formName: string; details: string; iconType?: 'extension' | 'penalty' | 'workflow' | 'template' | 'obligation' }> = []
     if (item.versions.length > 0) {
       deps.push({
@@ -220,12 +220,44 @@ export default function AdminComplianceStudio() {
         iconType: 'template',
       })
     }
+
+    let blocked = item.versions.some((v) => v.status === 'PUBLISHED' || v.status === 'RETIRED')
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await (supabase as any).rpc('get_obligation_usage', { requested_obligation_id: item.obligation.id })
+        if (!error && data) {
+          const u = data as Record<string, number>
+          const add = (formName: string, count: number, hard: boolean, iconType: 'extension' | 'penalty' | 'workflow' | 'template' = 'extension', details?: string) => {
+            if (count > 0) {
+              deps.push({ formName, details: details ?? `${count.toLocaleString('fa-IR')} مورد`, iconType })
+              if (hard) blocked = true
+            }
+          }
+          add('منوی فضای شرکت (پیش‌نویس)', u.menu_drafts ?? 0, false, 'template')
+          add('منوی فضای شرکت (منتشرشده)', u.menu_published ?? 0, true, 'template', `${(u.menu_published ?? 0).toLocaleString('fa-IR')} آیتم منتشرشده به این تعهد متصل است`)
+          add('اجرای تعهد توسط شرکت‌ها', u.fulfillments ?? 0, false, 'extension', `${(u.fulfillments ?? 0).toLocaleString('fa-IR')} شرکت در حال اجرای این تعهد است`)
+          add('تمدید مهلت', u.extensions ?? 0, false, 'extension')
+          add('پرونده‌های انطباق', u.cases ?? 0, true, 'workflow', `${(u.cases ?? 0).toLocaleString('fa-IR')} پرونده بر اساس این تعهد ایجاد شده است`)
+          add('وظایف پرونده', u.case_tasks ?? 0, false, 'workflow')
+          add('رویدادهای پرونده', u.case_events ?? 0, false, 'workflow')
+          add('ارزیابی‌های مشمولیت', u.assessments ?? 0, true, 'extension', `${(u.assessments ?? 0).toLocaleString('fa-IR')} ارزیابی با نسخه‌های این تعهد انجام شده است`)
+          add('درخواست‌های بازبینی', u.reviews ?? 0, true, 'workflow')
+          add('برآورد جریمه', u.penalties ?? 0, true, 'penalty')
+          add('بخشنامه‌های مرتبط', u.circulars ?? 0, true, 'penalty')
+          add('اعلان‌های ارسال‌شده', u.notifications ?? 0, false, 'extension')
+        }
+      } catch {
+        // اگر دریافت کاربرد ناموفق بود، فقط فهرست حداقلی نمایش داده می‌شود.
+      }
+    }
+
     setDeleteObligationGuard({
       isOpen: true,
       item,
       dependencies: deps,
       isDeleting: false,
-      hasPublished: item.versions.some((v) => v.status === 'PUBLISHED' || v.status === 'RETIRED'),
+      hasPublished: blocked,
     })
   }
 
@@ -234,7 +266,7 @@ export default function AdminComplianceStudio() {
     if (!item) return
     
     if (deleteObligationGuard.hasPublished) {
-      toast.error('این تعهد دارای نسخه منتشرشده یا منسوخ است و طبق قواعد تغییرناپذیری داده‌های حقوقی قابل حذف نیست.')
+      toast.error('این تعهد در بخش‌های دیگر سامانه استفاده شده است و طبق قواعد یکپارچگی داده قابل حذف نیست. محل‌های استفاده در پنجره حذف نمایش داده شده است.')
       return
     }
 
@@ -281,13 +313,17 @@ export default function AdminComplianceStudio() {
 
         const pRes = await supabase.from('obligation_version_penalties').delete().in('obligation_version_id', versionIds)
         if (pRes.error) throw new Error('حذف جرایم نسخه ناموفق بود: ' + pRes.error.message)
-        const tRes = await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
-        if (tRes.error) throw new Error('حذف ارتباط شرکت‌ها ناموفق بود: ' + tRes.error.message)
+        const fRes = await (supabase as any).from('tenant_obligation_fulfillments').delete().eq('obligation_id', targetObligationId)
+        if (fRes.error) throw new Error('حذف اجراهای تعهد در شرکت‌ها ناموفق بود: ' + fRes.error.message)
+        const eRes = await (supabase as any).from('deadline_extensions').delete().eq('obligation_id', targetObligationId)
+        if (eRes.error) throw new Error('حذف تمدیدهای مهلت ناموفق بود: ' + eRes.error.message)
         const vRes = await supabase.from('obligation_versions').delete().eq('obligation_id', targetObligationId)
         if (vRes.error) throw new Error('حذف نسخه‌های تعهد ناموفق بود: ' + vRes.error.message)
       } else {
-        const tRes = await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
-        if (tRes.error) throw new Error('حذف ارتباط شرکت‌ها ناموفق بود: ' + tRes.error.message)
+        const fRes = await (supabase as any).from('tenant_obligation_fulfillments').delete().eq('obligation_id', targetObligationId)
+        if (fRes.error) throw new Error('حذف اجراهای تعهد در شرکت‌ها ناموفق بود: ' + fRes.error.message)
+        const eRes = await (supabase as any).from('deadline_extensions').delete().eq('obligation_id', targetObligationId)
+        if (eRes.error) throw new Error('حذف تمدیدهای مهلت ناموفق بود: ' + eRes.error.message)
       }
 
       const oRes = await supabase.from('obligations').delete().eq('id', targetObligationId)
@@ -1034,7 +1070,7 @@ export default function AdminComplianceStudio() {
                     <Button size="sm" variant="outline" className="border-zinc-700 gap-1.5" onClick={() => openItem(item, 'VIEW')}><Eye className="h-3.5 w-3.5" />مشاهده</Button>
                     <Button size="sm" className="bg-amber-500 text-zinc-950 hover:bg-amber-400 gap-1.5" onClick={() => openItem(item, 'EDIT')}><Pencil className="h-3.5 w-3.5" />ویرایش</Button>
                                         <Button size="sm" variant="outline" className="border-zinc-700 gap-1.5" onClick={() => void handleCloneObligation(item)}><Copy className="h-3.5 w-3.5" />کپی</Button>
-                    <Button size="sm" variant="outline" className="border-red-900 text-red-400 hover:bg-red-950 gap-1.5" disabled={busy} onClick={() => handleDeleteObligationClick(item)}><Trash2 className="h-3.5 w-3.5" />حذف</Button>
+                    <Button size="sm" variant="outline" className="border-red-900 text-red-400 hover:bg-red-950 gap-1.5" disabled={busy} onClick={() => void handleDeleteObligationClick(item)}><Trash2 className="h-3.5 w-3.5" />حذف</Button>
                   </div></TableCell>
                 </TableRow>
               })}</TableBody>
