@@ -236,61 +236,59 @@ export default function AdminComplianceStudio() {
       return
     }
 
-    // Delete in Supabase before updating the local view.
+    // Delete related rows in Supabase, then refresh the local view.
+    setDeleteObligationGuard((g) => ({ ...g, isDeleting: true }))
     try {
-      if (isSupabaseConfigured) {
-        const versionIds = item.versions.map((v) => v.id)
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-        
-        const deleteAsync = async () => {
-          let templateIds: string[] = []
-          let ruleSetIds: string[] = []
+      const versionIds = item.versions.map((v) => v.id)
 
-          if (versionIds.length > 0) {
-            const [tmplRes, rulesRes] = await Promise.all([
-              supabase.from('workflow_templates').select('id').in('obligation_version_id', versionIds),
-              supabase.from('eligibility_rule_sets').select('id').in('obligation_version_id', versionIds),
-            ])
-            templateIds = (tmplRes.data ?? []).map((t) => t.id)
-            ruleSetIds = (rulesRes.data ?? []).map((r) => r.id)
+      let templateIds: string[] = []
+      let ruleSetIds: string[] = []
+      if (versionIds.length > 0) {
+        const [tmplRes, rulesRes] = await Promise.all([
+          supabase.from('workflow_templates').select('id').in('obligation_version_id', versionIds),
+          supabase.from('eligibility_rule_sets').select('id').in('obligation_version_id', versionIds),
+        ])
+        if (tmplRes.error) throw new Error('دریافت قالب‌های فرایند ناموفق بود: ' + tmplRes.error.message)
+        if (rulesRes.error) throw new Error('دریافت قواعد مشمولیت ناموفق بود: ' + rulesRes.error.message)
+        templateIds = (tmplRes.data ?? []).map((t) => t.id)
+        ruleSetIds = (rulesRes.data ?? []).map((r) => r.id)
 
-            if (ruleSetIds.length > 0) {
-              await supabase.from('eligibility_conditions').delete().in('rule_set_id', ruleSetIds)
-              await supabase.from('eligibility_rule_sets').delete().in('id', ruleSetIds)
-            }
-
-            if (templateIds.length > 0) {
-              await supabase.from('workflow_transitions').delete().in('workflow_template_id', templateIds)
-              await supabase.from('workflow_steps').delete().in('workflow_template_id', templateIds)
-              await supabase.from('workflow_templates').delete().in('id', templateIds)
-            }
-
-            try {
-              await supabase.from('obligation_version_penalties').delete().in('obligation_version_id', versionIds)
-            } catch {
-              // ignore
-            }
-            try {
-              await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
-            } catch {
-              // ignore
-            }
-            await supabase.from('obligation_versions').delete().eq('obligation_id', targetObligationId)
-          } else {
-            try {
-              await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
-            } catch {
-              // ignore
-            }
-          }
-
-          await supabase.from('obligations').delete().eq('id', targetObligationId)
+        if (ruleSetIds.length > 0) {
+          const cRes = await supabase.from('eligibility_conditions').delete().in('rule_set_id', ruleSetIds)
+          if (cRes.error) throw new Error('حذف شرایط مشمولیت ناموفق بود: ' + cRes.error.message)
+          const rRes = await supabase.from('eligibility_rule_sets').delete().in('id', ruleSetIds)
+          if (rRes.error) throw new Error('حذف قواعد مشمولیت ناموفق بود: ' + rRes.error.message)
         }
 
-        await Promise.race([deleteAsync(), timeoutPromise]).catch(() => {})
+        if (templateIds.length > 0) {
+          const trRes = await supabase.from('workflow_transitions').delete().in('workflow_template_id', templateIds)
+          if (trRes.error) throw new Error('حذف انتقال‌ها ناموفق بود: ' + trRes.error.message)
+          const stRes = await supabase.from('workflow_steps').delete().in('workflow_template_id', templateIds)
+          if (stRes.error) throw new Error('حذف مراحل فرایند ناموفق بود: ' + stRes.error.message)
+          const tmRes = await supabase.from('workflow_templates').delete().in('id', templateIds)
+          if (tmRes.error) throw new Error('حذف قالب فرایند ناموفق بود: ' + tmRes.error.message)
+        }
+
+        const pRes = await supabase.from('obligation_version_penalties').delete().in('obligation_version_id', versionIds)
+        if (pRes.error) throw new Error('حذف جرایم نسخه ناموفق بود: ' + pRes.error.message)
+        const tRes = await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
+        if (tRes.error) throw new Error('حذف ارتباط شرکت‌ها ناموفق بود: ' + tRes.error.message)
+        const vRes = await supabase.from('obligation_versions').delete().eq('obligation_id', targetObligationId)
+        if (vRes.error) throw new Error('حذف نسخه‌های تعهد ناموفق بود: ' + vRes.error.message)
+      } else {
+        const tRes = await (supabase as any).from('tenant_obligations').delete().eq('obligation_id', targetObligationId)
+        if (tRes.error) throw new Error('حذف ارتباط شرکت‌ها ناموفق بود: ' + tRes.error.message)
       }
+
+      const oRes = await supabase.from('obligations').delete().eq('id', targetObligationId)
+      if (oRes.error) throw new Error('حذف تعهد ناموفق بود: ' + oRes.error.message)
+
+      await loadCatalog()
+      setDeleteObligationGuard({ isOpen: false, item: null, dependencies: [], isDeleting: false })
+      toast.success(`تعهد «${targetTitle}» به همراه موارد مرتبط حذف شد.`)
     } catch (err) {
-      console.warn('Background obligation deletion error:', err)
+      setDeleteObligationGuard((g) => ({ ...g, isDeleting: false }))
+      toast.error(err instanceof Error ? err.message : 'حذف تعهد انجام نشد.')
     }
   }
 
