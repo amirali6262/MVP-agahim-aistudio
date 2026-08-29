@@ -20,7 +20,6 @@ export default function AdminLayout({ children }: Props) {
 
   const routeLabels: Record<string, string> = {
     '/admin/dashboard': 'داشبورد مدیریت', '/admin/users': 'کاربران و سطح دسترسی', '/admin/studio': 'استودیوی تعهدات',
-    '/admin/processes': 'فرایندهای دادرسی مالیاتی',
     '/admin/circulars': 'مرکز مهلت و بخشنامه', '/admin/tax/corporate': 'مالیات بر عملکرد اشخاص حقوقی',
     '/admin/tax/individual': 'مالیات بر عملکرد اشخاص حقیقی', '/admin/tax/vat': 'مالیات بر ارزش افزوده',
     '/admin/tax/payroll': 'مالیات بر حقوق', '/admin/tax/duties': 'مالیات‌های تکلیفی',
