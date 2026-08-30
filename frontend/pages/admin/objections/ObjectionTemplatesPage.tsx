@@ -717,9 +717,43 @@ export default function ObjectionTemplatesPage() {
 
   const handleConfirmDeleteTemplate = async () => {
     if (!itemToDelete) return
-    await deleteObjectionTemplate(itemToDelete.id)
-    toast.success(`الگوی اعتراض «${itemToDelete.template_name}» با موفقیت حذف شد.`)
-    loadData()
+    const target = itemToDelete
+    const id = target.id
+
+    // الگوهایی که از فهرست مراحل قانونی (tax_objection_stages) ساخته می‌شوند
+    // شناسهٔ مصنوعی «db-…» دارند و ردیفی در objection_templates نیستند؛ برای حذف آن‌ها
+    // باید مراحل زیرین غیرفعال شوند تا ردیف واقعاً از فهرست حذف شود.
+    if (id.startsWith('db-')) {
+      try {
+        let ok = false
+        if (id === 'db-combined-pit') {
+          const { error } = await (supabase as any).from('tax_objection_stages').update({ is_active: false }).eq('is_active', true)
+          ok = !error
+          if (error) console.warn('[ObjectionTemplatesPage] deactivate all stages:', error.message)
+        } else if (id.startsWith('db-phase-')) {
+          const phase = id.slice('db-phase-'.length)
+          const { error } = await (supabase as any).from('tax_objection_stages').update({ is_active: false }).eq('phase_code', phase)
+          ok = !error
+          if (error) console.warn('[ObjectionTemplatesPage] deactivate phase stages:', error.message)
+        }
+        if (!ok) {
+          toast.error('حذف الگوی قانونی انجام نشد.')
+          return
+        }
+      } catch (err: any) {
+        toast.error(`حذف الگوی قانونی انجام نشد: ${err?.message ?? 'خطای ناشناخته'}`)
+        return
+      }
+    } else {
+      const ok = await deleteObjectionTemplate(id)
+      if (!ok) {
+        toast.error('حذف الگوی اعتراض انجام نشد. دوباره تلاش کنید.')
+        return
+      }
+    }
+
+    toast.success(`الگوی اعتراض «${target.template_name}» با موفقیت حذف شد.`)
+    await loadData()
     setDeleteModalOpen(false)
     setItemToDelete(null)
   }
