@@ -23,7 +23,8 @@ import FullScreenDialog from '../../../components/FullScreenDialog'
 import KeyRegistryField from '../../../components/KeyRegistryField'
 import { findDuplicateRawKey, registerRawScopedKey } from '../../../lib/systemKeys'
 import { fetchAllObjectionTemplates, fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, updateBaseObjectionTemplate, deleteObjectionTemplate, fetchTaxTypeOverrideDefaults, fetchObjectionStepPresets, fetchObjectionFieldPacks } from '../../../lib/supabaseDb'
-import ObjectionTemplateWizard from './ObjectionTemplateWizard' (ویزارد ششمرحلهای فرم الگوی فرایند را پیادهسازی کن)
+import { useSelectionListOptions } from '../../../lib/selectionLists'
+import ObjectionTemplateWizard from './ObjectionTemplateWizard'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField, TaxTypeOverride } from '../../../lib/supabase'
 
@@ -31,7 +32,8 @@ import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import ObjectionTimelineModal from '../../../components/ObjectionTimelineModal'
 import ObjectionFlowDiagramModal from '../../../components/ObjectionFlowDiagramModal'
 import { Workflow } from 'lucide-react'
-import { checkObjectionTemplateDependencies, type DependencyCheckResult } from '../../../lib/dependencyChecker'function renderActorBadge(actor?: StepActor) { (ویزارد ششمرحلهای فرم الگوی فرایند را پیادهسازی کن)
+import { checkObjectionTemplateDependencies, type DependencyCheckResult } from '../../../lib/dependencyChecker'
+function renderActorBadge(actor?: StepActor) {
   switch (actor) {
     case 'TAXPAYER':
       return (
