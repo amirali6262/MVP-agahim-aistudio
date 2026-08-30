@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import WorkflowStepsModalV2 from './WorkflowStepsModalV2'
 import PublishReadinessWorkflowModal from './PublishReadinessWorkflowModal'
+import RuleConnectionModal from './rules/RuleConnectionModal'
+import {
+  fetchConnectionsForTarget,
+  fetchRuleCenterRule,
+  fetchRuleVersion,
+  rulePublishCheck,
+  DECIDED_LABELS,
+} from '../../lib/ruleCenter'
 
 import {
   BookOpenCheck,
@@ -139,6 +147,11 @@ export default function AdminComplianceStudio() {
     | 'TRANSITIONS'
     | null
   >(null)
+  const [ruleConnectionFor, setRuleConnectionFor] = useState<{ kind: 'DEADLINE' | 'PENALTY' } | null>(null)
+  const [ruleReadiness, setRuleReadiness] = useState<{
+    checks: Array<{ key: string; ok: boolean; label: string; fixKind?: 'DEADLINE' | 'PENALTY' }>
+    summary: Array<{ kind: 'DEADLINE' | 'PENALTY'; title: string; version: string; status: string; decidedLabel: string }>
+  }>({ checks: [], summary: [] })
   const [ruleConditions, setRuleConditions] = useState<Record<string, any[]>>({})
   const [deleteObligationGuard, setDeleteObligationGuard] = useState<{
     isOpen: boolean
@@ -782,6 +795,42 @@ export default function AdminComplianceStudio() {
   useEffect(() => { void loadDefinition() }, [loadDefinition])
   useEffect(() => { void loadReviewRequests() }, [loadReviewRequests])
 
+  // کنترل صحت اتصال‌های قواعد مرکزی هنگام بازشدن صفحهٔ آمادگی انتشار
+  useEffect(() => {
+    if (activeSubModule !== 'PUBLISH_READINESS' || !selectedVersionId) return
+    void (async () => {
+      try {
+        const connections = await fetchConnectionsForTarget('OBLIGATION_VERSION', selectedVersionId)
+        const active = connections.filter((c) => c.status === 'ACTIVE' || c.status === 'DRAFT')
+        const checks: Array<{ key: string; ok: boolean; label: string; fixKind?: 'DEADLINE' | 'PENALTY' }> = []
+        const summary: Array<{ kind: 'DEADLINE' | 'PENALTY'; title: string; version: string; status: string; decidedLabel: string }> = []
+        for (const conn of active) {
+          const version = await fetchRuleVersion(conn.version_id)
+          if (!version) continue
+          const rule = await fetchRuleCenterRule(version.rule_id)
+          const kind = rule?.kind === 'PENALTY' ? 'PENALTY' : 'DEADLINE'
+          const check = await rulePublishCheck(conn.id)
+          checks.push({
+            key: conn.id,
+            ok: check.ok,
+            label: `${kind === 'PENALTY' ? 'جریمه' : 'مهلت/تناوب'}: «${rule?.title_fa ?? ''}»${check.ok ? ' — اتصال معتبر است' : ' — اتصال ناقص است'}`,
+            fixKind: kind,
+          })
+          summary.push({
+            kind,
+            title: rule?.title_fa ?? 'قاعده',
+            version: `نسخه ${version.version_number}`,
+            status: version.status === 'PUBLISHED' ? 'منتشرشده' : version.status === 'STOPPED' ? 'متوقف' : version.status === 'DRAFT' ? 'پیش‌نویس' : version.status,
+            decidedLabel: DECIDED_LABELS[conn.decided_status] ?? conn.decided_status,
+          })
+        }
+        setRuleReadiness({ checks, summary })
+      } catch {
+        setRuleReadiness({ checks: [], summary: [] })
+      }
+    })()
+  }, [activeSubModule, selectedVersionId, ruleConnectionFor])
+
   const repairReviewRequest = async () => {
     if (!selectedVersionId) return
     await transitionStatus('DRAFT', 'نسخه برای ایجاد درخواست رسمی به پیش‌نویس برگشت.')
@@ -1107,6 +1156,9 @@ export default function AdminComplianceStudio() {
           steps={steps}
           reviewRequests={reviewRequests}
           penaltySchemaReady={penaltySchemaReady}
+          ruleChecks={ruleReadiness.checks}
+          ruleSummary={ruleReadiness.summary}
+          onFixRule={(kind) => { setActiveSubModule(null); setRuleConnectionFor({ kind }) }}
           busy={busy}
           mode={mode}
           onSeed={seedStandardCorporateTaxData}
@@ -1293,11 +1345,21 @@ export default function AdminComplianceStudio() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setActiveSubModule('RECURRENCE')}
+                  onClick={() => setRuleConnectionFor({ kind: 'DEADLINE' })}
                   className="border-zinc-700 bg-zinc-900/90 hover:bg-sky-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 h-9 px-3.5 transition-all shadow-sm"
                 >
                   <Clock3 className="h-4 w-4 text-sky-400" />
-                  تناوب و مهلت قانونی
+                  تناوب و مهلت قانونی (قاعده مرکزی)
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setRuleConnectionFor({ kind: 'PENALTY' })}
+                  className="border-zinc-700 bg-zinc-900/90 hover:bg-red-500 hover:text-zinc-950 text-zinc-200 text-xs font-semibold gap-1.5 h-9 px-3.5 transition-all shadow-sm"
+                >
+                  <ShieldAlert className="h-4 w-4 text-red-400" />
+                  جریمه‌ها (قاعده مرکزی)
                 </Button>
 
                 <Button
@@ -1397,6 +1459,18 @@ export default function AdminComplianceStudio() {
         }}
         isDeleting={deleteStepGuard.isDeleting}
       />
+      {ruleConnectionFor && selectedVersionId && selectedVersion && (
+        <RuleConnectionModal
+          open={true}
+          kind={ruleConnectionFor.kind}
+          targetType="OBLIGATION_VERSION"
+          targetId={selectedVersionId}
+          targetLabel={selectedCatalogItem?.obligation.title ?? 'تعهد'}
+          onClose={() => setRuleConnectionFor(null)}
+          onSaved={async () => { await loadCatalog(); await loadDefinition() }}
+        />
+      )}
+
     </main>
   )
 }

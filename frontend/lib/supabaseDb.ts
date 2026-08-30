@@ -207,6 +207,8 @@ async function loadObjectionTemplates(includeInactive: boolean): Promise<Objecti
         base_event: step.base_event,
         step_nature: step.step_nature,
         legal_basis: step.legal_basis,
+        deadline_rule_version_id: step.deadline_rule_version_id ?? null,
+        deadline_mapping: step.deadline_mapping ?? {},
         fields: step.form_schema?.fields ?? [],
         is_skippable: step.is_optional ?? false,
         stage_id: step.stage_id ?? null,

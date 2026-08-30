@@ -37,6 +37,8 @@ import type {
 } from '../../../lib/supabase'
 import KeyRegistryField from '../../../components/KeyRegistryField'
 import JalaliDatePicker from '../../../components/JalaliDatePicker'
+import RuleConnectionModal from '../rules/RuleConnectionModal'
+import { syncActionStepConnections } from '../../../lib/ruleCenter'
 import { fetchPublishedSelectionLists, useSelectionListOptions } from '../../../lib/selectionLists'
 import {
   createObjectionTemplate,
@@ -393,13 +395,16 @@ const FIELD_TYPE_LABELS: Record<WorkflowStepField['type'], string> = {
   checkbox: 'بله / خیر (نسخهٔ قدیمی)',
 }
 
-function ActionFieldsEditor({ fields, onChange }: {
+function ActionFieldsEditor({ fields, onChange, guardedFieldKeys = [] }: {
   fields: WorkflowStepField[]
   onChange: (fields: WorkflowStepField[]) => void
+  /** کلیدهایی که در نگاشت مهلت/شرط استفاده شده‌اند — حذف‌شان مسدود است */
+  guardedFieldKeys?: string[]
 }) {
   const update = (id: string, patch: Partial<WorkflowStepField>) => {
     onChange(fields.map((f) => (f.id === id ? { ...f, ...patch } : f)))
   }
+  const isGuarded = (f: WorkflowStepField) => guardedFieldKeys.includes(f.key)
   if (fields.length === 0) {
     return (
       <div className="space-y-2">
@@ -427,7 +432,14 @@ function ActionFieldsEditor({ fields, onChange }: {
             next.splice(idx + dir, 0, item)
             onChange(next)
           }}
-          onRemove={() => onChange(fields.filter((f) => f.id !== field.id))}
+          onRemove={() => {
+            if (isGuarded(field)) {
+              toast.error('این فیلد در نگاشت قاعدهٔ مهلت/شرط استفاده شده است؛ ابتدا اتصال را اصلاح کنید.')
+              return
+            }
+            onChange(fields.filter((f) => f.id !== field.id))
+          }}
+          removeDisabled={isGuarded(field)}
         />
       ))}
       <Button variant="outline" onClick={() => onChange([...fields, newActionField('')])} className="border-zinc-700 text-zinc-300">
@@ -448,12 +460,13 @@ function newActionField(keyPrefix?: string): WorkflowStepField {
   }
 }
 
-function FieldCard({ field, siblings, onUpdate, onMove, onRemove }: {
+function FieldCard({ field, siblings, onUpdate, onMove, onRemove, removeDisabled = false }: {
   field: WorkflowStepField
   siblings: WorkflowStepField[]
   onUpdate: (patch: Partial<WorkflowStepField>) => void
   onMove: (dir: -1 | 1) => void
   onRemove: () => void
+  removeDisabled?: boolean
 }) {
   const [openMore, setOpenMore] = useState(false)
   const isList = field.type === 'select' || field.type === 'multiselect'
@@ -522,14 +535,16 @@ function FieldCard({ field, siblings, onUpdate, onMove, onRemove }: {
           </button>
           <button
             type="button"
+            disabled={removeDisabled}
             onClick={() => {
+              if (removeDisabled) return
               if (field.key && siblings.some((f) => f.id !== field.id && f.key === field.key)) {
                 if (!window.confirm('این فیلد کلید تکراری دارد؛ با حذف، شروط ارجاعداده به آن نامعتبر میشوند. حذف میشود؟')) return
               } else if (!window.confirm(`فیلد «${field.label}» حذف میشود. ادامه میدهید؟`)) return
               onRemove()
             }}
-            className="text-zinc-600 transition hover:text-red-400"
-            title="حذف فیلد"
+            className={`text-zinc-600 transition hover:text-red-400 ${removeDisabled ? 'cursor-not-allowed opacity-30 hover:text-zinc-600' : ''}`}
+            title={removeDisabled ? 'این فیلد در نگاشت قاعدهٔ مهلت/شرط استفاده شده است' : 'حذف فیلد'}
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -1018,6 +1033,7 @@ export default function ObjectionTemplateWizard({
   const [dirty, setDirty] = useState(false)
   const [conditionEditor, setConditionEditor] = useState<{ stepId: string; transitionId: string } | null>(null)
   const [activeActionId, setActiveActionId] = useState<string | null>(null)
+  const [ruleConnectingActionId, setRuleConnectingActionId] = useState<string | null>(null)
   const [confirmReplace, setConfirmReplace] = useState<ActiveObjectionLink[] | null>(null)
 
   const [draft, setDraft] = useState<WizardDraft>(() => ({
@@ -1143,6 +1159,10 @@ export default function ObjectionTemplateWizard({
         id = data.id
       }
       setPersistedId(id)
+      if (!isBaseTemplate) {
+        // اتصال‌های مهلت اقدام‌ها را در rule_center_connections همگام کن تا «محل‌های استفاده» دقیق باشد.
+        void syncActionStepConnections(id, draft.steps)
+      }
       dirtyRef.current = false
       setDirty(false)
       toast.success('پیش‌نویس الگو ذخیره شد.')
@@ -1275,13 +1295,18 @@ export default function ObjectionTemplateWizard({
         const expr = t.condition_expression as ConditionExpression | null | undefined
         for (const clause of expr?.clauses ?? []) {
           if (clause.source === 'STEP_OUTPUT' && clause.field_key.split('.')[0] === targetRef) {
-            referencing.push(`${other.title || 'اقدام'} → ${clause.field_label || clause.field_key}`)
+            referencing.push(`${other.title || 'اقدام'} → شرط «${clause.field_label || clause.field_key}»`)
           }
+        }
+      }
+      for (const mp of Object.values(other.deadline_mapping ?? {})) {
+        if (mp.source_type === 'OTHER_STEP_FIELD' && mp.source_step_ref === targetRef) {
+          referencing.push(`${other.title || 'اقدام'} → نگاشت مهلت «${other.deadline_rule_version_id ? 'قاعده متصل' : mp.source_ref ?? ''}»`)
         }
       }
     }
     if (referencing.length > 0) {
-      toast.error(`حذف این اقدام ممکن نیست؛ ابتدا شرط‌های زیر را اصلاح کنید: ${referencing.join('، ')}`)
+      toast.error(`حذف این اقدام ممکن نیست؛ ابتدا ارجاع‌های زیر را اصلاح کنید: ${referencing.join('، ')}`)
       return
     }
     patch({ steps: draft.steps.filter((s) => s.id !== stepId) })
@@ -1765,49 +1790,72 @@ export default function ObjectionTemplateWizard({
                   </SectionCard>
 
                   <SectionCard title="مهلت و مبدأ محاسبه" icon={Clock}>
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <div className="sm:col-span-3">
-                        <FieldLabel>رویداد آغاز (مبدأ محاسبه مهلت)</FieldLabel>
-                        <input
-                          className={inputCls}
-                          dir="rtl"
-                          value={selectedAction.base_event ?? ''}
-                          onChange={(e) => updateStep(selectedAction.id, { base_event: e.target.value })}
-                          placeholder="مثلاً: ابلاغ مستند، تاریخ وقوع رویداد"
-                        />
+                    {selectedAction.deadline_rule_version_id ? (
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-900/50 bg-sky-950/20 p-3">
+                        <div className="text-xs text-zinc-200">
+                          <span className="font-bold text-sky-300">قاعدهٔ مهلت مرکزی متصل است</span>
+                          <span className="mr-2 text-zinc-400">نسخه: {selectedAction.deadline_rule_version_id.slice(0, 8)}…</span>
+                          <span className="mr-2 text-zinc-500">نگاشت: {Object.keys(selectedAction.deadline_mapping ?? {}).length} ورودی</span>
+                        </div>
+                        <Button variant="outline" size="sm" className="border-sky-800 text-sky-300 gap-1.5 text-xs" onClick={() => setRuleConnectingActionId(selectedAction.id)}>
+                          <Link2 className="h-3.5 w-3.5" /> ویرایش اتصال / آزمایش
+                        </Button>
                       </div>
-                      <div>
-                        <FieldLabel>مهلت (مقدار)</FieldLabel>
-                        <input
-                          type="number"
-                          min={0}
-                          className={inputCls}
-                          value={selectedAction.gap_value ?? 0}
-                          onChange={(e) => updateStep(selectedAction.id, { gap_value: Number(e.target.value) || 0 })}
-                        />
+                    ) : (
+                      <div className="mb-3 rounded-xl border border-dashed border-zinc-700 bg-[#161817] p-3 text-xs text-zinc-500">
+                        هنوز قاعدهٔ مهلت مرکزی متصل نشده است. مهلت این اقدام می‌تواند از قاعدهٔ مشترک مرکز «قواعد مهلت و جریمه» خوانده شود.
                       </div>
-                      <div>
-                        <FieldLabel>واحد</FieldLabel>
-                        <select
-                          className={inputCls}
-                          value={selectedAction.gap_unit ?? 'روز'}
-                          onChange={(e) => updateStep(selectedAction.id, { gap_unit: e.target.value })}
-                        >
-                          {['روز', 'ماه', 'سال', 'ساعت'].map((u) => (
-                            <option key={u} value={u}>{u}</option>
-                          ))}
-                        </select>
+                    )}
+                    <Button variant="outline" className="mb-4 w-full border-sky-800 bg-sky-950/20 text-sky-300 gap-1.5 text-xs" onClick={() => setRuleConnectingActionId(selectedAction.id)}>
+                      <Link2 className="h-3.5 w-3.5" />
+                      {selectedAction.deadline_rule_version_id ? 'اتصال/آزمایش قاعدهٔ مهلت مرکزی' : 'انتخاب و اتصال قاعدهٔ مهلت مرکزی'}
+                    </Button>
+                    <details className="rounded-lg border border-zinc-800 bg-[#161817] p-3">
+                      <summary className="cursor-pointer text-xs font-semibold text-zinc-400">مقادیر قدیمی (سازگاری — بدون تبدیل خودکار)</summary>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                        <div className="sm:col-span-3">
+                          <FieldLabel>رویداد آغاز (مبدأ محاسبه مهلت)</FieldLabel>
+                          <input
+                            className={inputCls}
+                            dir="rtl"
+                            value={selectedAction.base_event ?? ''}
+                            onChange={(e) => updateStep(selectedAction.id, { base_event: e.target.value })}
+                            placeholder="مثلاً: ابلاغ مستند، تاریخ وقوع رویداد"
+                          />
+                        </div>
+                        <div>
+                          <FieldLabel>مهلت (مقدار)</FieldLabel>
+                          <input
+                            type="number"
+                            min={0}
+                            className={inputCls}
+                            value={selectedAction.gap_value ?? 0}
+                            onChange={(e) => updateStep(selectedAction.id, { gap_value: Number(e.target.value) || 0 })}
+                          />
+                        </div>
+                        <div>
+                          <FieldLabel>واحد</FieldLabel>
+                          <select
+                            className={inputCls}
+                            value={selectedAction.gap_unit ?? 'روز'}
+                            onChange={(e) => updateStep(selectedAction.id, { gap_unit: e.target.value })}
+                          >
+                            {['روز', 'ماه', 'سال', 'ساعت'].map((u) => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <FieldLabel>مبنای حقوقی</FieldLabel>
+                          <input
+                            className={inputCls}
+                            dir="rtl"
+                            value={selectedAction.legal_basis ?? ''}
+                            onChange={(e) => updateStep(selectedAction.id, { legal_basis: e.target.value })}
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <FieldLabel>مبنای حقوقی</FieldLabel>
-                        <input
-                          className={inputCls}
-                          dir="rtl"
-                          value={selectedAction.legal_basis ?? ''}
-                          onChange={(e) => updateStep(selectedAction.id, { legal_basis: e.target.value })}
-                        />
-                      </div>
-                    </div>
+                    </details>
                   </SectionCard>
 
                   <SectionCard title="فرم / فیلدهای اختصاصی اقدام" icon={FileText}>
@@ -2320,6 +2368,24 @@ export default function ObjectionTemplateWizard({
             </div>
           </div>
         </div>
+      )}
+
+      {ruleConnectingActionId && selectedAction && (
+        <RuleConnectionModal
+          open={true}
+          kind="DEADLINE"
+          targetType="ACTION_STEP"
+          targetId={persistedId ?? ''}
+          targetRef={selectedAction.step_ref || selectedAction.id}
+          targetLabel={`اقدام: ${selectedAction.title || 'بدون عنوان'}`}
+          actionFields={selectedAction.fields ?? []}
+          allSteps={draft.steps.map((s) => ({ step_ref: s.step_ref || s.id, title: s.title, fields: s.fields ?? [] }))}
+          onClose={() => setRuleConnectingActionId(null)}
+          onConnected={(versionId, mapping) => {
+            updateStep(selectedAction.id, { deadline_rule_version_id: versionId, deadline_mapping: mapping })
+          }}
+          onSaved={async () => {}}
+        />
       )}
     </div>
   )
