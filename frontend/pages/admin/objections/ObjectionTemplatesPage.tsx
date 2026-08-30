@@ -22,8 +22,8 @@ import {
 import FullScreenDialog from '../../../components/FullScreenDialog'
 import KeyRegistryField from '../../../components/KeyRegistryField'
 import { findDuplicateRawKey, registerRawScopedKey } from '../../../lib/systemKeys'
-import { fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, updateBaseObjectionTemplate, deleteObjectionTemplate, fetchTaxTypeOverrideDefaults, fetchObjectionStepPresets, fetchObjectionFieldPacks } from '../../../lib/supabaseDb'
-import { useSelectionListOptions } from '../../../lib/selectionLists'
+import { fetchAllObjectionTemplates, fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, updateBaseObjectionTemplate, deleteObjectionTemplate, fetchTaxTypeOverrideDefaults, fetchObjectionStepPresets, fetchObjectionFieldPacks } from '../../../lib/supabaseDb'
+import ObjectionTemplateWizard from './ObjectionTemplateWizard' (ویزارد ششمرحلهای فرم الگوی فرایند را پیادهسازی کن)
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField, TaxTypeOverride } from '../../../lib/supabase'
 
@@ -31,9 +31,7 @@ import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import ObjectionTimelineModal from '../../../components/ObjectionTimelineModal'
 import ObjectionFlowDiagramModal from '../../../components/ObjectionFlowDiagramModal'
 import { Workflow } from 'lucide-react'
-import { checkObjectionTemplateDependencies, type DependencyCheckResult } from '../../../lib/dependencyChecker'
-
-function renderActorBadge(actor?: StepActor) {
+import { checkObjectionTemplateDependencies, type DependencyCheckResult } from '../../../lib/dependencyChecker'function renderActorBadge(actor?: StepActor) { (ویزارد ششمرحلهای فرم الگوی فرایند را پیادهسازی کن)
   switch (actor) {
     case 'TAXPAYER':
       return (
@@ -54,13 +52,13 @@ function renderActorBadge(actor?: StepActor) {
       return (
         <span className="inline-flex items-center gap-1 bg-amber-950/80 border border-amber-700/80 text-amber-300 text-[11px] font-semibold px-2 py-0.5 rounded-md">
           <Building2 className="w-3 h-3 text-amber-400" />
-          سازمان مالیاتی
+          {actor || 'سازمان مالیاتی'}
         </span>
       )
   }
 }
 
-function renderNatureBadge(nature?: ObjectionStepNature) {
+function renderNatureBadge(nature?: string) {
   switch (nature) {
     case 'CONDITIONAL_EXPERT':
       return (
@@ -107,7 +105,7 @@ function renderNatureBadge(nature?: ObjectionStepNature) {
     default:
       return (
         <span className="inline-flex items-center gap-1 bg-zinc-800 border border-zinc-700 text-zinc-300 text-[11px] font-semibold px-2 py-0.5 rounded-md">
-          اصلی / الزامی
+          {nature || 'اصلی / الزامی'}
         </span>
       )
   }
@@ -236,7 +234,7 @@ export default function ObjectionTemplatesPage() {
     // Failure of one source must not prevent the other source from being shown.
     let objectionTemplates: ObjectionTemplate[] = []
     try {
-      objectionTemplates = await fetchObjectionTemplates()
+      objectionTemplates = await fetchAllObjectionTemplates()
     } catch (error) {
       console.warn('[ObjectionTemplatesPage] custom templates:', error)
       toast.error('بارگذاری الگوهای سفارشی انجام نشد؛ مراحل قانونی موجود نمایش داده می‌شوند.')
@@ -697,538 +695,15 @@ export default function ObjectionTemplatesPage() {
         </>
       )}
 
-      {/* Full-Screen Takeover Form */}
+      {/* Wizard — فرم افزودن/ویرایش الگو (۶ مرحله) */}
       {showForm && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: '#181614' }}>
-          <div
-            className="sticky top-0 z-10 flex items-center justify-between px-6 h-16 border-b border-zinc-800"
-            style={{ background: '#211d1a' }}
-          >
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleCloseForm}
-                className="text-zinc-400 hover:text-zinc-100 transition-colors"
-                aria-label="بازگشت"
-              >
-                <ArrowRight className="w-5 h-5" />
-              </button>
-              <div>
-                <h2 className="text-zinc-100 font-bold text-base">
-                  {editingTemplate ? 'ویرایش الگوی اعتراض' : 'افزودن الگوی اعتراض جدید'}
-                </h2>
-                <p className="text-zinc-500 text-xs">تعریف مراحل قانونی و زمان‌بندی اعتراضات</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setSelectedDiagramTemplate({
-                    id: editingTemplate?.id || 'preview',
-                    template_name: templateName || 'پیش‌نمایش الگوی اعتراض',
-                    steps,
-                    created_at: new Date().toISOString(),
-                  })
-                }}
-                className="border-emerald-600/80 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 font-bold text-xs h-9 px-3.5 gap-2 shadow-sm transition-all"
-              >
-                <Workflow className="w-4 h-4 text-emerald-400" />
-                پیش‌نمایش نمودار درختی
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setSelectedTimelineTemplate({
-                    id: editingTemplate?.id || 'preview',
-                    template_name: templateName || 'پیش‌نمایش الگوی اعتراض',
-                    steps,
-                    created_at: new Date().toISOString(),
-                  })
-                }}
-                className="border-amber-700/80 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 font-bold text-xs h-9 px-3.5 gap-2 shadow-sm transition-all"
-              >
-                <GitBranch className="w-4 h-4 text-amber-400" />
-                مشاهده روندنما
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCloseForm}
-                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9"
-              >
-                انصراف
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSaveTemplate}
-                disabled={isSaving}
-                className="bg-[#E5A93C] hover:bg-[#d49a2d] text-[#181614] font-bold gap-2 h-9 px-6"
-              >
-                <Save className="w-4 h-4" />
-                {isSaving ? 'در حال ذخیره...' : 'ذخیره الگو'}
-              </Button>
-            </div>
-          </div>
-
-          <div className="max-w-4xl mx-auto px-6 py-8">
-            <div className="rounded-2xl border border-zinc-800 p-6 mb-6" style={{ background: '#141615' }}>
-              <div className="mb-6">
-                <Label className="text-zinc-300 text-sm mb-2 block">
-                  نام الگو <span className="text-red-400">*</span>
-                </Label>
-                <Input
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="مثال: الگوی استاندارد مالیاتی (ماده ۲۳۸)"
-                  className="bg-zinc-900 border-zinc-700 text-zinc-100 h-11 text-sm"
-                />
-              </div>
-
-              <div className="pt-4 border-t border-zinc-800">
-                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                  <div>
-                    <h3 className="text-[#E5A93C] font-semibold text-sm">مراحل و گام‌های اعتراض</h3>
-                    <p className="text-zinc-400 text-xs mt-0.5">
-                      تعریف گام‌های اصلی، گام‌های مشروط (مانند قرار کارشناسی) و نقاط پایان فرآیند (توافق یا تمکین)
-                    </p>
-                  </div>
-                </div>
-
-                {/* Quick Add Presets Bar */}
-                <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-3 mb-4 flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-xs text-zinc-300 font-bold flex items-center gap-1.5">
-                    <Plus className="w-4 h-4 text-[#E5A93C]" />
-                    افزودن سریع گام:
-                  </span>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddPresetStep('MANDATORY')}
-                      className="border-zinc-700 hover:bg-zinc-800 text-zinc-200 text-[11px] h-7 gap-1"
-                    >
-                      <Plus className="w-3 h-3 text-zinc-400" />
-                      گام اصلی
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddPresetStep('CONDITIONAL_EXPERT')}
-                      className="border-amber-800/60 bg-amber-950/30 hover:bg-amber-900/50 text-amber-300 text-[11px] h-7 gap-1"
-                    >
-                      <Layers className="w-3 h-3 text-amber-400" />
-                      قرار کارشناسی (مشروط)
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddPresetStep('AGREEMENT_END')}
-                      className="border-emerald-800/60 bg-emerald-950/30 hover:bg-emerald-900/50 text-emerald-300 text-[11px] h-7 gap-1"
-                    >
-                      <Handshake className="w-3 h-3 text-emerald-400" />
-                      نقطه پایان: توافق
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddPresetStep('SETTLEMENT_END')}
-                      className="border-purple-800/60 bg-purple-950/30 hover:bg-purple-900/50 text-purple-300 text-[11px] h-7 gap-1"
-                    >
-                      <FileCheck className="w-3 h-3 text-purple-400" />
-                      نقطه پایان: تمکین
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddPresetStep('EXPIRED_END')}
-                      className="border-rose-800/60 bg-rose-950/30 hover:bg-rose-900/50 text-rose-300 text-[11px] h-7 gap-1"
-                    >
-                      <Hourglass className="w-3 h-3 text-rose-400" />
-                      نقطه پایان: انقضای مهلت
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddPresetStep('FINAL_NOTICE_ISSUANCE')}
-                      className="border-blue-800/60 bg-blue-950/30 hover:bg-blue-900/50 text-blue-300 text-[11px] h-7 gap-1"
-                    >
-                      <FileText className="w-3 h-3 text-blue-400" />
-                      صدور برگ قطعی
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddPresetStep('NEXT_STAGE')}
-                      className="border-sky-800/60 bg-sky-950/30 hover:bg-sky-900/50 text-sky-300 text-[11px] h-7 gap-1"
-                    >
-                      <GitBranch className="w-3 h-3 text-sky-400" />
-                      ارسال به مرحله بعد
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Steps List Cards */}
-                <div className="flex flex-col gap-4">
-                  {steps.map((step, index) => {
-                    const nature = step.step_nature || 'MANDATORY'
-                    const cardBorderColor =
-                      nature === 'CONDITIONAL_EXPERT'
-                        ? 'border-amber-800/60 bg-amber-950/10'
-                        : nature === 'AGREEMENT_END'
-                        ? 'border-emerald-800/60 bg-emerald-950/10'
-                        : nature === 'SETTLEMENT_END'
-                        ? 'border-purple-800/60 bg-purple-950/10'
-                        : nature === 'NEXT_STAGE'
-                        ? 'border-sky-800/60 bg-sky-950/10'
-                        : 'border-zinc-800 bg-zinc-900/60'
-
-                    return (
-                      <div
-                        key={step.id}
-                        className={`rounded-xl border p-4 relative transition-all ${cardBorderColor}`}
-                      >
-                        <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800/80">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-zinc-300 font-bold text-xs bg-zinc-950 px-2.5 py-1 rounded-md border border-zinc-800">
-                              گام #{index + 1}
-                            </span>
-                            {renderNatureBadge(nature)}
-                            {renderActorBadge(step.actor)}
-                          </div>
-
-                          {steps.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteStepRow(step.id)}
-                              className="text-red-400 hover:text-red-300 hover:bg-red-950/30 h-7 text-xs px-2"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 ml-1" />
-                              حذف گام
-                            </Button>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-                          {/* ۱. مسئول / مرجع اقدام */}
-                          <div className="md:col-span-2 flex flex-col gap-1.5">
-                            <Label className="text-zinc-300 text-xs">مرجع / مسئول اقدام</Label>
-                            <Select
-                              value={step.actor || 'TAXPAYER'}
-                              onValueChange={(v) => handleUpdateStep(step.id, 'actor', v)}
-                            >
-                              <SelectTrigger className="bg-zinc-950 border-zinc-700 text-zinc-100 h-9 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                                {stepActors.map(({ key: value, label }) => (
-                                  <SelectItem key={value} value={value} className="text-zinc-100 focus:bg-zinc-700 text-xs">
-                                    <div className="flex flex-col py-0.5">
-                                      <span className="font-semibold">{label}</span>
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* ۲. ماهیت و نوع گام */}
-                          <div className="md:col-span-2 flex flex-col gap-1.5">
-                            <Label className="text-zinc-300 text-xs">نوع / ماهیت گام</Label>
-                            <Select
-                              value={step.step_nature || 'MANDATORY'}
-                              onValueChange={(v) => handleUpdateStep(step.id, 'step_nature', v)}
-                            >
-                              <SelectTrigger className="bg-zinc-950 border-zinc-700 text-zinc-100 h-9 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                                {stepNatures.map(({ key: value, label }) => (
-                                  <SelectItem key={value} value={value} className="text-zinc-100 focus:bg-zinc-700 text-xs">
-                                    <div className="flex flex-col py-0.5">
-                                      <span className="font-semibold">{label}</span>
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* ۳. عنوان گام */}
-                          <div className="md:col-span-2 flex flex-col gap-1.5">
-                            <Label className="text-zinc-300 text-xs">عنوان گام</Label>
-                            <Input
-                              value={step.title}
-                              onChange={(e) => handleUpdateStep(step.id, 'title', e.target.value)}
-                              placeholder="مثال: ثبت اعتراض اولیه ماده ۲۳۸ یا اجرای قرار کارشناسی"
-                              className="bg-zinc-950 border-zinc-700 text-zinc-100 h-9 text-xs"
-                            />
-                          </div>
-
-                          {/* ۳. رویداد پایه */}
-                          <div className="md:col-span-3 flex flex-col gap-1.5">
-                            <Label className="text-zinc-300 text-xs">مبنای محاسبه زمان (رویداد پایه)</Label>
-                            <Select
-                              value={step.base_event}
-                              onValueChange={(v) => handleUpdateStep(step.id, 'base_event', v)}
-                            >
-                              <SelectTrigger className="bg-zinc-950 border-zinc-700 text-zinc-100 h-9 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                                {baseEvents.map(({ key, label }) => (
-                                  <SelectItem key={key} value={key} className="text-zinc-100 focus:bg-zinc-700 text-xs">{label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* ۴. مقدار مهلت */}
-                          <div className="md:col-span-1.5 flex flex-col gap-1.5">
-                            <Label className="text-zinc-300 text-xs">مقدار مهلت</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={step.gap_value}
-                              onChange={(e) =>
-                                handleUpdateStep(step.id, 'gap_value', parseInt(e.target.value, 10) || 0)
-                              }
-                              placeholder="۳۰"
-                              className="bg-zinc-950 border-zinc-700 text-zinc-100 h-9 text-xs"
-                              dir="ltr"
-                            />
-                          </div>
-
-                          {/* ۵. واحد مهلت */}
-                          <div className="md:col-span-1.5 flex flex-col gap-1.5">
-                            <Label className="text-zinc-300 text-xs">واحد مهلت</Label>
-                            <Select
-                              value={step.gap_unit}
-                              onValueChange={(v) => handleUpdateStep(step.id, 'gap_unit', v)}
-                            >
-                              <SelectTrigger className="bg-zinc-950 border-zinc-700 text-zinc-100 h-9 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                                {gapUnits.map(({ key, label }) => (
-                                  <SelectItem key={key} value={key} className="text-zinc-100 focus:bg-zinc-700 text-xs">{label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* ۶. توضیحات و راهنمای اجرایی */}
-                          <div className="md:col-span-6 flex flex-col gap-1.5 pt-1">
-                            <Label className="text-zinc-400 text-[11px] flex items-center gap-1">
-                              توضیحات و راهنمای اجرایی این گام (اختیاری)
-                            </Label>
-                            <Input
-                              value={step.note || ''}
-                              onChange={(e) => handleUpdateStep(step.id, 'note', e.target.value)}
-                              placeholder="مثال: در صورت عدم توافق با ممیز کل یا صدور قرار کارشناسی، این فرم تحویل شود..."
-                              className="bg-zinc-950/80 border-zinc-800 text-zinc-300 h-8 text-xs placeholder:text-zinc-600"
-                            />
-                          </div>
-
-                          {/* ۷. فیلدهای پویا اختصاصی این گام */}
-                          <div className="md:col-span-6 flex items-center justify-between pt-2 border-t border-zinc-800/60 mt-1 flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleOpenStepFieldsModal(step)}
-                              className="h-8 text-xs border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 gap-1.5 px-3 font-semibold"
-                            >
-                              <SlidersHorizontal className="w-3.5 h-3.5" />
-                              <span>تعریف فیلدهای اختصاصی گام ({step.fields?.length || 0} فیلد)</span>
-                            </Button>
-                            {step.fields && step.fields.length > 0 && (
-                              <span className="text-[11px] text-zinc-400 bg-zinc-950 px-2 py-1 rounded border border-zinc-800">
-                                فیلدها: {step.fields.map((f) => f.label).join('، ')}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* ── بخش بازنویسی الگوی پایه برای انواع مختلف مالیات (Tax-Specific Overrides) ── */}
-              <div className="pt-6 mt-6 border-t border-zinc-800 flex flex-col gap-4">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <h3 className="text-purple-300 font-bold text-sm flex items-center gap-2">
-                      <Scale className="w-4 h-4 text-purple-400" />
-                      تنظیمات بازنویسی و مهلت‌های قانونی بر اساس نوع مالیات (Tax-Specific Overrides)
-                    </h3>
-                    <p className="text-zinc-400 text-xs mt-0.5">
-                      الگوی پایه دادرسی به‌صورت پیش‌فرض برای تمامی پرونده‌ها اعمال می‌شود، اما می‌توانید برای هر نوع مالیات مهلت‌ها، مراجع اختصاصی و ارجاعات قانونی را بازنویسی (Override) نمایید.
-                    </p>
-                  </div>
-                  <span className="text-xs text-purple-300 bg-purple-950/60 border border-purple-800 px-3 py-1 rounded-full font-medium">
-                    {taxOverrides.length} نوع مالیات تعریف‌شده
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3.5">
-                  {taxOverrides.map((ov) => (
-                    <div
-                      key={ov.tax_type}
-                      className="bg-zinc-950/70 border border-zinc-800/80 hover:border-purple-800/60 rounded-xl p-4 flex flex-col gap-3 transition-colors shadow-xs"
-                    >
-                      <div className="flex items-center justify-between border-b border-zinc-800/60 pb-2.5 flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
-                          <span className="font-bold text-xs text-zinc-100">{ov.tax_type_title}</span>
-                          <span className="font-mono text-[10px] text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
-                            {ov.tax_type}
-                          </span>
-                        </div>
-                        <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
-                          <input
-                            type="checkbox"
-                            checked={ov.is_custom_path_active !== false}
-                            onChange={(e) =>
-                              handleUpdateTaxOverride(ov.tax_type, 'is_custom_path_active', e.target.checked)
-                            }
-                            className="w-3.5 h-3.5 accent-purple-500 rounded"
-                          />
-                          <span>فعال‌سازی مسیر و مهلت‌های اختصاصی</span>
-                        </label>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                        <div className="flex flex-col gap-1">
-                          <Label className="text-zinc-400 text-[11px]">مهلت قانونی ثبت اعتراض</Label>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              value={ov.statutory_deadline_override ?? 30}
-                              onChange={(e) =>
-                                handleUpdateTaxOverride(
-                                  ov.tax_type,
-                                  'statutory_deadline_override',
-                                  parseInt(e.target.value, 10) || 0
-                                )
-                              }
-                              className="bg-zinc-900 border-zinc-700 text-purple-300 font-mono font-bold h-8 text-xs text-center"
-                            />
-                            <span className="text-zinc-400 text-xs shrink-0">روز</span>
-                          </div>
-                        </div>
-
-                        <div className="sm:col-span-2 flex flex-col gap-1">
-                          <Label className="text-zinc-400 text-[11px]">استناد قانونی اختصاصی</Label>
-                          <Input
-                            value={ov.legal_reference_override || ''}
-                            onChange={(e) =>
-                              handleUpdateTaxOverride(ov.tax_type, 'legal_reference_override', e.target.value)
-                            }
-                            placeholder="مثال: ماده ۳۴ قانون دائمی مالیات بر ارزش افزوده"
-                            className="bg-zinc-900 border-zinc-700 text-zinc-200 h-8 text-xs"
-                          />
-                        </div>
-
-                        <div className="sm:col-span-3 flex flex-col gap-1">
-                          <Label className="text-zinc-400 text-[11px]">مرجع و هیأت حل اختلاف تخصصی</Label>
-                          <Input
-                            value={ov.special_tribunal_name || ''}
-                            onChange={(e) =>
-                              handleUpdateTaxOverride(ov.tax_type, 'special_tribunal_name', e.target.value)
-                            }
-                            placeholder="مثال: هیأت تخصصی ارزش افزوده / هیأت ۲۱۶ ق.م.م"
-                            className="bg-zinc-900 border-zinc-700 text-zinc-200 h-8 text-xs"
-                          />
-                        </div>
-
-                        <div className="sm:col-span-3 flex flex-col gap-1">
-                          <Label className="text-zinc-400 text-[11px]">نکات و شرایط قانونی رسیدگی</Label>
-                          <Input
-                            value={ov.notes || ''}
-                            onChange={(e) =>
-                              handleUpdateTaxOverride(ov.tax_type, 'notes', e.target.value)
-                            }
-                            placeholder="ملاحظات قانونی، قطعیت خودکار ماده ۱۵۶ یا شرایط خاص..."
-                            className="bg-zinc-900 border-zinc-700 text-zinc-300 h-8 text-xs"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* بخش تکالیف مرتبط */}
-              <div className="pt-6 mt-6 border-t border-zinc-800">
-                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                  <div>
-                    <h3 className="text-[#E5A93C] font-semibold text-sm">تکالیف مرتبط با این الگوی اعتراض</h3>
-                    <p className="text-zinc-500 text-xs mt-0.5">
-                      تکالیفی که می‌خواهید از این الگوی اعتراض استفاده نمایند را انتخاب کنید (از تمام منوها):
-                    </p>
-                  </div>
-                  <span className="text-xs text-[#E5A93C] bg-[#E5A93C]/10 border border-[#E5A93C]/30 px-3 py-1 rounded-full font-medium">
-                    {selectedObligationIds.length} تکلیف انتخاب‌شده
-                  </span>
-                </div>
-
-                {allObligations.length === 0 ? (
-                  <p className="text-zinc-500 text-xs py-3">هیچ تکلیفی در سیستم تعریف نشده است.</p>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-60 overflow-y-auto p-3 bg-zinc-900/60 border border-zinc-800 rounded-xl style-menu">
-                    {allObligations.map((ob) => {
-                      const isChecked = selectedObligationIds.includes(ob.id)
-                      return (
-                        <label
-                          key={ob.id}
-                          className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                            isChecked
-                              ? 'bg-[#E5A93C]/10 border-[#E5A93C]/50 text-zinc-100 shadow-sm'
-                              : 'bg-zinc-950/50 border-zinc-800/80 text-zinc-400 hover:border-zinc-700'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedObligationIds((prev) => [...prev, ob.id])
-                              } else {
-                                setSelectedObligationIds((prev) => prev.filter((id) => id !== ob.id))
-                              }
-                            }}
-                            className="w-4 h-4 rounded border-zinc-700 text-[#E5A93C] focus:ring-[#E5A93C] bg-zinc-900 accent-[#E5A93C]"
-                          />
-                          <div className="flex-1 text-xs">
-                            <div className="font-semibold text-zinc-200">{ob.title}</div>
-                            <div className="text-[11px] text-zinc-500 flex items-center gap-2 mt-1">
-                              <span>دوره: {ob.recurrence}</span>
-                              {ob.phase_group && <span>• {ob.phase_group}</span>}
-                            </div>
-                          </div>
-                        </label>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <ObjectionTemplateWizard
+          mode={editingTemplate ? 'edit' : 'create'}
+          initial={editingTemplate}
+          isBaseTemplate={editingTemplate?.id?.startsWith('db-') === true}
+          onClose={handleCloseForm}
+          onSaved={loadData}
+        />
       )}
 
       {/* Timeline Modal */}

@@ -129,6 +129,8 @@ export interface StepTransition {
   action_label?: string
   legal_reference?: string
   description?: string
+  /** شرط ساختاریافته (فقط تعریف؛ اجرای شروط هنوز پشتیبانی نمی‌شود) */
+  condition_expression?: ConditionExpression | null
 }
 
 export interface ObjectionStep {
@@ -137,14 +139,63 @@ export interface ObjectionStep {
   base_event: string
   gap_value: number
   gap_unit: string
-  step_nature?: ObjectionStepNature
-  actor?: StepActor
+  step_nature?: ObjectionStepNature | string
+  actor?: StepActor | string
   note?: string
   legal_basis?: string
   fields?: WorkflowStepField[]
   is_skippable?: boolean
   skip_reasons?: string[]
   transitions?: StepTransition[]
+  /** مرحلهٔ این اقدام (اختیاری؛ قدیمی‌ها بدون مرحله نمایش داده می‌شوند) */
+  stage_id?: string | null
+}
+
+export interface ObjectionStage {
+  id: string
+  template_id: string
+  title: string
+  description?: string | null
+  sort_order: number
+}
+
+export interface ObjectionStatusGroupOption {
+  id: string
+  title: string
+  is_terminal?: boolean
+}
+
+export interface ObjectionStatusGroup {
+  id: string
+  code: string
+  title: string
+  options: ObjectionStatusGroupOption[]
+  sort_order: number
+}
+
+export interface ObjectionObligationLink {
+  id: string
+  template_id: string
+  obligation_id: string
+  link_status: 'DRAFT' | 'ACTIVE' | 'HISTORY'
+}
+
+export interface ConditionClause {
+  id: string
+  source: 'FACT' | 'CASE_DATA' | 'STEP_OUTPUT'
+  field_key: string
+  field_label?: string
+  operator: string
+  value?: string | number | boolean | string[]
+  /** کلید فهرست انتخابی برای گزینهٔ مقدار (در صورت وجود) */
+  value_from?: string
+  value_label?: string
+}
+
+export interface ConditionExpression {
+  version: number
+  logic: 'AND' | 'OR'
+  clauses: ConditionClause[]
 }
 
 export interface TaxTypeOverride {
@@ -166,6 +217,12 @@ export interface ObjectionTemplate {
   steps: ObjectionStep[]
   tax_type_overrides?: TaxTypeOverride[]
   created_at?: string
+  /** DRAFT | ACTIVE — الگوی دارای شروط پشتیبانی‌نشده فقط پیش‌نویس می‌ماند */
+  status?: string
+  stages?: ObjectionStage[]
+  status_groups?: ObjectionStatusGroup[]
+  /** اتصال‌های تعهد (DRAFT/ACTIVE/HISTORY) */
+  links?: ObjectionObligationLink[]
 }
 
 export interface DeadlineExtension {
