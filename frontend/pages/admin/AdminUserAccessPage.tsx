@@ -29,6 +29,7 @@ import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured, type UserRole } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { Button } from '../../lib/shadcn/button'
+import { fetchRoleDefinitions, fetchPermissionMatrix, type DbRoleDefinition } from '../../lib/supabaseDb'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,8 +46,28 @@ type UserRow = {
 }
 
 // ---------------------------------------------------------------------------
-// Role definitions with rich metadata
+// Role visuals — presentation-only (colors/icons stay in code; all role DATA —
+// labels, descriptions, permissions, restrictions — comes from Supabase
+// role_definitions).
 // ---------------------------------------------------------------------------
+
+interface RoleVisuals {
+  color: string
+  bgColor: string
+  borderColor: string
+  icon: typeof Crown
+}
+
+const ROLE_VISUALS: Record<string, RoleVisuals> = {
+  PLATFORM_ADMIN: { color: 'text-amber-300', bgColor: 'bg-amber-500/10', borderColor: 'border-amber-500/30', icon: Crown },
+  MANAGER: { color: 'text-violet-300', bgColor: 'bg-violet-500/10', borderColor: 'border-violet-500/30', icon: Settings },
+  REGISTRAR: { color: 'text-sky-300', bgColor: 'bg-sky-500/10', borderColor: 'border-sky-500/30', icon: PenLine },
+  REVIEWER: { color: 'text-emerald-300', bgColor: 'bg-emerald-500/10', borderColor: 'border-emerald-500/30', icon: Eye },
+  APPROVER: { color: 'text-rose-300', bgColor: 'bg-rose-500/10', borderColor: 'border-rose-500/30', icon: CheckCircle2 },
+  BUSINESS_USER: { color: 'text-zinc-300', bgColor: 'bg-zinc-500/10', borderColor: 'border-zinc-500/30', icon: Briefcase },
+}
+
+const DEFAULT_ROLE_VISUALS: RoleVisuals = { color: 'text-zinc-300', bgColor: 'bg-zinc-500/10', borderColor: 'border-zinc-500/30', icon: UserCog }
 
 interface RoleDefinition {
   key: UserRole
@@ -59,139 +80,52 @@ interface RoleDefinition {
   icon: typeof Crown
   permissions: string[]
   restrictions: string[]
+  sortOrder: number
 }
 
-const ALL_ROLES: RoleDefinition[] = [
-  {
-    key: 'PLATFORM_ADMIN',
-    label: 'مدیر پلتفرم',
-    persianLabel: 'مدیر ارشد پلتفرم',
-    description: 'بالاترین سطح دسترسی. مدیریت کلیه ماژول‌ها، کاربران، نقش‌ها و تنظیمات سامانه.',
-    color: 'text-amber-300',
-    bgColor: 'bg-amber-500/10',
-    borderColor: 'border-amber-500/30',
-    icon: Crown,
-    permissions: [
-      'مدیریت کلیه کاربران و نقش‌ها',
-      'تعریف و ویرایش تعهدات و قواعد',
-      'انتشار و بازنشانی نسخه‌ها',
-      'مشاهده گزارش‌ها و آمار کلی',
-      'مدیریت تنظیمات سامانه',
-      'تعریف ساختار سازمانی',
-    ],
-    restrictions: ['ندارد — دسترسی کامل'],
-  },
-  {
-    key: 'MANAGER',
-    label: 'مدیر',
-    persianLabel: 'مدیر عملیاتی',
-    description: 'مدیریت عملیاتی روزانه. نظارت بر فرایندها، تأیید اقدامات و هماهنگی تیم.',
-    color: 'text-violet-300',
-    bgColor: 'bg-violet-500/10',
-    borderColor: 'border-violet-500/30',
-    icon: Settings,
-    permissions: [
-      'مشاهده کلیه ماژول‌ها و داده‌ها',
-      'تأیید درخواست‌های بازبینی',
-      'تخصیص وظایف به اعضای تیم',
-      'مشاهده گزارش‌های عملیاتی',
-      'بازبینی و تأیید نسخه‌ها',
-    ],
-    restrictions: ['تغییر نقش کاربران', 'حذف کاربران', 'تغییر تنظیمات سامانه'],
-  },
-  {
-    key: 'REGISTRAR',
-    label: 'ثبت‌کننده',
-    persianLabel: 'ثبت‌کننده نسخه‌ها',
-    description: 'تولید و ثبت نسخه‌های جدید تعهدات، قواعد و فرم‌ها. ایجاد پیش‌نویس برای بازبینی.',
-    color: 'text-sky-300',
-    bgColor: 'bg-sky-500/10',
-    borderColor: 'border-sky-500/30',
-    icon: PenLine,
-    permissions: [
-      'ایجاد پیش‌نویس نسخه جدید',
-      'ویرایش اطلاعات تعهدات',
-      'تعریف قواعد تشخیص مشمولیت',
-      'طراحی مراحل فرایند و فرم‌ها',
-      'ارسال نسخه به بازبینی',
-      'اصلاح نسخه پس از رد بازبین',
-    ],
-    restrictions: ['انتشار نهایی نسخه', 'تأیید بازبینی', 'تغییر نقش کاربران'],
-  },
-  {
-    key: 'REVIEWER',
-    label: 'بازبین',
-    persianLabel: 'بازبین تخصصی',
-    description: 'بررسی تخصصی نسخه‌های ثبت‌شده. تأیید یا رد با ذکر دلیل و ارسال برای اصلاح.',
-    color: 'text-emerald-300',
-    bgColor: 'bg-emerald-500/10',
-    borderColor: 'border-emerald-500/30',
-    icon: Eye,
-    permissions: [
-      'مشاهده نسخه‌های ارسال‌شده',
-      'شروع بازبینی تخصصی',
-      'تأیید یا رد نسخه با ذکر دلیل',
-      'مشاهده تاریخچه بازبینی‌ها',
-      'مشاهده گزارش‌های تخصصی',
-    ],
-    restrictions: ['ویرایش نسخه‌ها', 'انتشار نهایی', 'تغییر نقش کاربران'],
-  },
-  {
-    key: 'APPROVER',
-    label: 'تأییدکننده',
-    persianLabel: 'تأیید نهایی',
-    description: 'تأیید نهایی نسخه‌های بازبینی‌شده و اجازه انتشار. نظارت بر کیفیت خروجی.',
-    color: 'text-rose-300',
-    bgColor: 'bg-rose-500/10',
-    borderColor: 'border-rose-500/30',
-    icon: CheckCircle2,
-    permissions: [
-      'مشاهده نسخه‌های تأیید بازبینی',
-      'تأیید نهایی برای انتشار',
-      'مشاهده وضعیت کلی فرایندها',
-      'مشاهده گزارش‌های کیفی',
-    ],
-    restrictions: ['ویرایش نسخه‌ها', 'بازبینی تخصصی', 'تغییر نقش کاربران'],
-  },
-  {
-    key: 'BUSINESS_USER',
-    label: 'کاربر',
-    persianLabel: 'کاربر سازمانی',
-    description: 'کاربر عادی سازمان. مشاهده اطلاعات و ارسال درخواست‌ها.',
-    color: 'text-zinc-300',
-    bgColor: 'bg-zinc-500/10',
-    borderColor: 'border-zinc-500/30',
-    icon: Briefcase,
-    permissions: [
-      'مشاهده اطلاعات شخصی',
-      'ارسال درخواست‌ها',
-      'پیگیری وضعیت درخواست‌ها',
-    ],
-    restrictions: ['مدیریت کاربران', 'تغییر تنظیمات', 'بازبینی و تأیید'],
-  },
-]
+// Merge DB metadata with code-side presentation (colors/icons).
+function toRoleDefinition(row: DbRoleDefinition): RoleDefinition {
+  const visuals = ROLE_VISUALS[row.key] ?? DEFAULT_ROLE_VISUALS
+  return {
+    key: row.key as UserRole,
+    label: row.label,
+    persianLabel: row.persian_label,
+    description: row.description,
+    color: visuals.color,
+    bgColor: visuals.bgColor,
+    borderColor: visuals.borderColor,
+    icon: visuals.icon,
+    permissions: row.permissions,
+    restrictions: row.restrictions,
+    sortOrder: row.sort_order,
+  }
+}
 
-// ---------------------------------------------------------------------------
-// Permission matrix for visual comparison
-// ---------------------------------------------------------------------------
+function fallbackRoleDef(role: UserRole): RoleDefinition {
+  const visuals = ROLE_VISUALS[role] ?? DEFAULT_ROLE_VISUALS
+  return {
+    key: role,
+    label: role,
+    persianLabel: role,
+    description: '',
+    color: visuals.color,
+    bgColor: visuals.bgColor,
+    borderColor: visuals.borderColor,
+    icon: visuals.icon,
+    permissions: [],
+    restrictions: [],
+    sortOrder: 999,
+  }
+}
+
+// Default ordering used only while definitions load from the database.
+const ROLE_ORDER: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER', 'BUSINESS_USER']
 
 interface PermissionMatrixRow {
   label: string
   roles: Partial<Record<UserRole, boolean>>
 }
 
-const PERMISSION_MATRIX: PermissionMatrixRow[] = [
-  { label: 'مشاهده داشبورد مدیریت', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'ایجاد و ویرایش نسخه تعهد', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: true, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'شروع بازبینی تخصصی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'تأیید یا رد بازبینی', roles: { PLATFORM_ADMIN: true, MANAGER: true, REGISTRAR: false, REVIEWER: true, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'تأیید نهایی انتشار', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true, BUSINESS_USER: false } },
-  { label: 'انتشار نسخه نهایی', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: true, BUSINESS_USER: false } },
-  { label: 'مدیریت کاربران پلتفرم', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
-  { label: 'تغییر تنظیمات سامانه', roles: { PLATFORM_ADMIN: true, MANAGER: false, REGISTRAR: false, REVIEWER: false, APPROVER: false, BUSINESS_USER: false } },
-]
-
-const ROLE_ORDER: UserRole[] = ['PLATFORM_ADMIN', 'MANAGER', 'REGISTRAR', 'REVIEWER', 'APPROVER', 'BUSINESS_USER']
 
 // ---------------------------------------------------------------------------
 // Multi-Select Role Component
@@ -201,10 +135,12 @@ function MultiRoleSelector({
   selectedRoles,
   onChange,
   disabled,
+  roles,
 }: {
   selectedRoles: UserRole[]
   onChange: (roles: UserRole[]) => void
   disabled?: boolean
+  roles: RoleDefinition[]
 }) {
   const [isOpen, setIsOpen] = useState(false)
 
@@ -222,7 +158,7 @@ function MultiRoleSelector({
     }
   }
 
-  const getRoleDef = (role: UserRole) => ALL_ROLES.find((r) => r.key === role) ?? ALL_ROLES[5]
+  const getRoleDef = (role: UserRole) => roles.find((r) => r.key === role) ?? fallbackRoleDef(role)
 
   return (
     <div className="relative">
@@ -263,7 +199,7 @@ function MultiRoleSelector({
 
       {isOpen && !disabled && (
         <div className="absolute z-50 mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl max-h-64 overflow-y-auto">
-          {ALL_ROLES.map((role) => {
+          {roles.map((role) => {
             const isSelected = selectedRoles.includes(role.key)
             const RoleIcon = role.icon
             return (
@@ -310,6 +246,30 @@ export default function AdminUserAccessPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [editingRoles, setEditingRoles] = useState<string | null>(null)
   const [editRolesValue, setEditRolesValue] = useState<UserRole[]>([])
+  const [roleDefs, setRoleDefs] = useState<RoleDefinition[]>([])
+  const [matrixRows, setMatrixRows] = useState<PermissionMatrixRow[]>([])
+
+  // Role definitions + permission matrix come from the real database
+  // (role_definitions / permission_matrix), not from code.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const [defs, matrix] = await Promise.all([fetchRoleDefinitions(), fetchPermissionMatrix()])
+      if (cancelled) return
+      setRoleDefs(defs.map(toRoleDefinition))
+      setMatrixRows(matrix.map((row) => ({ label: row.label, roles: row.role_checks as Partial<Record<UserRole, boolean>> })))
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  const roleOrder = useMemo(() => {
+    if (roleDefs.length === 0) return ROLE_ORDER
+    return [...roleDefs].sort((a, b) => a.sortOrder - b.sortOrder).map((d) => d.key)
+  }, [roleDefs])
+
+  const getRoleDef = useCallback((role: string): RoleDefinition => {
+    return roleDefs.find((r) => r.key === role) ?? fallbackRoleDef(role as UserRole)
+  }, [roleDefs])
 
   const loadUsers = useCallback(async () => {
     setLoading(true)
@@ -339,7 +299,7 @@ export default function AdminUserAccessPage() {
     if (!query) return users
     return users.filter((user) => {
       const roleLabels = user.roles.map((r) => {
-        const roleDef = ALL_ROLES.find((rd) => rd.key === r)
+        const roleDef = roleDefs.find((rd) => rd.key === r)
         return `${roleDef?.persianLabel ?? ''} ${roleDef?.label ?? ''}`
       }).join(' ')
       return `${user.email ?? ''} ${user.phone ?? ''} ${roleLabels} ${user.role}`.toLowerCase().includes(query)
@@ -380,7 +340,7 @@ export default function AdminUserAccessPage() {
       return
     }
     setUsers((current) => current.map((item) => item.id === user.id ? { ...item, role: primaryRole, roles: newRoles } : item))
-    const roleLabels = newRoles.map((r) => ALL_ROLES.find((rd) => rd.key === r)?.persianLabel ?? r).join('، ')
+    const roleLabels = newRoles.map((r) => roleDefs.find((rd) => rd.key === r)?.persianLabel ?? r).join('، ')
     toast.success(`نقش‌های کاربر با موفقیت به «${roleLabels}» تغییر یافت.`)
     setSavingId(null)
     setEditingRoles(null)
@@ -423,21 +383,6 @@ export default function AdminUserAccessPage() {
     setUsers((current) => current.filter((u) => u.id !== userId))
     setConfirmDelete(null)
     toast.success('کاربر با موفقیت حذف شد.')
-  }
-
-  const getRoleDef = (role: string): RoleDefinition => {
-    return ALL_ROLES.find((r) => r.key === role) ?? {
-      key: role as UserRole,
-      label: role,
-      persianLabel: role,
-      description: '',
-      color: 'text-zinc-300',
-      bgColor: 'bg-zinc-500/10',
-      borderColor: 'border-zinc-500/30',
-      icon: UserCog,
-      permissions: [],
-      restrictions: [],
-    }
   }
 
   return (
@@ -540,6 +485,7 @@ export default function AdminUserAccessPage() {
                 <MultiRoleSelector
                   selectedRoles={newUserRoles}
                   onChange={setNewUserRoles}
+                  roles={roleDefs}
                 />
               </div>
             </div>
@@ -577,7 +523,11 @@ export default function AdminUserAccessPage() {
             </span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {ALL_ROLES.map((role) => {
+            {roleDefs.length === 0 ? (
+              <p className="col-span-full rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 text-sm text-zinc-400">
+                در حال بارگذاری تعریف نقش‌ها از پایگاه‌داده...
+              </p>
+            ) : roleDefs.map((role) => {
               const Icon = role.icon
               const isExpanded = expandedRole === role.key
               const count = roleCounts[role.key] ?? 0
@@ -667,8 +617,8 @@ export default function AdminUserAccessPage() {
                 <thead>
                   <tr className="border-b border-zinc-800 bg-zinc-900/50">
                     <th className="p-3 text-right font-semibold text-zinc-400">دسترسی</th>
-                    {ROLE_ORDER.map((role) => {
-                      const def = ALL_ROLES.find((r) => r.key === role)
+                    {roleOrder.map((role) => {
+                      const def = roleDefs.find((r) => r.key === role)
                       return (
                         <th key={role} className="p-3 text-center font-semibold" style={{ minWidth: '90px' }}>
                           <span className={def?.color ?? 'text-zinc-400'}>{def?.label ?? role}</span>
@@ -678,10 +628,14 @@ export default function AdminUserAccessPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {PERMISSION_MATRIX.map((row, i) => (
+                  {matrixRows.length === 0 ? (
+                    <tr>
+                      <td className="p-3 text-zinc-400" colSpan={roleOrder.length + 1}>در حال بارگذاری ماتریس دسترسی‌ها...</td>
+                    </tr>
+                  ) : matrixRows.map((row, i) => (
                     <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-900/30 transition">
                       <td className="p-3 text-zinc-300 font-medium">{row.label}</td>
-                      {ROLE_ORDER.map((role) => (
+                      {roleOrder.map((role) => (
                         <td key={role} className="p-3 text-center">
                           {row.roles[role] ? (
                             <CheckCircle2 className="h-4 w-4 mx-auto text-emerald-400" />
@@ -777,6 +731,7 @@ export default function AdminUserAccessPage() {
                             selectedRoles={editRolesValue}
                             onChange={setEditRolesValue}
                             disabled={isSelf}
+                            roles={roleDefs}
                           />
                           <div className="flex gap-2">
                             <button
