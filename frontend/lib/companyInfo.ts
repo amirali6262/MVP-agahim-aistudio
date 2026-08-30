@@ -113,7 +113,10 @@ export async function fetchPublishedCompanyFields(): Promise<CompanyInfoDesign> 
     throw new Error(defsRes.error?.message ?? optsRes.error?.message ?? stepsRes.error?.message ?? listsRes.error?.message ?? listOptsRes.error?.message ?? 'دریافت تعاریف ناموفق بود.')
   }
   return {
-    definitions: defsRes.data ?? [],
+    // فکت‌های legacy (is_legacy) فقط برای قواعد مشمولیت هستند و نباید در فرم
+    // اطلاعات شرکت نمایش داده شوند؛ فیلتر سمت کلاینت است تا قبل از اعمال
+    // ستون is_legacy در دیتابیس نیز خطا ندهد.
+    definitions: (defsRes.data ?? []).filter((d: any) => !d.is_legacy),
     options: optsRes.data ?? [],
     steps: stepsRes.data ?? [],
     selectionLists: (listsRes.data ?? []).map((l: any) => ({ id: l.id, key: l.key, title: l.title, source_type: l.source_type, is_dependent: l.is_dependent, parent_list_id: l.parent_list_id })),
