@@ -116,6 +116,8 @@ export interface EligibilityFactEntry {
   title: string
   field_type: string
   options: Array<{ value: string; label: string }>
+  /** true = field defined in the Supabase company-info designer; false = legacy hardcoded fact. */
+  isDesignerField: boolean
 }
 
 const OBLIGATION_TYPE_OPTIONS = [
@@ -137,6 +139,14 @@ interface DraftCondition {
   operator: string
   expected: string
   connector: 'AND' | 'OR'
+}
+
+/** شرط پیش‌فرض فرم قاعده: ابتدا از فیلدهای طراح اطلاعات شرکت (Supabase) و در نبودِ آن از فکت legacy. */
+function blankConditionFor(factCatalog: EligibilityFactEntry[]): DraftCondition {
+  const designer = factCatalog.find((entry) => entry.isDesignerField)
+  return designer
+    ? { fact: designer.key, operator: 'EQ', expected: '', connector: 'AND' }
+    : { fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی', connector: 'AND' }
 }
 
 export default function AdminComplianceStudio() {
@@ -227,6 +237,7 @@ export default function AdminComplianceStudio() {
           title: definition.title,
           field_type: definition.field_type,
           options: optionsByField[definition.id] ?? [],
+          isDesignerField: true,
         }))
         if (!cancelled) setEligibilityFacts(facts)
       } catch {
@@ -237,7 +248,7 @@ export default function AdminComplianceStudio() {
   }, [])
 
   const factCatalog = useMemo<EligibilityFactEntry[]>(() => {
-    const combined: EligibilityFactEntry[] = FACTS.map(([key, title]) => ({ key, title, field_type: legacyFactType(key), options: [] }))
+    const combined: EligibilityFactEntry[] = FACTS.map(([key, title]) => ({ key, title, field_type: legacyFactType(key), options: [], isDesignerField: false }))
     for (const fact of eligibilityFacts) {
       if (!combined.some((entry) => entry.key === fact.key)) combined.push(fact)
     }
@@ -3784,11 +3795,19 @@ function EligibilityRuleForm({
   const [priority, setPriority] = useState<number>(nextPriority)
   const [explanation, setExplanation] = useState('')
   const [outcome, setOutcome] = useState('ELIGIBLE')
-  const [conditions, setConditions] = useState<DraftCondition[]>([
-    { fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی', connector: 'AND' },
-  ])
+  const [conditions, setConditions] = useState<DraftCondition[]>(() => [blankConditionFor(factCatalog)])
 
   const factEntry = (fact: string) => factCatalog.find((entry) => entry.key === fact)
+
+  /** فهرست فکت‌های قابل‌انتخاب: ابتدا فیلدهای طراح اطلاعات شرکت (از Supabase) و سپس کلیدهای legacy که در شرط‌های فعلی یا ذخیره‌شده استفاده شده‌اند. */
+  const selectableFacts = useMemo(() => {
+    const designer = factCatalog.filter((entry) => entry.isDesignerField)
+    const usedKeys = new Set<string>()
+    for (const condition of conditions) usedKeys.add(condition.fact)
+    for (const condition of editingConditions ?? []) usedKeys.add(condition.fact_key)
+    const legacyInUse = factCatalog.filter((entry) => !entry.isDesignerField && usedKeys.has(entry.key))
+    return [...designer, ...legacyInUse]
+  }, [factCatalog, conditions, editingConditions])
 
   useEffect(() => {
     if (editingRule) {
@@ -3811,7 +3830,7 @@ function EligibilityRuleForm({
           }))
         )
       } else {
-        setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی', connector: 'AND' }])
+        setConditions([blankConditionFor(factCatalog)])
       }
     } else {
       setPriority(nextPriority)
@@ -3830,7 +3849,7 @@ function EligibilityRuleForm({
       setTitle('')
       setExplanation('')
       setOutcome('ELIGIBLE')
-      setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی', connector: 'AND' }])
+      setConditions([blankConditionFor(factCatalog)])
       onCancelEdit?.()
     }
   }
@@ -3881,7 +3900,7 @@ function EligibilityRuleForm({
             const conditionType = factEntry(condition.fact)?.field_type ?? legacyFactType(condition.fact)
             expectedValue = conditionType === 'NUMBER'
               ? Number(condition.expected)
-              : condition.operator === 'IN'
+              : condition.operator === 'IN' || condition.operator === 'CONTAINS'
                 ? condition.expected.split(',').map((value) => value.trim()).filter(Boolean)
                 : condition.expected.trim()
           }
@@ -3924,7 +3943,7 @@ function EligibilityRuleForm({
           const conditionType = factEntry(condition.fact)?.field_type ?? legacyFactType(condition.fact)
           expectedValue = conditionType === 'NUMBER'
             ? Number(condition.expected)
-            : condition.operator === 'IN'
+            : condition.operator === 'IN' || condition.operator === 'CONTAINS'
               ? condition.expected.split(',').map((value) => value.trim()).filter(Boolean)
               : condition.expected.trim()
         }
@@ -3949,7 +3968,7 @@ function EligibilityRuleForm({
     }
   }
 
-  if (!open && !editingRule) return <Button variant="outline" className="mt-4 w-full border-zinc-700 gap-2" onClick={() => { setOpen(true); setTitle(''); setExplanation(''); setOutcome('ELIGIBLE'); setConditions([{ fact: 'ENTITY_TYPE', operator: 'EQ', expected: 'حقوقی', connector: 'AND' }]) }}><Plus className="h-4 w-4" />افزودن قاعده جدید</Button>
+  if (!open && !editingRule) return <Button variant="outline" className="mt-4 w-full border-zinc-700 gap-2" onClick={() => { setOpen(true); setTitle(''); setExplanation(''); setOutcome('ELIGIBLE'); setConditions([blankConditionFor(factCatalog)]) }}><Plus className="h-4 w-4" />افزودن قاعده جدید</Button>
   return (
     <div data-studio-dirty="true" className="mt-4 space-y-3 rounded-xl border border-zinc-800 bg-[#161817] p-4">
       <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
@@ -3975,6 +3994,7 @@ function EligibilityRuleForm({
           const operatorOptions = allowedOperators(condition.fact, conditionField?.field_type)
           const optionList = conditionField?.options ?? []
           const selectedValues = condition.expected.split(',').map((value) => value.trim()).filter(Boolean)
+          const isMultiExpected = condition.operator === 'IN' || condition.operator === 'CONTAINS'
           return (
             <div key={index} className="rounded-lg border border-zinc-800 bg-[#121413] p-3">
               {index > 0 ? (
@@ -3992,11 +4012,12 @@ function EligibilityRuleForm({
                 <p className="mb-3 text-xs text-zinc-500">شرط {index + 1} (اولین شرط قاعده)</p>
               )}
               <div className="space-y-3">
-                <Field label="بر اساس فکت"><Select value={condition.fact} onValueChange={(fact) => updateCondition(index, { fact, operator: allowedOperators(fact, factEntry(fact)?.field_type)[0]?.[0] ?? 'EQ', expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{factCatalog.map((entry) => <SelectItem key={entry.key} value={entry.key}>{entry.title}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label="بر اساس فکت"><Select value={condition.fact} onValueChange={(fact) => updateCondition(index, { fact, operator: allowedOperators(fact, factEntry(fact)?.field_type)[0]?.[0] ?? 'EQ', expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{selectableFacts.map((entry) => <SelectItem key={entry.key} value={entry.key}>{entry.title}</SelectItem>)}</SelectContent></Select></Field>
                 <Field label="عملگر شرط"><Select value={condition.operator} onValueChange={(operator) => updateCondition(index, { operator, expected: '' })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{operatorOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
                 {!noValueOperators.has(condition.operator) && (
-                  <Field label={condition.operator === 'IN' ? 'گزینه‌های مورد انتظار' : 'مقدار مورد انتظار'}>
-                    {condition.operator === 'IN' && optionList.length > 0 ? (
+                  <Field label={isMultiExpected ? 'گزینه‌های مورد انتظار' : 'مقدار مورد انتظار'}>
+                    {optionList.length > 0 ? (
+                      isMultiExpected ? (
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button variant="outline" className="w-full justify-between border-zinc-700 text-xs h-9 font-normal">
@@ -4029,7 +4050,17 @@ function EligibilityRuleForm({
                         </PopoverContent>
                       </Popover>
                     ) : (
-                      <Input value={condition.expected} onChange={(event) => updateCondition(index, { expected: event.target.value })} placeholder={condition.operator === 'IN' ? 'مقادیر (با ویرگول جدا کنید)' : undefined} />
+                      <Select value={condition.expected} onValueChange={(value) => updateCondition(index, { expected: value })}>
+                        <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="انتخاب گزینه..." /></SelectTrigger>
+                        <SelectContent>{optionList.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    )
+                    ) : conditionField?.field_type === 'NUMBER' ? (
+                      <Input type="number" value={condition.expected} onChange={(event) => updateCondition(index, { expected: event.target.value })} />
+                    ) : conditionField?.field_type === 'DATE' ? (
+                      <Input type="date" value={condition.expected} onChange={(event) => updateCondition(index, { expected: event.target.value })} />
+                    ) : (
+                      <Input value={condition.expected} onChange={(event) => updateCondition(index, { expected: event.target.value })} placeholder={isMultiExpected ? 'مقادیر (با ویرگول جدا کنید)' : undefined} />
                     )}
                   </Field>
                 )}
@@ -4039,7 +4070,7 @@ function EligibilityRuleForm({
           )
         })}
       </div>
-      <Button variant="outline" className="w-full border-zinc-700 text-xs gap-1" onClick={() => setConditions((current) => [...current, { fact: 'ENTITY_TYPE', operator: 'EQ', expected: '', connector: 'AND' }])}><Plus className="h-3.5 w-3.5" />افزودن شرط دیگر</Button>
+      <Button variant="outline" className="w-full border-zinc-700 text-xs gap-1" onClick={() => setConditions((current) => [...current, blankConditionFor(factCatalog)])}><Plus className="h-3.5 w-3.5" />افزودن شرط دیگر</Button>
       <Field label="توضیح ساده برای کاربر"><Input value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="توضیح قانونی برای شرکت‌ها..." /></Field>
       <div className="flex gap-2">
         <SaveButton onClick={save} />
