@@ -35,6 +35,9 @@ import type {
   ConditionClause,
   WorkflowStepField,
 } from '../../../lib/supabase'
+import KeyRegistryField from '../../../components/KeyRegistryField'
+import JalaliDatePicker from '../../../components/JalaliDatePicker'
+import { fetchPublishedSelectionLists, useSelectionListOptions } from '../../../lib/selectionLists'
 import {
   createObjectionTemplate,
   updateObjectionTemplate,
@@ -104,24 +107,15 @@ const OPERATOR_OPTIONS: { value: string; label: string }[] = [
   { value: 'is_false', label: 'خیر / نادرست' },
 ]
 
-const KNOWN_ACTOR_VALUES = [
-  'مودی مالیاتی',
-  'سازمان امور مالیاتی',
-  'هیأت حل اختلاف بدوی',
-  'هیأت حل اختلاف عالی',
-  'دیوان عدالت اداری',
-  'کارشناس رسمی دادگستری',
-  'واحد ابلاغ',
-  'موتور خودکار',
-]
-
 function newId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
 function newStep(): ObjectionStep {
+  const ref = newId('step')
   return {
-    id: newId('step'),
+    id: ref,
+    step_ref: ref,
     title: 'اقدام جدید',
     base_event: 'تاریخ وقوع رویداد',
     gap_value: 0,
@@ -388,6 +382,17 @@ function ConditionBuilderModal({
 // Action fields editor (فرم/فیلدهای اختصاصی اقدام)
 // ---------------------------------------------------------------------------
 
+const FIELD_TYPE_LABELS: Record<WorkflowStepField['type'], string> = {
+  text: 'متن کوتاه',
+  number: 'عدد',
+  date: 'تقویم شمسی',
+  file: 'فایل / تصویر',
+  select: 'لیست کشویی (تک‌انتخابی)',
+  multiselect: 'لیست کشویی (چندانتخابی)',
+  boolean: 'بله / خیر',
+  checkbox: 'بله / خیر (نسخهٔ قدیمی)',
+}
+
 function ActionFieldsEditor({ fields, onChange }: {
   fields: WorkflowStepField[]
   onChange: (fields: WorkflowStepField[]) => void
@@ -395,78 +400,467 @@ function ActionFieldsEditor({ fields, onChange }: {
   const update = (id: string, patch: Partial<WorkflowStepField>) => {
     onChange(fields.map((f) => (f.id === id ? { ...f, ...patch } : f)))
   }
-
-  return (
-    <div className="space-y-2">
-      {fields.length === 0 && (
+  if (fields.length === 0) {
+    return (
+      <div className="space-y-2">
         <p className="rounded-lg border border-dashed border-zinc-700 p-3 text-xs text-zinc-500">
           هنوز فیلدی تعریف نشده است. با «افزودن فیلد» فرم اختصاصی این اقدام را بسازید.
         </p>
-      )}
-      {fields.map((field) => (
-        <div key={field.id} className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 sm:flex-row sm:items-center">
-          <input
-            className={`${inputCls} sm:w-52`}
-            dir="rtl"
-            value={field.label}
-            onChange={(e) => update(field.id, { label: e.target.value })}
-            placeholder="عنوان فارسی فیلد"
-          />
-          <input
-            className={`${inputCls} font-mono text-xs sm:w-44`}
-            dir="ltr"
-            value={field.key}
-            onChange={(e) => update(field.id, { key: e.target.value })}
-            placeholder="field_key"
-          />
-          <select
-            className={`${inputCls} sm:w-40`}
-            value={field.type}
-            onChange={(e) => update(field.id, { type: e.target.value as WorkflowStepField['type'] })}
-          >
-            {['text', 'number', 'date', 'select', 'multiselect', 'boolean'].map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-          <label className="flex items-center gap-2 text-xs text-zinc-400">
-            <input
-              type="checkbox"
-              checked={field.required === true}
-              onChange={(e) => update(field.id, { required: e.target.checked })}
-              className="accent-amber-500"
-            />
-            الزامی
-          </label>
-          <button
-            type="button"
-            onClick={() => onChange(fields.filter((f) => f.id !== field.id))}
-            className="mr-auto text-zinc-600 transition hover:text-red-400"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
+        <Button variant="outline" onClick={() => onChange([newActionField('')])} className="border-zinc-700 text-zinc-300">
+          <Plus className="h-4 w-4" />
+          افزودن فیلد
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      {fields.map((field, idx) => (
+        <FieldCard
+          key={field.id}
+          field={field}
+          siblings={fields}
+          onUpdate={(patch) => update(field.id, patch)}
+          onMove={dir => {
+            const next = [...fields]
+            const [item] = next.splice(idx, 1)
+            next.splice(idx + dir, 0, item)
+            onChange(next)
+          }}
+          onRemove={() => onChange(fields.filter((f) => f.id !== field.id))}
+        />
       ))}
-      <Button
-        variant="outline"
-        onClick={() =>
-          onChange([
-            ...fields,
-            {
-              id: newId('f'),
-              label: 'فیلد ورودی',
-              key: `field_${fields.length + 1}`,
-              type: 'text',
-              required: false,
-            },
-          ])
-        }
-        className="border-zinc-700 text-zinc-300"
-      >
+      <Button variant="outline" onClick={() => onChange([...fields, newActionField('')])} className="border-zinc-700 text-zinc-300">
         <Plus className="h-4 w-4" />
         افزودن فیلد
       </Button>
     </div>
   )
+}
+
+function newActionField(keyPrefix?: string): WorkflowStepField {
+  return {
+    id: newId('f'),
+    label: 'فیلد ورودی',
+    key: `${keyPrefix || 'field'}_${Date.now().toString(36).slice(-4)}`,
+    type: 'text',
+    required: false,
+  }
+}
+
+function FieldCard({ field, siblings, onUpdate, onMove, onRemove }: {
+  field: WorkflowStepField
+  siblings: WorkflowStepField[]
+  onUpdate: (patch: Partial<WorkflowStepField>) => void
+  onMove: (dir: -1 | 1) => void
+  onRemove: () => void
+}) {
+  const [openMore, setOpenMore] = useState(false)
+  const isList = field.type === 'select' || field.type === 'multiselect'
+  const isDependent = !!field.parentFieldKey
+
+  const onKey = (fullKey: string) => onUpdate({ key: fullKey.split('.').pop() ?? fullKey })
+
+  return (
+    <div id={`field-card-${field.id}`} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+      {/* header row */}
+      <div className="flex items-center gap-2">
+        <input
+          className={`${inputCls} flex-1`}
+          dir="rtl"
+          value={field.label}
+          onChange={(e) => onUpdate({ label: e.target.value })}
+          placeholder="عنوان فارسی فیلد"
+        />
+        <select
+          className={`${inputCls} w-56`}
+          value={field.type}
+          onChange={(e) => {
+            const t = e.target.value as WorkflowStepField['type']
+            // تغییر نوع با درنگ: حفظ key ولی پاک کردن مقادیر وابستهٔ نوع قبلی
+            onUpdate({
+              type: t,
+              options: undefined,
+              listKey: undefined,
+              parentFieldKey: undefined,
+              fileMaxSizeMb: undefined,
+              allowedFileTypes: undefined,
+              maxFiles: undefined,
+              textKind: undefined,
+              numberKind: undefined,
+              precision: undefined,
+              currency: undefined,
+              includeTime: undefined,
+              multiline: undefined,
+              defaultValue: undefined,
+            })
+          }}
+        >
+          {Object.entries(FIELD_TYPE_LABELS).map(([t, label]) => (
+            <option key={t} value={t}>{label}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 text-xs text-zinc-400">
+          <input
+            type="checkbox"
+            checked={field.required === true}
+            onChange={(e) => onUpdate({ required: e.target.checked })}
+            className="accent-amber-500"
+          />
+          الزامی
+        </label>
+        <button type="button" onClick={() => setOpenMore((o) => !o)} title="تنظیمات بیشتر" className="text-zinc-500 transition hover:text-amber-300">
+          <Settings2 className="h-4 w-4" />
+        </button>
+        <button type="button" disabled={siblings.findIndex((f) => f.id === field.id) === 0} onClick={() => onMove(-1)} className="text-zinc-600 transition hover:text-zinc-300 disabled:opacity-30">
+          <ChevronUp className="h-4 w-4" />
+        </button>
+        <button type="button" disabled={siblings.findIndex((f) => f.id === field.id) === siblings.length - 1} onClick={() => onMove(1)} className="text-zinc-600 transition hover:text-zinc-300 disabled:opacity-30">
+          <ChevronDown className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (field.key && siblings.some((f) => f.id !== field.id && f.key === field.key)) {
+              if (!window.confirm('این فیلد کلید تکراری دارد؛ با حذف، شروط ارجاع‌داده به آن نامعتبر می‌شوند. حذف می‌شود؟')) return
+            } else if (!window.confirm(`فیلد «${field.label}» حذف می‌شود. ادامه می‌دهید؟`)) return
+            onRemove()
+          }}
+          className="text-zinc-600 transition hover:text-red-400"
+          title="حذف فیلد"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* key row */}
+      <div className="mt-2">
+        <KeyRegistryField
+          title={field.label || 'فیلد'}
+          entityType="OBJECTION_STEP"
+          module="objection"
+          formName="الگوی فرایند"
+          initialKey={field.key}
+          raw
+          onFullKeyChange={onKey}
+          compact
+          placeholder={field.key || 'field_key'}
+        />
+      </div>
+
+      {/* type-specific extra config (تنظیمات بیشتر) */}
+      <div className="mt-2 flex flex-wrap items-end gap-4">
+        {field.type === 'text' && (
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input type="checkbox" checked={field.multiline === true} onChange={(e) => onUpdate({ multiline: e.target.checked })} className="accent-amber-500" />
+            متن چندخطی
+          </label>
+        )}
+        {field.type === 'number' && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-zinc-500">نوع:</span>
+            {(['integer', 'decimal', 'amount'] as const).map((k) => (
+              <label key={k} className={`cursor-pointer rounded-lg border px-2 py-1 transition ${(field.numberKind ?? 'integer') === k ? 'border-amber-500/60 bg-amber-500/10 text-amber-200' : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'}`}>
+                <input
+                  type="radio"
+                  className="sr-only"
+                  checked={(field.numberKind ?? 'integer') === k}
+                  onChange={() => onUpdate({ numberKind: k, currency: k === 'amount' ? (field.currency ?? 'تومان') : undefined })}
+                />
+                {k === 'integer' ? 'صحیح' : k === 'decimal' ? 'اعشاری' : 'مبلغ'}
+              </label>
+            ))}
+          </div>
+        )}
+        {field.type === 'number' && field.numberKind === 'amount' && (
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <span className="text-zinc-500">واحد مبلغ:</span>
+            <select className={`${inputCls} w-auto`} value={field.currency ?? 'تومان'} onChange={(e) => onUpdate({ currency: e.target.value as 'ریال' | 'تومان' })}>
+              <option value="تومان">تومان</option>
+              <option value="ریال">ریال</option>
+            </select>
+          </label>
+        )}
+        {field.type === 'date' && (
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input type="checkbox" checked={field.includeTime === true} onChange={(e) => onUpdate({ includeTime: e.target.checked })} className="accent-amber-500" />
+            همراه ساعت
+          </label>
+        )}
+        {field.type === 'file' && (
+          <p className="flex items-center gap-1.5 text-[11px] text-amber-300/90">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            فعلاً فقط قابل تعریف؛ بارگذاری فایل پشتیبانی نمی‌شود — این الگو فقط پیش‌نویس می‌ماند.
+          </p>
+        )}
+      </div>
+
+      {/* فهرست انتخابی + والد وابسته */}
+      {isList && (
+        <div className="mt-3 space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <SelectionListPicker
+              valueKey={field.listKey}
+              onChange={(key) => onUpdate({ listKey: key, parentFieldKey: key ? field.parentFieldKey : undefined })}
+            />
+            <div>
+              <FieldLabel hint="اختیاری">فیلد والد (فقط برای فهرست وابسته)</FieldLabel>
+              <select
+                className={inputCls}
+                value={field.parentFieldKey ?? ''}
+                onChange={(e) => onUpdate({ parentFieldKey: e.target.value || undefined })}
+              >
+                <option value="">بدون والد (فهرست مستقل)</option>
+                {siblings
+                  .filter((f) => f.id !== field.id && (f.type === 'select' || f.type === 'multiselect'))
+                  .map((f) => (
+                    <option key={f.id} value={f.key}>{f.label} ({f.key})</option>
+                  ))}
+              </select>
+            </div>
+          </div>
+          {isDependent && (
+            <div>
+              <FieldLabel hint="نمایش قبل از انتخاب والد">متن راهنما</FieldLabel>
+              <input
+                className={inputCls}
+                dir="rtl"
+                value={field.helpBeforeParent ?? ''}
+                onChange={(e) => onUpdate({ helpBeforeParent: e.target.value })}
+                placeholder="مثلاً: ابتدا شهرستان را انتخاب کنید"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* پیش‌نمایش (فقط تعاملی — در پروندهٔ واقعی ذخیره نمی‌شود) */}
+      <div className="mt-3">
+        <FieldLabel>پیش‌نمایش فیلد <span className="mr-1 text-[10px] font-normal text-zinc-600">(پاسخ آزمایشی ذخیره نمی‌شود)</span></FieldLabel>
+        <ActionFieldPreview field={field} />
+      </div>
+
+      {/* تنظیمات بیشتر (بازشونده) */}
+      {openMore && (
+        <div className="mt-3 grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 sm:grid-cols-2">
+          <div>
+            <FieldLabel>توضیح راهنما</FieldLabel>
+            <input className={inputCls} dir="rtl" value={field.helpText ?? ''} onChange={(e) => onUpdate({ helpText: e.target.value })} placeholder="متن راهنمای فیلد" />
+          </div>
+          <div>
+            <FieldLabel>متن جایگزین (placeholder)</FieldLabel>
+            <input className={inputCls} dir="rtl" value={field.placeholder ?? ''} onChange={(e) => onUpdate({ placeholder: e.target.value })} />
+          </div>
+          <div>
+            <FieldLabel hint="اختیاری">مقدار پیش‌فرض (بدون تصمیم مهم)
+              <span className="ml-1 text-[9px] font-normal text-zinc-600">برای بله/خیر پاسخ کامل و ارزشمندی است؛ پیش‌فرض اجباری نداشته باشد</span>
+            </FieldLabel>
+            <input className={inputCls} dir="rtl" value={field.defaultValue ?? ''} onChange={(e) => onUpdate({ defaultValue: e.target.value })} />
+          </div>
+          {field.type === 'text' && (
+            <>
+              <label className="flex items-center gap-2 text-xs text-zinc-400">
+                <input type="radio" checked={(field.textKind ?? 'text') === 'text'} onChange={() => onUpdate({ textKind: 'text' })} className="accent-amber-500" /> متن کوتاه
+              </label>
+              <label className="flex items-center gap-2 text-xs text-zinc-400">
+                <input type="radio" checked={field.textKind === 'email'} onChange={() => onUpdate({ textKind: 'email' })} className="accent-amber-500" /> ایمیل
+              </label>
+              <label className="flex items-center gap-2 text-xs text-zinc-400">
+                <input type="radio" checked={field.textKind === 'phone'} onChange={() => onUpdate({ textKind: 'phone' })} className="accent-amber-500" /> شماره تماس (صفر ابتدایی حفظ می‌شود)
+              </label>
+            </>
+          )}
+          {field.type === 'number' && (
+            <>
+              <div>
+                <FieldLabel>حداقل</FieldLabel>
+                <input type="number" className={inputCls} value={field.min ?? ''} onChange={(e) => onUpdate({ min: e.target.value === '' ? undefined : Number(e.target.value) })} />
+              </div>
+              <div>
+                <FieldLabel>حداکثر</FieldLabel>
+                <input type="number" className={inputCls} value={field.max ?? ''} onChange={(e) => onUpdate({ max: e.target.value === '' ? undefined : Number(e.target.value) })} />
+              </div>
+              {field.numberKind !== 'integer' && field.numberKind !== undefined && (
+                <div>
+                  <FieldLabel>تعداد رقم اعشار</FieldLabel>
+                  <input type="number" min={0} max={6} className={inputCls} value={field.precision ?? 2} onChange={(e) => onUpdate({ precision: Number(e.target.value) })} />
+                </div>
+              )}
+            </>
+          )}
+          {field.type === 'file' && (
+            <>
+              <div>
+                <FieldLabel>حداکثر حجم (مگابایت)</FieldLabel>
+                <input type="number" className={inputCls} value={field.fileMaxSizeMb ?? 10} onChange={(e) => onUpdate({ fileMaxSizeMb: Number(e.target.value) || undefined })} />
+              </div>
+              <div>
+                <FieldLabel hint="خالی=تصویر+PDF">انواع مجاز (mime، با ویرگول)</FieldLabel>
+                <input className={inputCls} dir="ltr" value={(field.allowedFileTypes ?? []).join(', ')} onChange={(e) => onUpdate({ allowedFileTypes: e.target.value ? e.target.value.split(/\s*,\s*/).filter(Boolean) : undefined })} />
+              </div>
+              <div>
+                <FieldLabel>تعداد مجاز فایل</FieldLabel>
+                <input type="number" min={1} className={inputCls} value={field.maxFiles ?? 1} onChange={(e) => onUpdate({ maxFiles: Number(e.target.value) || undefined })} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* چک هم‌خانوادگی: والد خودش والدِ هیچ فرزندی نباشد (جلوگیری از دور) */}
+      {isDependent && siblings.some((f) => f.parentFieldKey === field.key) && (
+        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-red-400">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          این فیلد هم والدِ فیلد دیگری است و خودش والد دارد — وابستگی دوری ممنوع است.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Selection list picker (searchable, از فهرست‌های واقعی انتخاب‌شده)
+// ---------------------------------------------------------------------------
+
+function SelectionListPicker({ valueKey, onChange }: { valueKey?: string; onChange: (key: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [lists, setLists] = useState<Array<{ key: string; title: string; optionsCount: number }>>([])
+  const [loading, setLoading] = useState(true)
+  const sel = lists.find((l) => l.key === valueKey)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchPublishedSelectionLists()
+      .then(({ lists: ls, options }) => {
+        if (cancelled) return
+        setLists(ls.map((l) => ({ key: l.key, title: l.title ?? l.key, optionsCount: options.filter((o) => o.list_id === l.id).length })))
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  const filtered = lists.filter((l) => (l.title + ' ' + l.key).toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div>
+      <FieldLabel hint="فهرست واقعی انتخاب‌شده">اتصال به فهرست داده‌ها</FieldLabel>
+      <div className="relative">
+        <button type="button" onClick={() => setOpen((o) => !o)} className={`${inputCls} flex items-center justify-between text-right`}>
+          <span className={sel ? 'text-zinc-100' : 'text-zinc-500'}>{sel ? sel.title : (loading ? 'در حال بارگذاری فهرست‌ها…' : 'انتخاب فهرست…')}</span>
+          <ChevronDown className="h-4 w-4 text-zinc-500" />
+        </button>
+        {open && (
+          <div className="absolute z-30 mt-1 w-full rounded-xl border border-zinc-700 bg-[#211d1a] p-2 shadow-2xl">
+            <input
+              autoFocus
+              className={`${inputCls} mb-2`}
+              dir="rtl"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="جست‌وجوی فهرست…"
+            />
+            <div className="max-h-52 overflow-y-auto">
+              <button type="button" onClick={() => { onChange(''); setOpen(false) }} className="w-full rounded-lg px-3 py-2 text-right text-xs text-zinc-400 hover:bg-zinc-800">
+                بدون فهرست (گزینه‌های محلی)
+              </button>
+              {filtered.map((l) => (
+                <button
+                  key={l.key}
+                  type="button"
+                  onClick={() => { onChange(l.key); setOpen(false) }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-right text-xs transition hover:bg-zinc-800 ${valueKey === l.key ? 'bg-amber-500/10 text-amber-200' : 'text-zinc-300'}`}
+                >
+                  <span>{l.title}</span>
+                  <span className="text-[10px] text-zinc-500" dir="ltr">{l.key} · {l.optionsCount} گزینه</span>
+                </button>
+              ))}
+              {filtered.length === 0 && <p className="p-2 text-center text-[11px] text-zinc-500">فهرستی یافت نشد.</p>}
+            </div>
+          </div>
+        )}
+      </div>
+      {!valueKey && !loading && (
+        <p className="mt-1 text-[10px] text-zinc-500">
+          در «فهرست‌های انتخابی» می‌توانید فهرست بسازید و منتشر کنید. برای تعریف الگو، یک فهرست معتبر لازم است.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Action field preview (پیش‌نمایش واقعی — دادهٔ آزمایشی در پرونده ذخیره نمی‌شود)
+// ---------------------------------------------------------------------------
+
+function ActionFieldPreview({ field }: {
+  field: WorkflowStepField
+}) {
+  const listOptions = useSelectionListOptions(field.listKey ?? '')
+  const localOptions = (field.options ?? []).map((o) => ({ key: o, label: o }))
+  const options = listOptions.length > 0 ? listOptions : localOptions
+
+  switch (field.type) {
+    case 'boolean':
+    case 'checkbox':
+      return (
+        <div className="flex items-center gap-2 text-xs text-zinc-300">
+          <input type="checkbox" className="accent-amber-500" />
+          <span>{field.required ? '(الزامی)' : '(اختیاری)'} — خیر/بدون پاسخ معتبر است؛ پیش‌فرض اجباری ندارد</span>
+        </div>
+      )
+    case 'select':
+    case 'multiselect':
+      if (field.parentFieldKey) {
+        return (
+          <p className="rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-[11px] text-zinc-400">
+            این فهرست وابسته است — ابتدا فیلد والد («{siblingsLabel(field)}») پاسخ داده شود.<br />
+            {field.helpBeforeParent || 'پس از پاسخ والد، گزینه‌های مرتبط نمایش داده می‌شوند.'}
+          </p>
+        )
+      }
+      if (options.length === 0) {
+        return <p className="rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-[11px] text-amber-300">فهرست متصلی ندارد — پس از اتصال، گزینه‌ها از فهرست نمایش داده می‌شوند.</p>
+      }
+      return (
+        <select className={`${inputCls} text-xs`}>
+          <option value="">— انتخاب —</option>
+          {options.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+        </select>
+      )
+    case 'date':
+      return (
+        <div>
+          <JalaliDatePicker value="" onChange={() => {}} allowClear={false} showQuickPresets={false} size="sm" />
+          {field.includeTime && <input type="time" className={`${inputCls} mt-2`} />}
+        </div>
+      )
+    case 'file':
+      return (
+        <div className="flex items-center gap-2 rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-[11px] text-zinc-500">
+          <FileText className="h-4 w-4" />
+          بارگذاری فایل در این محیط پشتیبانی نمی‌شود — فقط تعریف فیلد.
+        </div>
+      )
+    case 'number':
+      return (
+        <div className="flex items-center gap-2">
+          <input type="number" min={field.min} max={field.max} step={field.numberKind === 'decimal' || field.numberKind === 'amount' ? (field.precision != null ? 1 / (10 ** field.precision) : 'any') : 1} className={`${inputCls} text-xs`} placeholder="0" />
+          {field.numberKind === 'amount' && <span className="text-[11px] text-zinc-400">{field.currency ?? 'تومان'}</span>}
+        </div>
+      )
+    default: // text
+      if (field.textKind === 'email') return <input dir="ltr" type="email" className={`${inputCls} text-xs`} placeholder="name@example.com" />
+      if (field.textKind === 'phone') return <input dir="ltr" type="tel" className={`${inputCls} text-xs`} placeholder="09xxxxxxxxx" />
+      if (field.multiline) return <textarea className={`${inputCls} min-h-20 text-xs`} dir="rtl" placeholder="متن چندخطی…" />
+      return <input className={`${inputCls} text-xs`} dir="rtl" placeholder={field.placeholder || 'متن…'} />
+  }
+}
+
+function siblingsLabel(field: WorkflowStepField): string {
+  return field.label || field.key || '؟'
 }
 
 // ---------------------------------------------------------------------------
@@ -641,8 +1035,10 @@ export default function ObjectionTemplateWizard({
 
   const [obligations, setObligations] = useState<StudioObligationOption[]>([])
   const [activeLinks, setActiveLinks] = useState<ActiveObjectionLink[]>([])
-  const [roleLabels, setRoleLabels] = useState<string[]>([])
+  const [assignableRoles, setAssignableRoles] = useState<Array<{ key: string; persian_label: string }>>([])
   const [obligationSearch, setObligationSearch] = useState('')
+
+  const performerOptions = useSelectionListOptions('objection_step_actors')
 
   const dirtyRef = useRef(false)
 
@@ -661,7 +1057,8 @@ export default function ObjectionTemplateWizard({
       ])
       setObligations(obs)
       setActiveLinks(links)
-      setRoleLabels(roles.map((r) => r.persian_label).filter(Boolean))
+      // فقط نقش‌های قابل‌تخصیص در شرکت (مدیر پلتفرم خارج از انتخاب مسئول ثبت است).
+      setAssignableRoles(roles.filter((r) => r.key !== 'PLATFORM_ADMIN').map((r) => ({ key: r.key, persian_label: r.persian_label })))
     })()
   }, [])
 
@@ -689,8 +1086,13 @@ export default function ObjectionTemplateWizard({
   const availableConditionFields = useMemo(() => {
     const fields: { key: string; label: string; source: ConditionClause['source'] }[] = []
     for (const step of draft.steps) {
+      const actionLabel = step.title || 'اقدام بدون عنوان'
       for (const f of step.fields ?? []) {
-        fields.push({ key: f.key || f.label, label: f.label, source: 'STEP_OUTPUT' })
+        const fieldKey = f.key || f.label || 'field'
+        // ارجاع با «شناسه پایدار اقدام + کلید فیلد» تا دو فیلد هم‌نام از دو اقدام مبهم نباشند؛
+        // این شناسه فقط هنگام ایجاد ساخته می‌شود و جابه‌جایی/تکرار/ذخیره آن را تغییر نمی‌دهد.
+        const ref = step.step_ref || step.id
+        fields.push({ key: `${ref}.${fieldKey}`, label: `${actionLabel} — ${f.label || fieldKey}`, source: 'STEP_OUTPUT' })
       }
     }
     fields.push({ key: 'entity_type', label: 'نوع شخصیت شرکت', source: 'FACT' })
@@ -708,6 +1110,12 @@ export default function ObjectionTemplateWizard({
     if (draft.steps.length === 0) {
       toast.error('حداقل یک اقدام در مسیر تعریف کنید.')
       setStepIndex(1)
+      return null
+    }
+    if (duplicateKeyIssues.length > 0) {
+      toast.error('کلید فیلدها در یک اقدام تکراری است؛ ابتدا آن را در «تنظیمات اقدام» اصلاح کنید.')
+      setStepIndex(2)
+      setActiveActionId(duplicateKeyIssues[0].actionId)
       return null
     }
     setSaving(true)
@@ -748,6 +1156,15 @@ export default function ObjectionTemplateWizard({
     if (unsupportedConditions) {
       toast.error('الگوی دارای شروط پشتیبانی‌نشده قابل فعال‌سازی نیست؛ ابتدا شروط را حذف کنید.')
       setStepIndex(3)
+      return
+    }
+    if (fileFieldIssues.length > 0 || duplicateKeyIssues.length > 0) {
+      toast.error(
+        fileFieldIssues.length > 0
+          ? 'این الگو فیلد «فایل/تصویر» دارد — بارگذاری پشتیبانی نمی‌شود، بنابراین فقط به‌صورت پیش‌نویس قابل ذخیره است و قابل فعال‌سازی نیست.'
+          : 'کلید تکراری در فیلدهای اقدام، مانع فعال‌سازی است. مشکل را از «بررسی و ثبت» باز کنید.'
+      )
+      setStepIndex(5)
       return
     }
     setActivating(true)
@@ -801,9 +1218,11 @@ export default function ObjectionTemplateWizard({
   const duplicateStep = (id: string) => {
     const source = draft.steps.find((s) => s.id === id)
     if (!source) return
+    const copyRef = newId('step')
     const copy: ObjectionStep = {
       ...source,
-      id: newId('step'),
+      id: copyRef,
+      step_ref: copyRef,
       title: `${source.title} (کپی)`,
       fields: (source.fields ?? []).map((f) => ({ ...f, id: newId('f') })),
       transitions: (source.transitions ?? []).map((t) => ({ ...t, id: newId('tr') })),
@@ -839,18 +1258,93 @@ export default function ObjectionTemplateWizard({
     })
   }
 
+  const stepRefOf = (step: ObjectionStep): string => step.step_ref || step.id
+
+  /** حذف اقدامی که شرطی به آن ارجاع می‌دهد ممنوع است؛ ادمین ابتدا باید ارجاع را اصلاح کند. */
+  const handleDeleteStep = (stepId: string) => {
+    const target = draft.steps.find((s) => s.id === stepId)
+    if (!target) return
+    const targetRef = stepRefOf(target)
+    const referencing: string[] = []
+    for (const other of draft.steps) {
+      if (other.id === stepId) continue
+      for (const t of other.transitions ?? []) {
+        const expr = t.condition_expression as ConditionExpression | null | undefined
+        for (const clause of expr?.clauses ?? []) {
+          if (clause.source === 'STEP_OUTPUT' && clause.field_key.split('.')[0] === targetRef) {
+            referencing.push(`${other.title || 'اقدام'} → ${clause.field_label || clause.field_key}`)
+          }
+        }
+      }
+    }
+    if (referencing.length > 0) {
+      toast.error(`حذف این اقدام ممکن نیست؛ ابتدا شرط‌های زیر را اصلاح کنید: ${referencing.join('، ')}`)
+      return
+    }
+    patch({ steps: draft.steps.filter((s) => s.id !== stepId) })
+  }
+
   const removeTransition = (stepId: string, transitionId: string) => {
     updateStep(stepId, {
       transitions: (draft.steps.find((s) => s.id === stepId)?.transitions ?? []).filter((t) => t.id !== transitionId),
     })
   }
 
-  const actorOptions = useMemo(() => {
-    const set = new Set<string>(KNOWN_ACTOR_VALUES)
-    for (const step of draft.steps) if (step.actor) set.add(step.actor)
-    for (const role of roleLabels) set.add(role)
-    return Array.from(set)
-  }, [draft.steps, roleLabels])
+  const actorLabelFor = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const p of performerOptions) map.set(p.key, p.label)
+    for (const r of assignableRoles) map.set(r.key, r.persian_label)
+    return map
+  }, [performerOptions, assignableRoles])
+
+  // مشکلات فیلدهای اقدام که فعال‌سازی الگو را مسدود می‌کنند (فایل / کلید تکراری)
+  type FieldBlock = { actionId: string; action: string; field: string; fieldId: string; text: string }
+  const duplicateKeyIssues = useMemo<FieldBlock[]>(() => {
+    const issues: FieldBlock[] = []
+    for (const step of draft.steps) {
+      const seen = new Map<string, string>()
+      for (const f of step.fields ?? []) {
+        const key = (f.key || '').trim()
+        if (!key) continue
+        if (seen.has(key)) {
+          issues.push({
+            actionId: step.id,
+            action: step.title || 'اقدام بدون عنوان',
+            field: `${f.label || 'فیلد'} («${key}»)`, fieldId: f.id,
+            text: `کلید تکراری «${key}» در همین اقدام — با «${seen.get(key)}» تداخل دارد`,
+          })
+        } else {
+          seen.set(key, f.label || 'فیلد')
+        }
+      }
+    }
+    return issues
+  }, [draft.steps])
+
+  const fileFieldIssues = useMemo<FieldBlock[]>(() => {
+    const issues: FieldBlock[] = []
+    for (const step of draft.steps) {
+      for (const f of step.fields ?? []) {
+        if (f.type === 'file') {
+          issues.push({
+            actionId: step.id,
+            action: step.title || 'اقدام بدون عنوان',
+            field: f.label || 'فیلد فایل', fieldId: f.id,
+            text: 'نوع «فایل/تصویر» فعلاً فقط قابل تعریف است؛ بارگذاری فایل پشتیبانی نمی‌شود — الگو فقط پیش‌نویس می‌ماند',
+          })
+        }
+      }
+    }
+    return issues
+  }, [draft.steps])
+
+  const goToField = (issue: FieldBlock) => {
+    setActiveActionId(issue.actionId)
+    setStepIndex(2)
+    window.setTimeout(() => {
+      document.getElementById(`field-card-${issue.fieldId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 80)
+  }
 
   const validationErrors = useMemo(() => {
     const errors: string[] = []
@@ -865,10 +1359,16 @@ export default function ObjectionTemplateWizard({
     )
     errors.push(...noTarget)
     if (unsupportedConditions) errors.push('الگو دارای شرط است — فقط پیش‌نویس می‌ماند و قابل فعال‌سازی نیست')
+    errors.push(...duplicateKeyIssues.map((i) => `اقدام «${i.action}»: ${i.field} — ${i.text}`))
+    errors.push(...fileFieldIssues.map((i) => `اقدام «${i.action}»: ${i.field} — ${i.text}`))
     return errors
-  }, [draft, unsupportedConditions])
+  }, [draft, unsupportedConditions, duplicateKeyIssues, fileFieldIssues])
 
   const canActivate = validationErrors.length === 0
+
+  // بدون جداسازی نسخه، ذخیره روی الگوی فعال محتوایِ در حال استفاده را تغییر می‌دهد؛
+  // بنابراین ویرایش مستقیم الگوی فعال (custom) مسدود است.
+  const blockedActiveEdit = mode === 'edit' && !!initial && !isBaseTemplate && (initial.status === 'ACTIVE' || initial.has_been_activated === true)
 
   const activeLinksByObligation = useMemo(() => {
     const map = new Map<string, ActiveObjectionLink>()
@@ -880,6 +1380,27 @@ export default function ObjectionTemplateWizard({
   // Render
   // ---------------------------------------------------------------
   const step = WIZARD_STEPS[stepIndex]
+
+  if (blockedActiveEdit) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: '#181614' }}>
+        <div className="w-full max-w-lg rounded-2xl border border-amber-700/60 bg-[#211d1a] p-6 shadow-2xl">
+          <div className="mb-3 flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-400" />
+            <h2 className="text-base font-bold text-zinc-100">ویرایش الگوی فعال‌شده مسدود است</h2>
+          </div>
+          <p className="text-sm leading-7 text-zinc-300">این الگو «{initial?.template_name || '—'}» قبلاً فعال شده و فرایندِ در حالِ استفاده از آن بهره می‌برد. چون این مدل جداسازی نسخه (draft/active snapshot) ندارد، محتوای آن (مراحل، اقدام‌ها، فیلدها و انتقال‌ها) برای همیشه قفل است و برگشتن به پیش‌نویس هم اجازهٔ بازنویسی نمی‌دهد.</p>
+          <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-xs leading-6 text-zinc-400">برای تغییر، یک الگوی جدید از روی آن بسازید (کپی) و پس از آماده‌شدن فعال کنید. این محدودیت به‌عمد اعمال شده است تا داده‌های پرونده‌های متصل دست‌نخورده بمانند؛ نسخه‌بندیِ کامل هنوز ساخته نشده است.</p>
+          <div className="mt-5 flex justify-end">
+            <Button variant="outline" onClick={onClose} className="border-zinc-700 text-zinc-300">
+              <ArrowRight className="h-4 w-4" />
+              بازگشت
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: '#181614' }}>
@@ -1106,7 +1627,7 @@ export default function ObjectionTemplateWizard({
                             <button type="button" onClick={() => moveStep(step.id, 1)} disabled={index === group.steps.length - 1} className="rounded-lg border border-zinc-800 p-1.5 text-zinc-500 transition hover:text-zinc-300 disabled:opacity-30">
                               <ChevronDown className="h-3.5 w-3.5" />
                             </button>
-                            <button type="button" onClick={() => patch({ steps: draft.steps.filter((s) => s.id !== step.id) })} className="rounded-lg border border-zinc-800 p-1.5 text-zinc-500 transition hover:text-red-400" title="حذف اقدام">
+                            <button type="button" onClick={() => handleDeleteStep(step.id)} className="rounded-lg border border-zinc-800 p-1.5 text-zinc-500 transition hover:text-red-400" title="حذف اقدام">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -1147,21 +1668,54 @@ export default function ObjectionTemplateWizard({
                           onChange={(e) => updateStep(selectedAction.id, { title: e.target.value })}
                         />
                       </div>
-                      <div>
-                        <FieldLabel>مسئول / مرجع اقدام</FieldLabel>
-                        <input
-                          className={inputCls}
-                          dir="rtl"
-                          list="wizard-actor-list"
-                          value={selectedAction.actor ?? ''}
-                          onChange={(e) => updateStep(selectedAction.id, { actor: e.target.value })}
-                          placeholder="از نقش‌ها یا مراجع تعریف‌شده"
-                        />
-                        <datalist id="wizard-actor-list">
-                          {actorOptions.map((a) => (
-                            <option key={a} value={a} />
-                          ))}
-                        </datalist>
+                      <div className="sm:col-span-2">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <FieldLabel hint="خارج یا داخل پلتفرم — از فهرست انتخاب‌شده">مرجع انجام اقدام</FieldLabel>
+                            <select
+                              className={inputCls}
+                              value={selectedAction.performer_key ?? ''}
+                              onChange={(e) => {
+                                const k = e.target.value
+                                updateStep(selectedAction.id, {
+                                  performer_key: k || null,
+                                  performer_label: performerOptions.find((p) => p.key === k)?.label ?? null,
+                                })
+                              }}
+                            >
+                              <option value="">— انتخاب مرجع انجام —</option>
+                              {performerOptions.map((p) => (
+                                <option key={p.key} value={p.key}>{p.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <FieldLabel hint="نقش داخل شرکت؛ بدون افزایش مجوز">مسئول ثبت و پیگیری در پلتفرم</FieldLabel>
+                            <select
+                              className={inputCls}
+                              value={selectedAction.responsible_role ?? ''}
+                              onChange={(e) => {
+                                const k = e.target.value
+                                updateStep(selectedAction.id, {
+                                  responsible_role: k || null,
+                                  responsible_role_label: assignableRoles.find((r) => r.key === k)?.persian_label ?? null,
+                                })
+                              }}
+                            >
+                              <option value="">— انتخاب نقش —</option>
+                              {assignableRoles.map((r) => (
+                                <option key={r.key} value={r.key}>{r.persian_label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        {selectedAction.actor && !selectedAction.performer_key && !selectedAction.responsible_role && (
+                          <p className="mt-2 flex items-center gap-1.5 rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            مقدار قبلی «مسئول/مرجع» ({selectedAction.actor}) بدون تغییر حفظ شده — نیازمند تعیین
+                            مرجع انجام اقدام و مسئول ثبت.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <FieldLabel>ماهیت اقدام</FieldLabel>
@@ -1513,11 +2067,38 @@ export default function ObjectionTemplateWizard({
           {/* ── STEP 6: بررسی و ثبت نهایی ── */}
           {stepIndex === 5 && (
             <>
+          {(fileFieldIssues.length > 0 || duplicateKeyIssues.length > 0) && (
+                <div className="mb-4 rounded-2xl border border-amber-700/60 bg-amber-950/20 p-4">
+                  <h4 className="mb-2 flex items-center gap-2 text-sm font-bold text-amber-300">
+                    <AlertTriangle className="h-4 w-4" />
+                    فیلدهای نیازمند اصلاح (الگو فقط پیش‌نویس می‌ماند)
+                  </h4>
+                  <div className="space-y-2">
+                    {[...fileFieldIssues, ...duplicateKeyIssues].map((issue, i) => (
+                      <div key={i} className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex-1 text-xs leading-6 text-zinc-300">
+                          <span className="font-bold text-amber-200">اقدام «{issue.action}»</span> —{' '}
+                          <span className="text-zinc-100">{issue.field}</span>
+                          <p className="mt-0.5 text-[11px] text-zinc-400">{issue.text}</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          onClick={() => goToField(issue)}
+                          className="shrink-0 border-zinc-700 text-zinc-200"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          رفتن به فیلد
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {validationErrors.length > 0 && (
                 <div className="rounded-2xl border border-red-900/60 bg-red-950/20 p-4">
                   <h4 className="mb-2 flex items-center gap-2 text-sm font-bold text-red-300">
                     <AlertTriangle className="h-4 w-4" />
-                    خطاهای مانع ثبت
+                    خطاهای مانع فعال‌سازی
                   </h4>
                   <ul className="list-inside list-disc space-y-1 text-xs text-red-200">
                     {validationErrors.map((err, i) => (
