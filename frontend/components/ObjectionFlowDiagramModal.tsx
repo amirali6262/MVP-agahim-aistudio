@@ -36,7 +36,7 @@ interface Props {
 // 3. دیوان (Court / Divan) => Yellow (زرد)
 // ---------------------------------------------------------------------------
 
-export function resolveStepActor(step: ObjectionStep): StepActor {
+export function resolveStepActor(step: ObjectionStep): string {
   if (step.actor) return step.actor
 
   const title = step.title || ''
@@ -59,7 +59,7 @@ export function resolveStepActor(step: ObjectionStep): StepActor {
   return 'TAX_AUTHORITY'
 }
 
-export function getActorTheme(actor: StepActor) {
+export function getActorTheme(actor: string) {
   switch (actor) {
     case 'TAXPAYER': // مودی => قرمز (Red)
       return {
@@ -92,7 +92,7 @@ export function getActorTheme(actor: StepActor) {
     case 'TAX_AUTHORITY': // سازمان مالیاتی => سبز (Green)
     default:
       return {
-        label: 'سازمان امور مالیاتی',
+        label: actor || 'سازمان امور مالیاتی',
         bg: 'bg-emerald-950/80',
         border: 'border-emerald-500',
         nodeBg: 'bg-emerald-600',
@@ -107,7 +107,7 @@ export function getActorTheme(actor: StepActor) {
   }
 }
 
-export function getNatureBadge(nature?: ObjectionStepNature) {
+export function getNatureBadge(nature?: string) {
   switch (nature) {
     case 'MANDATORY':
       return { label: 'مرحله اصلی و الزامی', color: 'bg-blue-900/60 text-blue-300 border-blue-700' }
@@ -124,7 +124,7 @@ export function getNatureBadge(nature?: ObjectionStepNature) {
     case 'NEXT_STAGE':
       return { label: 'ارجاع به مرحله بعد', color: 'bg-cyan-900/60 text-cyan-300 border-cyan-700' }
     default:
-      return { label: 'مرحله فرایند', color: 'bg-zinc-800 text-zinc-300 border-zinc-700' }
+      return { label: nature || 'مرحله فرایند', color: 'bg-zinc-800 text-zinc-300 border-zinc-700' }
   }
 }
 

@@ -50,7 +50,7 @@ export default function ObjectionTimelineModal({
     return (s.actor || 'TAX_AUTHORITY') === activeActorFilter
   })
 
-  const getActorConfig = (actor?: StepActor) => {
+  const getActorConfig = (actor?: string) => {
     switch (actor) {
       case 'TAXPAYER':
         return {
@@ -73,7 +73,7 @@ export default function ObjectionTimelineModal({
       case 'TAX_AUTHORITY':
       default:
         return {
-          label: 'سازمان امور مالیاتی',
+          label: actor || 'سازمان امور مالیاتی',
           badge: 'اقدام: سازمان مالیاتی',
           bg: 'bg-amber-950/50',
           border: 'border-amber-700/70',
@@ -83,7 +83,7 @@ export default function ObjectionTimelineModal({
     }
   }
 
-  const getNatureConfig = (nature?: ObjectionStepNature) => {
+  const getNatureConfig = (nature?: string) => {
     switch (nature) {
       case 'CONDITIONAL_EXPERT':
         return {
@@ -147,7 +147,7 @@ export default function ObjectionTimelineModal({
         }
       default:
         return {
-          badge: 'مرحله اصلی و الزامی',
+          badge: nature || 'مرحله اصلی و الزامی',
           bg: 'bg-zinc-900/80',
           border: 'border-zinc-700/80',
           text: 'text-zinc-200',
