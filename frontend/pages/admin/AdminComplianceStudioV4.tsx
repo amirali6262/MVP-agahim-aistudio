@@ -67,21 +67,6 @@ interface CatalogItem {
 
 type StudioMode = 'LIST' | 'VIEW' | 'EDIT'
 
-const FACTS = [
-  ['ENTITY_TYPE', 'نوع شخصیت'],
-  ['LEGAL_FORM', 'قالب ثبتی'],
-  ['PRIMARY_ACTIVITY', 'فعالیت اصلی'],
-  ['ACTIVITY_CODES', 'کدهای فعالیت'],
-  ['TAX_REGISTRATION_STATUS', 'وضعیت ثبت مالیاتی'],
-  ['VAT_REGISTRATION_STATUS', 'وضعیت ارزش افزوده'],
-  ['EMPLOYEE_COUNT', 'تعداد کارکنان'],
-  ['ANNUAL_REVENUE', 'فروش سالانه'],
-  ['BRANCH_COUNT', 'تعداد شعب'],
-  ['HAS_ACTIVE_CONTRACTS', 'قرارداد فعال'],
-  ['CONTRACT_TYPES', 'نوع قراردادها'],
-  ['PAYS_SALARIES', 'پرداخت حقوق'],
-] as const
-
 const OPERATORS = [
   ['EQ', 'برابر است با'],
   ['NEQ', 'برابر نیست با'],
@@ -98,18 +83,6 @@ const OPERATORS = [
 ] as const
 
 const noValueOperators = new Set(['IS_TRUE', 'IS_FALSE', 'IS_NULL', 'NOT_NULL'])
-const numericFacts = new Set(['EMPLOYEE_COUNT', 'ANNUAL_REVENUE', 'BRANCH_COUNT'])
-const booleanFacts = new Set(['HAS_ACTIVE_CONTRACTS', 'PAYS_SALARIES'])
-const arrayFacts = new Set(['ACTIVITY_CODES', 'CONTRACT_TYPES'])
-
-// فکت‌های قدیمی (پیش از طراح اطلاعات شرکت) به نوع مقدار خود نگاشت می‌شوند تا
-// فیلتر عملگرها با قواعد اعتبارسنجی دیتابیس هماهنگ بماند.
-function legacyFactType(fact: string): string {
-  if (numericFacts.has(fact)) return 'NUMBER'
-  if (booleanFacts.has(fact)) return 'BOOLEAN'
-  if (arrayFacts.has(fact)) return 'MULTI_SELECT'
-  return 'SELECT'
-}
 
 export interface EligibilityFactEntry {
   key: string
@@ -223,37 +196,43 @@ export default function AdminComplianceStudio() {
     let cancelled = false
     void (async () => {
       try {
-        const [defsRes, optsRes] = await Promise.all([
+        const [defsRes, optsRes, legacyRes] = await Promise.all([
           (supabase as any).from('company_field_definitions').select('*').eq('used_in_eligibility', true).eq('is_active', true).eq('status', 'PUBLISHED').order('sort_order', { ascending: true }),
           (supabase as any).from('company_field_options').select('*').eq('is_active', true).order('sort_order', { ascending: true }),
+          (supabase as any).from('eligibility_legacy_facts').select('*').eq('is_active', true).order('sort_order', { ascending: true }),
         ])
         if (defsRes.error || optsRes.error) return
         const optionsByField: Record<string, Array<{ value: string; label: string }>> = {}
         for (const option of (optsRes.data ?? []) as any[]) {
           (optionsByField[option.field_id] = optionsByField[option.field_id] ?? []).push({ value: option.value, label: option.label })
         }
-        const facts: EligibilityFactEntry[] = ((defsRes.data ?? []) as any[]).map((definition) => ({
-          key: definition.key,
-          title: definition.title,
-          field_type: definition.field_type,
-          options: optionsByField[definition.id] ?? [],
-          isDesignerField: true,
-        }))
+        // فکت‌های طراح اطلاعات شرکت (company_field_definitions) + فکت‌های legacy
+        // (eligibility_legacy_facts — فقط متادیتا برای ویرایشگر قاعده).
+        const facts: EligibilityFactEntry[] = [
+          ...((defsRes.data ?? []) as any[]).map((definition) => ({
+            key: definition.key,
+            title: definition.title,
+            field_type: definition.field_type,
+            options: optionsByField[definition.id] ?? [],
+            isDesignerField: true,
+          })),
+          ...((legacyRes.data ?? []) as any[]).map((entry) => ({
+            key: entry.key,
+            title: entry.title,
+            field_type: entry.field_type,
+            options: [],
+            isDesignerField: false,
+          })),
+        ]
         if (!cancelled) setEligibilityFacts(facts)
       } catch {
-        // اگر دریافت فیلدها ناموفق بود، فقط فهرست legacy نمایش داده می‌شود.
+        // اگر دریافت فیلدها ناموفق بود، کاتالوگ فکت خالی می‌ماند.
       }
     })()
     return () => { cancelled = true }
   }, [])
 
-  const factCatalog = useMemo<EligibilityFactEntry[]>(() => {
-    const combined: EligibilityFactEntry[] = FACTS.map(([key, title]) => ({ key, title, field_type: legacyFactType(key), options: [], isDesignerField: false }))
-    for (const fact of eligibilityFacts) {
-      if (!combined.some((entry) => entry.key === fact.key)) combined.push(fact)
-    }
-    return combined
-  }, [eligibilityFacts])
+  const factCatalog = useMemo<EligibilityFactEntry[]>(() => eligibilityFacts, [eligibilityFacts])
 
   const selectedVersion = useMemo(
     () => catalog.flatMap((item) => item.versions).find((version) => version.id === selectedVersionId) ?? null,
@@ -3864,7 +3843,7 @@ function EligibilityRuleForm({
         toast.error('مقدار همهٔ شرط‌ها را وارد کنید.')
         return
       }
-      const conditionType = factEntry(condition.fact)?.field_type ?? legacyFactType(condition.fact)
+      const conditionType = factEntry(condition.fact)?.field_type ?? 'TEXT'
       if (conditionType === 'NUMBER' && !Number.isFinite(Number(condition.expected))) {
         toast.error('مقدار شرط عددی معتبر نیست.')
         return
@@ -3897,7 +3876,7 @@ function EligibilityRuleForm({
         const rows = conditions.map((condition, index) => {
           let expectedValue: Json | undefined
           if (!noValueOperators.has(condition.operator)) {
-            const conditionType = factEntry(condition.fact)?.field_type ?? legacyFactType(condition.fact)
+            const conditionType = factEntry(condition.fact)?.field_type ?? 'TEXT'
             expectedValue = conditionType === 'NUMBER'
               ? Number(condition.expected)
               : condition.operator === 'IN' || condition.operator === 'CONTAINS'
@@ -3940,7 +3919,7 @@ function EligibilityRuleForm({
       const rows = conditions.map((condition, index) => {
         let expectedValue: Json | undefined
         if (!noValueOperators.has(condition.operator)) {
-          const conditionType = factEntry(condition.fact)?.field_type ?? legacyFactType(condition.fact)
+          const conditionType = factEntry(condition.fact)?.field_type ?? 'TEXT'
           expectedValue = conditionType === 'NUMBER'
             ? Number(condition.expected)
             : condition.operator === 'IN' || condition.operator === 'CONTAINS'
@@ -4316,7 +4295,7 @@ function isMissingSchemaObject(error: { code?: string; message?: string } | null
 function penaltyItems(value: Json): Array<{ id: string; title: string; type: string; value: string }> { if (!value || Array.isArray(value) || typeof value !== 'object') return []; if (value['type'] === 'MULTIPLE' && Array.isArray(value['items'])) return value['items'].flatMap((item, index) => { if (!item || Array.isArray(item) || typeof item !== 'object') return []; const type = String(item['type'] ?? 'PERCENTAGE'); const amount = type === 'FIXED' ? item['amount'] : item['rate_percent']; return [{ id: String(item['id'] ?? `penalty-${index}`), title: String(item['title'] ?? ''), type, value: amount == null ? '' : String(amount) }] }); const type = String(value['type'] ?? 'NONE'); if (type === 'NONE') return []; return [{ id: 'legacy-penalty', title: 'جریمه قانونی', type, value: String(type === 'FIXED' ? value['amount'] ?? '' : value['rate_percent'] ?? '') }] }
 function penaltyLabel(value: Json) { const items = penaltyItems(value); if (items.length > 1) return `${items.length.toLocaleString('fa-IR')} جریمه تعریف‌شده`; if (items.length === 1) { const item = items[0]; return item.type === 'FIXED' ? `${Number(item.value).toLocaleString('fa-IR')} ریال` : `${Number(item.value).toLocaleString('fa-IR')} درصد${item.type === 'DAILY_PERCENTAGE' ? ' روزانه' : ''}` } return 'بدون جریمه' }
 function allowedOperators(fact: string, fieldType?: string) {
-  const type = fieldType ?? legacyFactType(fact)
+  const type = fieldType ?? 'TEXT'
   const allowed = type === 'BOOLEAN'
     ? new Set(['IS_TRUE', 'IS_FALSE', 'IS_NULL', 'NOT_NULL'])
     : type === 'NUMBER'

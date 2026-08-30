@@ -113,6 +113,8 @@ export async function fetchPublishedCompanyFields(): Promise<CompanyInfoDesign> 
     throw new Error(defsRes.error?.message ?? optsRes.error?.message ?? stepsRes.error?.message ?? listsRes.error?.message ?? listOptsRes.error?.message ?? 'دریافت تعاریف ناموفق بود.')
   }
   return {
+    // فکت‌های legacy در جدول جداگانه (eligibility_legacy_facts) نگهداری
+    // می‌شوند و هرگز در فرم اطلاعات شرکت ظاهر نمی‌شوند.
     definitions: defsRes.data ?? [],
     options: optsRes.data ?? [],
     steps: stepsRes.data ?? [],
