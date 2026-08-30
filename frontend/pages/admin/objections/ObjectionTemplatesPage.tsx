@@ -22,93 +22,16 @@ import {
 import FullScreenDialog from '../../../components/FullScreenDialog'
 import KeyRegistryField from '../../../components/KeyRegistryField'
 import { findDuplicateRawKey, registerRawScopedKey } from '../../../lib/systemKeys'
-import { fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, updateBaseObjectionTemplate, deleteObjectionTemplate } from '../../../lib/supabaseDb'
+import { fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, updateBaseObjectionTemplate, deleteObjectionTemplate, fetchTaxTypeOverrideDefaults, fetchObjectionStepPresets, fetchObjectionFieldPacks } from '../../../lib/supabaseDb'
+import { useSelectionListOptions } from '../../../lib/selectionLists'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField, TaxTypeOverride } from '../../../lib/supabase'
 
-const DEFAULT_TAX_OVERRIDES: TaxTypeOverride[] = [
-  {
-    tax_type: 'TAX_CORPORATE',
-    tax_type_title: 'مالیات بر عملکرد اشخاص حقوقی',
-    statutory_deadline_override: 30,
-    deadline_unit: 'روز',
-    legal_reference_override: 'ماده ۲۳۸ و ۲۴۴ قانون مالیات‌های مستقیم (مهلت ثبت ۳۰ روز - مهلت توافق ۴۵ روز)',
-    special_tribunal_name: 'هیأت حل اختلاف مالیاتی بدوی و تجدیدنظر (ماده ۲۴۴ و ۲۴۷ ق.م.م)',
-    notes: 'طبق ماده ۱۵۶ ق.م.م، چنانچه ظرف یک سال از تاریخ تسلیم اظهارنامه برگ تشخیص صادر نشود، ارقام ابرازی خودکار قطعی می‌گردد.',
-    is_custom_path_active: true,
-  },
-  {
-    tax_type: 'VAT',
-    tax_type_title: 'مالیات بر ارزش افزوده (قانون دائمی)',
-    statutory_deadline_override: 20,
-    deadline_unit: 'روز',
-    legal_reference_override: 'ماده ۳۴ و ۳۶ قانون دائمی مالیات بر ارزش افزوده و ماده ۲۳۸ ق.م.م',
-    special_tribunal_name: 'هیأت‌های تخصصی حل اختلاف ارزش افزوده و کارگروه اعتبارات مالیاتی',
-    notes: 'مهلت اعتراض به برگ مطالبه ارزش افزوده ظرف ۲۰ روز از تاریخ ابلاغ اداری/الکترونیکی است.',
-    is_custom_path_active: true,
-  },
-  {
-    tax_type: 'SALARY_TAX',
-    tax_type_title: 'مالیات بر درآمد حقوق و مالیات‌های تکلیفی',
-    statutory_deadline_override: 30,
-    deadline_unit: 'روز',
-    legal_reference_override: 'ماده ۸۶ و تبصره ماده ۲۱۶ قانون مالیات‌های مستقیم',
-    special_tribunal_name: 'هیأت حل اختلاف مالیاتی موضوع ماده ۲۱۶ ق.م.م (رسیدگی به شکایات وصول و اجرا)',
-    notes: 'دادرسی در خصوص مطالبه مالیات تکلیفی از پرداخت‌کننده از طریق هیأت ماده ۲۱۶ صورت می‌گیرد.',
-    is_custom_path_active: true,
-  },
-  {
-    tax_type: 'SEASONAL_REPORT',
-    tax_type_title: 'صورت معاملات فصلی (ماده ۱۶۹ مکرر)',
-    statutory_deadline_override: 30,
-    deadline_unit: 'روز',
-    legal_reference_override: 'ماده ۱۶۹ و تبصره‌های ماده ۱۹۲ ق.م.م (جرایم عدم ارسال صورت معاملات)',
-    special_tribunal_name: 'هیأت حل اختلاف مالیاتی بدوی (ماده ۲۴۴ ق.م.م)',
-    notes: 'جرایم عدم ارائه فهرست معاملات مشمول بخشودگی‌های خاص موضوع ماده ۱۹۱ ق.م.م است.',
-    is_custom_path_active: true,
-  },
-  {
-    tax_type: 'INVOICE_SYSTEM',
-    tax_type_title: 'قانون پایانه‌های فروشگاهی و سامانه مؤدیان',
-    statutory_deadline_override: 30,
-    deadline_unit: 'روز',
-    legal_reference_override: 'ماده ۹ و ۱۰ قانون پایانه‌های فروشگاهی و سامانه مؤدیان',
-    special_tribunal_name: 'کارگروه ویژه راهبری سامانه مؤدیان و هیأت ۲۴۴ ق.م.م',
-    notes: 'صورتحساب‌های الکترونیکی ثبت‌شده در سامانه مؤدیان معتبر بوده و رسیدگی خارج از سامانه ممنوع است.',
-    is_custom_path_active: true,
-  },
-]
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import ObjectionTimelineModal from '../../../components/ObjectionTimelineModal'
 import ObjectionFlowDiagramModal from '../../../components/ObjectionFlowDiagramModal'
 import { Workflow } from 'lucide-react'
 import { checkObjectionTemplateDependencies, type DependencyCheckResult } from '../../../lib/dependencyChecker'
-
-const BASE_EVENT_OPTIONS = [
-  'تاریخ ابلاغ برگ/ااختیاریه',
-  'تاریخ ابلاغ برگه تشخیص',
-  'تاریخ صدور رای',
-  'تاریخ ابلاغ رای بدوی',
-  'تاریخ اجرای قرار کارشناسی',
-]
-
-const GAP_UNIT_OPTIONS = ['روز', 'ماه']
-
-const STEP_ACTOR_OPTIONS: { value: StepActor; label: string; desc: string }[] = [
-  { value: 'TAXPAYER', label: 'مودی مالیاتی', desc: 'اقدام توسط مودی یا وکیل قانونی' },
-  { value: 'TAX_AUTHORITY', label: 'سازمان امور مالیاتی / هیأت‌ها', desc: 'اقدام توسط اداره مالیات، ممیز کل، هیأت‌های بدوی/تجدیدنظر/۲۵۱ مکرر' },
-  { value: 'COURT_DIVAN', label: 'دیوان عدالت اداری', desc: 'اقدام توسط شعب بدوی/تجدیدنظر دیوان عدالت اداری' },
-]
-
-const STEP_NATURE_OPTIONS: { value: ObjectionStepNature; label: string; desc: string }[] = [
-  { value: 'MANDATORY', label: 'مرحله اصلی و الزامی', desc: 'گام استاندارد و خطی در فرآیند اعتراض' },
-  { value: 'CONDITIONAL_EXPERT', label: 'مرحله مشروط (قرار کارشناسی)', desc: 'فقط در صورت صلاحدید و صدور قرار کارشناسی اجرا می‌شود' },
-  { value: 'AGREEMENT_END', label: 'نقطه پایان (توافق با ممیز/هیأت)', desc: 'توافق با ممیز کل یا هیأت (خاتمه و صدور برگ قطعی)' },
-  { value: 'SETTLEMENT_END', label: 'نقطه پایان (تمکین و پرداخت)', desc: 'تمکین مودی به رای/تشخیص و پرداخت مالیات' },
-  { value: 'EXPIRED_END', label: 'نقطه پایان (انقضای مهلت و برگ قطعی)', desc: 'انقضای مهلت قانونی بدون اقدام و صدور برگ قطعی' },
-  { value: 'FINAL_NOTICE_ISSUANCE', label: 'صدور برگه قطعی مالیاتی', desc: 'صدور رسمی برگ قطعی پرونده مالیاتی' },
-  { value: 'NEXT_STAGE', label: 'ارسال به مرحله بعد', desc: 'در صورت عدم توافق، پرونده به هیأت بدوی/تجدیدنظر/دیوان ارسال می‌شود' },
-]
 
 function renderActorBadge(actor?: StepActor) {
   switch (actor) {
@@ -203,12 +126,44 @@ export default function ObjectionTemplatesPage() {
   const [templateName, setTemplateName] = useState('')
   const [isBaseTemplate, setIsBaseTemplate] = useState(true)
   const [steps, setSteps] = useState<ObjectionStep[]>([])
-  const [taxOverrides, setTaxOverrides] = useState<TaxTypeOverride[]>(DEFAULT_TAX_OVERRIDES)
+  const [taxOverrides, setTaxOverrides] = useState<TaxTypeOverride[]>([])
   const [selectedObligationIds, setSelectedObligationIds] = useState<string[]>([])
 
   // Step Fields Modal State
   const [editingStepForFields, setEditingStepForFields] = useState<ObjectionStep | null>(null)
   const [stepFields, setStepFields] = useState<WorkflowStepField[]>([])
+
+  // Reference data from the database (previously hardcoded constants):
+  // default tax overrides, preset steps, standard field packs and the four
+  // option lists (base events, gap units, step actors, step natures).
+  const [taxOverrideDefaults, setTaxOverrideDefaults] = useState<TaxTypeOverride[]>([])
+  const [stepPresets, setStepPresets] = useState<Record<string, Partial<ObjectionStep>>>({})
+  const [fieldPacks, setFieldPacks] = useState<Record<string, Array<Omit<WorkflowStepField, 'id'>>>>({})
+  const baseEvents = useSelectionListOptions('objection_base_events')
+  const gapUnits = useSelectionListOptions('objection_gap_units')
+  const stepActors = useSelectionListOptions('objection_step_actors')
+  const stepNatures = useSelectionListOptions('objection_step_natures')
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const [overrides, presets, packs] = await Promise.all([
+          fetchTaxTypeOverrideDefaults(),
+          fetchObjectionStepPresets(),
+          fetchObjectionFieldPacks(),
+        ])
+        if (cancelled) return
+        setTaxOverrideDefaults(overrides)
+        setStepPresets(presets)
+        setFieldPacks(packs)
+      } catch {
+        // اگر دریافت داده‌های مرجع ناموفق بود، فرم بدون پیش‌فرض کار می‌کند.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   const handleOpenStepFieldsModal = (step: ObjectionStep) => {
     setEditingStepForFields(step)
@@ -251,99 +206,11 @@ export default function ObjectionTemplatesPage() {
 
   // Add standard tax/objection form field package
   const handleAddStandardFieldPack = (packType: 'assessment' | 'ruling' | 'general') => {
-    let presetPack: WorkflowStepField[] = []
     const now = Date.now()
-
-    if (packType === 'assessment') {
-      presetPack = [
-        {
-          id: `f-${now}-1`,
-          label: 'شماره برگ تشخیص / ابلاغیه',
-          key: 'notice_number',
-          type: 'text',
-          required: true,
-          placeholder: 'مثال: ۱۴۰۴/ب/۹۸۱۲',
-        },
-        {
-          id: `f-${now}-2`,
-          label: 'تاریخ ابلاغ قانونی (شمسی)',
-          key: 'notice_date',
-          type: 'date',
-          required: true,
-        },
-        {
-          id: `f-${now}-3`,
-          label: 'مبلغ مالیات مورد مطالبه (ریال)',
-          key: 'tax_amount_claimed',
-          type: 'number',
-          required: false,
-        },
-        {
-          id: `f-${now}-4`,
-          label: 'تصویر / فایل برگ ابلاغیه',
-          key: 'notice_document_file',
-          type: 'file',
-          required: false,
-        },
-      ]
-    } else if (packType === 'ruling') {
-      presetPack = [
-        {
-          id: `f-${now}-1`,
-          label: 'شماره دادنامه / رای صادره',
-          key: 'ruling_number',
-          type: 'text',
-          required: true,
-        },
-        {
-          id: `f-${now}-2`,
-          label: 'تاریخ صدور / ابلاغ رای',
-          key: 'ruling_date',
-          type: 'date',
-          required: true,
-        },
-        {
-          id: `f-${now}-3`,
-          label: 'نتیجه رای هیأت / مرجع',
-          key: 'ruling_result_status',
-          type: 'select',
-          required: true,
-          options: ['تعدیل مالیات', 'رد اعتراض مودی (تایید برگه)', 'نقض و تجدید رسیدگی', 'قرار کارشناسی مجدد'],
-        },
-        {
-          id: `f-${now}-4`,
-          label: 'پیوست فایل دادنامه و مستندات',
-          key: 'ruling_file',
-          type: 'file',
-          required: false,
-        },
-      ]
-    } else {
-      presetPack = [
-        {
-          id: `f-${now}-1`,
-          label: 'شرح و متن دفاعیه/درخواست',
-          key: 'defense_text',
-          type: 'text',
-          required: true,
-        },
-        {
-          id: `f-${now}-2`,
-          label: 'تاریخ اقدام یا ثبت',
-          key: 'submission_date',
-          type: 'date',
-          required: false,
-        },
-        {
-          id: `f-${now}-3`,
-          label: 'فایل لایحه اعتراضیه / مدارک',
-          key: 'defense_bill_file',
-          type: 'file',
-          required: false,
-        },
-      ]
-    }
-
+    const presetPack: WorkflowStepField[] = (fieldPacks[packType] ?? []).map((field, index) => ({
+      ...field,
+      id: `f-${now}-${index + 1}`,
+    }))
     setStepFields([...stepFields, ...presetPack])
     toast.success(`بسته فیلدهای استاندارد (${presetPack.length} فیلد) اضافه شد`)
   }
@@ -509,7 +376,7 @@ export default function ObjectionTemplatesPage() {
       setTemplateName(tmpl.template_name)
       setIsBaseTemplate(tmpl.is_base_template ?? true)
       setSteps(tmpl.steps || [])
-      setTaxOverrides(tmpl.tax_type_overrides || DEFAULT_TAX_OVERRIDES)
+      setTaxOverrides(tmpl.tax_type_overrides || taxOverrideDefaults)
       const linked = obligations
         .filter((o) => o.objection_template_id === tmpl.id)
         .map((o) => o.id)
@@ -528,7 +395,7 @@ export default function ObjectionTemplatesPage() {
           gap_unit: 'روز',
         },
       ])
-      setTaxOverrides(DEFAULT_TAX_OVERRIDES)
+      setTaxOverrides(taxOverrideDefaults)
       setSelectedObligationIds([])
       setIsCreating(true)
     }
@@ -539,84 +406,12 @@ export default function ObjectionTemplatesPage() {
     setIsCreating(false)
     setTemplateName('')
     setSteps([])
-    setTaxOverrides(DEFAULT_TAX_OVERRIDES)
+    setTaxOverrides(taxOverrideDefaults)
     setSelectedObligationIds([])
   }
 
   const handleAddPresetStep = (nature: ObjectionStepNature) => {
-    let preset: Partial<ObjectionStep> = {}
-    if (nature === 'CONDITIONAL_EXPERT') {
-      preset = {
-        title: 'صدور و اجرای قرار کارشناسی (مشروط)',
-        base_event: 'تاریخ ابلاغ برگه تشخیص',
-        gap_value: 30,
-        gap_unit: 'روز',
-        step_nature: 'CONDITIONAL_EXPERT',
-        actor: 'TAX_AUTHORITY',
-        note: 'در صورت صلاحدید ممیز کل یا هیأت جهت بررسی مجدد دفاتر و اسناد صادر می‌شود',
-      }
-    } else if (nature === 'AGREEMENT_END') {
-      preset = {
-        title: 'خاتمه پرونده: توافق با ممیز کل / هیأت',
-        base_event: 'تاریخ ابلاغ برگه تشخیص',
-        gap_value: 30,
-        gap_unit: 'روز',
-        step_nature: 'AGREEMENT_END',
-        actor: 'TAXPAYER',
-        note: 'امضای توافق‌نامه و ختم قطعی عملیات رسیدگی به اعتراض',
-      }
-    } else if (nature === 'SETTLEMENT_END') {
-      preset = {
-        title: 'خاتمه پرونده: تمکین و پرداخت مالیات',
-        base_event: 'تاریخ ابلاغ برگه تشخیص',
-        gap_value: 30,
-        gap_unit: 'روز',
-        step_nature: 'SETTLEMENT_END',
-        actor: 'TAXPAYER',
-        note: 'پذیرش مأخذ و پرداخت جهت استفاده از بخشودگی جرایم (ماده ۱۹۰)',
-      }
-    } else if (nature === 'EXPIRED_END') {
-      preset = {
-        title: 'خاتمه پرونده: انقضای مهلت قانونی و قطعیت برگه',
-        base_event: 'تاریخ ابلاغ برگه تشخیص',
-        gap_value: 30,
-        gap_unit: 'روز',
-        step_nature: 'EXPIRED_END',
-        actor: 'TAXPAYER',
-        note: 'عدم ثبت اعتراض ظرف مهلت مقرر موجب قطعیت مالیات و صدور برگ قطعی می‌گردد',
-      }
-    } else if (nature === 'FINAL_NOTICE_ISSUANCE') {
-      preset = {
-        title: 'صدور برگه قطعی مالیاتی',
-        base_event: 'تاریخ صدور رای',
-        gap_value: 30,
-        gap_unit: 'روز',
-        step_nature: 'FINAL_NOTICE_ISSUANCE',
-        actor: 'TAX_AUTHORITY',
-        note: 'صدور برگه قطعی رسمی و ارسال به واحد وصول و اجرا',
-      }
-    } else if (nature === 'NEXT_STAGE') {
-      preset = {
-        title: 'عدم توافق/تمکین: ارجاع به هیأت حل اختلاف بدوی',
-        base_event: 'تاریخ ابلاغ برگه تشخیص',
-        gap_value: 30,
-        gap_unit: 'روز',
-        step_nature: 'NEXT_STAGE',
-        actor: 'TAX_AUTHORITY',
-        note: 'ارسال پرونده به هیأت بدوی در صورت عدم تحقق توافق یا تمکین',
-      }
-    } else {
-      preset = {
-        title: '',
-        base_event: 'تاریخ ابلاغ برگ/ااختیاریه',
-        gap_value: 20,
-        gap_unit: 'روز',
-        step_nature: 'MANDATORY',
-        actor: 'TAXPAYER',
-        note: '',
-      }
-    }
-
+    const preset: Partial<ObjectionStep> = stepPresets[nature] ?? {}
     const newStep: ObjectionStep = {
       id: 'step-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
       title: preset.title || '',
@@ -624,9 +419,9 @@ export default function ObjectionTemplatesPage() {
       gap_value: preset.gap_value ?? 20,
       gap_unit: preset.gap_unit || 'روز',
       step_nature: preset.step_nature || 'MANDATORY',
+      actor: preset.actor || 'TAXPAYER',
       note: preset.note || '',
     }
-
     setSteps((prev) => [...prev, newStep])
   }
 
@@ -1138,10 +933,10 @@ export default function ObjectionTemplatesPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                                {STEP_ACTOR_OPTIONS.map((opt) => (
-                                  <SelectItem key={opt.value} value={opt.value} className="text-zinc-100 focus:bg-zinc-700 text-xs">
+                                {stepActors.map(({ key: value, label }) => (
+                                  <SelectItem key={value} value={value} className="text-zinc-100 focus:bg-zinc-700 text-xs">
                                     <div className="flex flex-col py-0.5">
-                                      <span className="font-semibold">{opt.label}</span>
+                                      <span className="font-semibold">{label}</span>
                                     </div>
                                   </SelectItem>
                                 ))}
@@ -1160,10 +955,10 @@ export default function ObjectionTemplatesPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                                {STEP_NATURE_OPTIONS.map((opt) => (
-                                  <SelectItem key={opt.value} value={opt.value} className="text-zinc-100 focus:bg-zinc-700 text-xs">
+                                {stepNatures.map(({ key: value, label }) => (
+                                  <SelectItem key={value} value={value} className="text-zinc-100 focus:bg-zinc-700 text-xs">
                                     <div className="flex flex-col py-0.5">
-                                      <span className="font-semibold">{opt.label}</span>
+                                      <span className="font-semibold">{label}</span>
                                     </div>
                                   </SelectItem>
                                 ))}
@@ -1193,8 +988,8 @@ export default function ObjectionTemplatesPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                                {BASE_EVENT_OPTIONS.map((o) => (
-                                  <SelectItem key={o} value={o} className="text-zinc-100 focus:bg-zinc-700 text-xs">{o}</SelectItem>
+                                {baseEvents.map(({ key, label }) => (
+                                  <SelectItem key={key} value={key} className="text-zinc-100 focus:bg-zinc-700 text-xs">{label}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -1227,8 +1022,8 @@ export default function ObjectionTemplatesPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                                {GAP_UNIT_OPTIONS.map((o) => (
-                                  <SelectItem key={o} value={o} className="text-zinc-100 focus:bg-zinc-700 text-xs">{o}</SelectItem>
+                                {gapUnits.map(({ key, label }) => (
+                                  <SelectItem key={key} value={key} className="text-zinc-100 focus:bg-zinc-700 text-xs">{label}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
