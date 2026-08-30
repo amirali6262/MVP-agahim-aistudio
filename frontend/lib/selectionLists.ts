@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { supabase, isSupabaseConfigured } from './supabase'
 
 // ---------------------------------------------------------------------------
@@ -102,6 +103,47 @@ export async function listOptions(listId: string): Promise<SelectionListOption[]
     .from('selection_list_options').select('*').eq('list_id', listId).order('sort_order', { ascending: true })
   if (error) throw new Error(error.message)
   return data ?? []
+}
+
+// ---------------------------------------------------------------------------
+// Resolve a published, active list's options by its stable key.
+// Returns [{ key, label }] in sort_order — used by forms that previously
+// hardcoded option arrays (Studio, penalties, extensions, …).
+// ---------------------------------------------------------------------------
+export async function fetchSelectionListOptions(listKey: string): Promise<Array<{ key: string; label: string }>> {
+  if (!isSupabaseConfigured || !listKey) return []
+  const { data: list, error: listError } = await (supabase as any)
+    .from('selection_lists')
+    .select('id')
+    .eq('key', listKey)
+    .eq('status', 'PUBLISHED')
+    .eq('is_active', true)
+    .maybeSingle()
+  if (listError || !list) return []
+  const { data, error } = await (supabase as any)
+    .from('selection_list_options')
+    .select('key, label')
+    .eq('list_id', list.id)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+  if (error) return []
+  return (data ?? []).map((option: any) => ({ key: option.key, label: option.label }))
+}
+
+export function useSelectionListOptions(listKey: string): Array<{ key: string; label: string }> {
+  const [options, setOptions] = useState<Array<{ key: string; label: string }>>([])
+  useEffect(() => {
+    let cancelled = false
+    void fetchSelectionListOptions(listKey)
+      .then((rows) => {
+        if (!cancelled) setOptions(rows)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [listKey])
+  return options
 }
 
 // ---------------------------------------------------------------------------

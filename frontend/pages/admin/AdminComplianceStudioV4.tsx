@@ -38,6 +38,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import { useSelectionListOptions } from '../../lib/selectionLists'
 import type { Json, Tables } from '../../lib/database.types'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -92,20 +93,6 @@ export interface EligibilityFactEntry {
   /** true = field defined in the Supabase company-info designer; false = legacy hardcoded fact. */
   isDesignerField: boolean
 }
-
-const OBLIGATION_TYPE_OPTIONS = [
-  ['TAX_CORPORATE', 'مالیات بر عملکرد اشخاص حقوقی'],
-  ['TAX_INDIVIDUAL', 'مالیات بر عملکرد اشخاص حقیقی'],
-  ['VAT', 'مالیات بر ارزش افزوده'],
-  ['PAYROLL_TAX', 'مالیات بر حقوق'],
-  ['TAX_DUTIES', 'مالیات تکلیفی'],
-  ['CLAIM_169', 'مطالبه ۱۶۹ مکرر'],
-  ['INS_CONTRACT', 'حق بیمه قراردادها'],
-  ['INS_AUDIT', 'حسابرسی بیمه'],
-] as const
-const RECURRENCE_OPTIONS = ['سالانه', 'فصلی', 'ماهانه', 'موردی/رویداد محور', 'یک‌بار برای همیشه']
-const BASE_EVENT_OPTIONS = ['پایان سال مالی مودی', 'پایان دوره فصلی', 'پایان ماه شمسی', 'تاریخ ابلاغ برگ/اخطاریه', 'تاریخ وقوع رویداد', 'تاریخ ثبت اعتراض توسط مودی', 'تاریخ صدور صورتحساب', 'تاریخ صدور رأی/ابلاغیه']
-const PHASE_GROUP_OPTIONS = ['مرحله قبل از اظهارنامه', 'مرحله اظهارنامه', 'مرحله پس از اظهارنامه', 'مرحله رسیدگی', 'مرحله اعتراض', 'مرحله اجرا']
 
 interface DraftCondition {
   fact: string
@@ -1689,6 +1676,8 @@ function ClassificationModal({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
+  const obligationTypes = useSelectionListOptions('obligation_types')
+  const phaseGroups = useSelectionListOptions('phase_groups')
   const recurrenceRule = jsonRecord(version.recurrence_rule)
   const initialTypes = stringArray(recurrenceRule['obligation_types'])
 
@@ -1766,7 +1755,7 @@ function ClassificationModal({
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {OBLIGATION_TYPE_OPTIONS.map(([value, label]) => (
+                  {obligationTypes.map(({ key: value, label }) => (
                     <SelectItem key={value} value={value}>{label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1796,8 +1785,8 @@ function ClassificationModal({
               >
                 <SelectTrigger><SelectValue placeholder="انتخاب فاز" /></SelectTrigger>
                 <SelectContent>
-                  {PHASE_GROUP_OPTIONS.map((value) => (
-                    <SelectItem key={value} value={value}>{value}</SelectItem>
+                  {phaseGroups.map(({ key: value, label }) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1837,7 +1826,7 @@ function ClassificationModal({
                 <div className="pt-2 border-t border-zinc-800 space-y-3">
                   <p className="text-xs font-semibold text-zinc-300">انتخاب سرفصل‌های مرتبط:</p>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {OBLIGATION_TYPE_OPTIONS.map(([val, label]) => (
+                    {obligationTypes.map(({ key: val, label }) => (
                       <label key={val} className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-800 p-2.5 text-xs hover:border-zinc-700 bg-zinc-900/40">
                         <input
                           type="checkbox"
@@ -1899,6 +1888,8 @@ function RecurrenceModal({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
+  const recurrencePeriods = useSelectionListOptions('recurrence_periods')
+  const baseEvents = useSelectionListOptions('base_events')
   const recurrenceRule = jsonRecord(version.recurrence_rule)
   const deadlineRule = jsonRecord(version.deadline_rule)
 
@@ -1962,8 +1953,8 @@ function RecurrenceModal({
               >
                 <SelectTrigger><SelectValue placeholder="انتخاب دوره تناوب" /></SelectTrigger>
                 <SelectContent>
-                  {RECURRENCE_OPTIONS.map((val) => (
-                    <SelectItem key={val} value={val}>{val}</SelectItem>
+                  {recurrencePeriods.map(({ key: val, label }) => (
+                    <SelectItem key={val} value={val}>{label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1977,8 +1968,8 @@ function RecurrenceModal({
               >
                 <SelectTrigger><SelectValue placeholder="انتخاب رویداد پایه" /></SelectTrigger>
                 <SelectContent>
-                  {BASE_EVENT_OPTIONS.map((val) => (
-                    <SelectItem key={val} value={val}>{val}</SelectItem>
+                  {baseEvents.map(({ key: val, label }) => (
+                    <SelectItem key={val} value={val}>{label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -3641,6 +3632,9 @@ function FamilyManager({
 }
 
 function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; onSaved: (versionId: string) => Promise<void>; onDirtyChange: (dirty: boolean) => void }) {
+  const obligationTypes = useSelectionListOptions('obligation_types')
+  const recurrencePeriods = useSelectionListOptions('recurrence_periods')
+  const baseEvents = useSelectionListOptions('base_events')
   const [familyId, setFamilyId] = useState(families[0]?.id ?? '')
   const [code, setCode] = useState('')
   const [title, setTitle] = useState('')
@@ -3729,9 +3723,9 @@ function DraftForm({ families, onSaved, onDirtyChange }: { families: Family[]; o
       <Field label="لینک منبع رسمی"><Input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} dir="ltr" placeholder="https://tax.gov.ir/..." /></Field>
       <Field label="لینک انجام کار"><Input value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} dir="ltr" placeholder="https://my.tax.gov.ir" /></Field>
       <Field label="تاریخ شروع اعتبار"><JalaliDatePicker value={effectiveFrom} onChange={setEffectiveFrom} placeholder="انتخاب تاریخ..." /></Field>
-      <Field label="سرفصل اصلی"><Select value={primaryType} onValueChange={setPrimaryType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{OBLIGATION_TYPE_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
-      <Field label="دوره تناوب"><Select value={recurrence} onValueChange={setRecurrence}><SelectTrigger><SelectValue placeholder="انتخاب دوره" /></SelectTrigger><SelectContent>{RECURRENCE_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
-      <Field label="رویداد پایه"><Select value={baseEvent} onValueChange={setBaseEvent}><SelectTrigger><SelectValue placeholder="انتخاب رویداد" /></SelectTrigger><SelectContent>{BASE_EVENT_OPTIONS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field>
+      <Field label="سرفصل اصلی"><Select value={primaryType} onValueChange={setPrimaryType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{obligationTypes.map(({ key: value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
+      <Field label="دوره تناوب"><Select value={recurrence} onValueChange={setRecurrence}><SelectTrigger><SelectValue placeholder="انتخاب دوره" /></SelectTrigger><SelectContent>{recurrencePeriods.map(({ key: value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
+      <Field label="رویداد پایه"><Select value={baseEvent} onValueChange={setBaseEvent}><SelectTrigger><SelectValue placeholder="انتخاب رویداد" /></SelectTrigger><SelectContent>{baseEvents.map(({ key: value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field>
       <Field label="مسئول اجرا"><Select value={responsibleParty} onValueChange={setResponsibleParty}><SelectTrigger><SelectValue placeholder="انتخاب مسئول" /></SelectTrigger><SelectContent><SelectItem value="مودی">مودی</SelectItem><SelectItem value="سازمان امور مالیاتی">سازمان امور مالیاتی</SelectItem></SelectContent></Select></Field>
       <Field label="فاصله زمانی"><Input type="number" min="0" dir="ltr" value={timeGapValue} onChange={(e) => setTimeGapValue(e.target.value)} /></Field>
       <Field label="واحد فاصله"><Select value={timeGapUnit} onValueChange={setTimeGapUnit}><SelectTrigger><SelectValue placeholder="انتخاب واحد" /></SelectTrigger><SelectContent><SelectItem value="روز">روز</SelectItem><SelectItem value="ماه">ماه</SelectItem><SelectItem value="سال">سال</SelectItem></SelectContent></Select></Field>
