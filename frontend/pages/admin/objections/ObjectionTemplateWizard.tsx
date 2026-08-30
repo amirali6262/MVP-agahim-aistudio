@@ -466,14 +466,14 @@ function FieldCard({ field, siblings, onUpdate, onMove, onRemove }: {
       {/* header row */}
       <div className="flex items-center gap-2">
         <input
-          className={`${inputCls} min-w-0 flex-1`}
+          className={`${inputCls} flex-1`}
           dir="rtl"
           value={field.label}
           onChange={(e) => onUpdate({ label: e.target.value })}
           placeholder="عنوان فارسی فیلد"
         />
         <select
-          className={`${inputCls} w-40 shrink-0`}
+          className={`${inputCls} w-56`}
           value={field.type}
           onChange={(e) => {
             const t = e.target.value as WorkflowStepField['type']
