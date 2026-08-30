@@ -21,7 +21,7 @@ import {
   type CompanyMenuDraft, type CompanyMenuDraftWrite, type SelectableObligation,
   type ObligationFormPreview, type MenuItemType,
 } from '../../lib/supabaseDb'
-import { isSupabaseConfigured } from '../../lib/supabase'
+import { isSupabaseConfigured, supabase } from '../../lib/supabase'
 import FullScreenDialog from '../../components/FullScreenDialog'
 
 // ---------------------------------------------------------------------------
@@ -685,6 +685,22 @@ function FormPickerModal({ forms, onClose, onSelect, onPreview }: {
     return name.includes(q.trim().toLowerCase())
   }).sort((a, b) => (DOMAIN_LABEL[a.domain] ?? '').localeCompare(DOMAIN_LABEL[b.domain] ?? ''))
 
+  // وقتی هیچ فرمی یافت نمی‌شود، وضعیت دیتابیس را نشان می‌دهد تا علت مشخص شود.
+  const [dbInfo, setDbInfo] = useState<{ active: number | null; published: number | null } | null>(null)
+
+  useEffect(() => {
+    if (filtered.length > 0 || !isSupabaseConfigured) return
+    let cancelled = false
+    void (async () => {
+      const [a, p] = await Promise.all([
+        (supabase as any).from('obligations').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        (supabase as any).from('obligation_versions').select('id', { count: 'exact', head: true }).eq('status', 'PUBLISHED'),
+      ])
+      if (!cancelled) setDbInfo({ active: a.count ?? null, published: p.count ?? null })
+    })()
+    return () => { cancelled = true }
+  }, [filtered.length])
+
   return (
     <FullScreenDialog
       open
@@ -715,7 +731,12 @@ function FormPickerModal({ forms, onClose, onSelect, onPreview }: {
       <div className="mt-3 max-h-[50vh] space-y-2 overflow-y-auto">
         {filtered.length === 0 ? (
           <div className="rounded-lg border border-dashed border-zinc-300 py-10 text-center text-sm text-zinc-400 dark:border-zinc-700">
-            فرم انتخاب‌شده‌ای یافت نشد. ابتدا در استودیوی تعهدات یک فرم را منتشر کنید.
+            <p>فرم انتخاب‌شده‌ای یافت نشد. ابتدا در استودیوی تعهدات یک فرم را منتشر کنید.</p>
+            {dbInfo && (
+              <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-500">
+                وضعیت دیتابیس: {dbInfo.active ?? '؟'} تعهد فعال · {dbInfo.published ?? '؟'} نسخهٔ منتشرشده
+              </p>
+            )}
           </div>
         ) : filtered.map((f) => (
           <div key={f.id} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900">

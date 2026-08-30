@@ -1014,29 +1014,50 @@ export interface SelectableObligation {
 }
 
 // Forms the menu can link to: active obligations with a PUBLISHED version.
+// Uses separate queries + an in-memory join (the same pattern as the studio
+// catalog) so the result never depends on PostgREST embedded-filter semantics.
 export async function fetchSelectableObligations(): Promise<SelectableObligation[]> {
-  return safeQuery<SelectableObligation>(async () => {
-    const result = await (supabase as any)
-      .from('obligations')
-      .select('*, family:obligation_families(domain, title), versions:obligation_versions(status, version_number, published_at)')
-      .eq('is_active', true)
-      .eq('versions.status', 'PUBLISHED')
-      .order('title')
-    if (result?.error) return []
-    return (result?.data ?? []).map((row: any) => ({
-      id: row.id,
-      code: row.code,
-      title: row.title,
-      summary: row.summary ?? null,
-      domain: row.family?.domain ?? '',
-      domain_title: row.family?.title ?? '—',
-      is_active: row.is_active ?? true,
-      version_number: row.versions?.[0]?.version_number ?? 1,
-      version_status: row.versions?.[0]?.status ?? 'NONE',
-      published_at: row.versions?.[0]?.published_at ?? null,
-      version_id: row.versions?.[0]?.id ?? null,
-    }))
-  })
+  if (!isSupabaseConfigured) return []
+  try {
+    const [obligationResult, familyResult, versionResult] = await Promise.all([
+      (supabase as any).from('obligations').select('id, code, title, summary, is_active, family_id').eq('is_active', true).order('title'),
+      (supabase as any).from('obligation_families').select('id, domain, title'),
+      (supabase as any).from('obligation_versions').select('obligation_id, id, status, version_number, published_at').eq('status', 'PUBLISHED').order('version_number', { ascending: false }),
+    ])
+    if (obligationResult?.error || familyResult?.error || versionResult?.error) {
+      console.warn('[supabaseDb] fetchSelectableObligations:', obligationResult?.error?.message ?? familyResult?.error?.message ?? versionResult?.error?.message)
+      return []
+    }
+    const families = new Map<string, any>((familyResult.data ?? []).map((f: any) => [f.id as string, f] as [string, any]))
+    const versionsByObligation = new Map<string, any[]>()
+    for (const version of versionResult.data ?? []) {
+      const list = versionsByObligation.get(version.obligation_id) ?? []
+      list.push(version)
+      versionsByObligation.set(version.obligation_id, list)
+    }
+    return (obligationResult.data ?? [])
+      .filter((row: any) => (versionsByObligation.get(row.id)?.length ?? 0) > 0)
+      .map((row: any) => {
+        const version = versionsByObligation.get(row.id)?.[0]
+        const family = row.family_id ? families.get(row.family_id) : undefined
+        return {
+          id: row.id,
+          code: row.code,
+          title: row.title,
+          summary: row.summary ?? null,
+          domain: family?.domain ?? '',
+          domain_title: family?.title ?? '—',
+          is_active: row.is_active ?? true,
+          version_number: version?.version_number ?? 1,
+          version_status: version?.status ?? 'NONE',
+          published_at: version?.published_at ?? null,
+          version_id: version?.id ?? null,
+        }
+      })
+  } catch (err) {
+    console.warn('[supabaseDb] fetchSelectableObligations exception:', err)
+    return []
+  }
 }
 
 export interface ObligationFormPreview {
@@ -1059,31 +1080,36 @@ export interface ObligationFormPreview {
 
 export async function fetchObligationFormPreview(obligationId: string): Promise<ObligationFormPreview | null> {
   if (!isSupabaseConfigured) return null
-  const { data, error } = await (supabase as any)
-    .from('obligations')
-    .select('*, family:obligation_families(domain, title), versions:obligation_versions(id, status, version_number, published_at, effective_from, effective_to, legal_reference)')
-    .eq('id', obligationId)
-    .eq('versions.status', 'PUBLISHED')
-    .order('version_number', { foreignTable: 'versions', ascending: false })
-    .maybeSingle()
-  if (error || !data) return null
-  const version = data.versions?.[0]
-  return {
-    id: data.id,
-    code: data.code,
-    title: data.title,
-    summary: data.summary ?? null,
-    domain: data.family?.domain ?? '',
-    domain_title: data.family?.title ?? '—',
-    is_active: data.is_active ?? true,
-    version_number: version?.version_number ?? 1,
-    version_status: version?.status ?? 'NONE',
-    version_id: version?.id ?? null,
-    published_at: version?.published_at ?? null,
-    effective_from: version?.effective_from ?? null,
-    effective_to: version?.effective_to ?? null,
-    legal_reference: version?.legal_reference ?? null,
-    official_action_url: data.official_action_url ?? null,
+  try {
+    const [obligationResult, familyResult, versionResult] = await Promise.all([
+      (supabase as any).from('obligations').select('id, code, title, summary, is_active, family_id, official_action_url').eq('id', obligationId).maybeSingle(),
+      (supabase as any).from('obligation_families').select('id, domain, title'),
+      (supabase as any).from('obligation_versions').select('obligation_id, id, status, version_number, published_at, effective_from, effective_to, legal_reference').eq('obligation_id', obligationId).eq('status', 'PUBLISHED').order('version_number', { ascending: false }),
+    ])
+    if (obligationResult?.error || !obligationResult?.data) return null
+    const data = obligationResult.data
+    const family = data.family_id ? (familyResult.data ?? []).find((f: any) => f.id === data.family_id) : undefined
+    const version = versionResult.data?.[0]
+    return {
+      id: data.id,
+      code: data.code,
+      title: data.title,
+      summary: data.summary ?? null,
+      domain: family?.domain ?? '',
+      domain_title: family?.title ?? '—',
+      is_active: data.is_active ?? true,
+      version_number: version?.version_number ?? 1,
+      version_status: version?.status ?? 'NONE',
+      version_id: version?.id ?? null,
+      published_at: version?.published_at ?? null,
+      effective_from: version?.effective_from ?? null,
+      effective_to: version?.effective_to ?? null,
+      legal_reference: version?.legal_reference ?? null,
+      official_action_url: data.official_action_url ?? null,
+    }
+  } catch (err) {
+    console.warn('[supabaseDb] fetchObligationFormPreview exception:', err)
+    return null
   }
 }
 
