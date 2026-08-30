@@ -169,6 +169,8 @@ export interface StepTransition {
 
 export interface ObjectionStep {
   id: string
+  /** کد پایدار اقدام (STEP_N)؛ با ترتیب، پس از هر ذخیره ثابت می‌ماند */
+  code?: string
   title: string
   base_event: string
   gap_value: number
@@ -260,6 +262,8 @@ export interface ObjectionTemplate {
   created_at?: string
   /** DRAFT | ACTIVE — الگوی دارای شروط پشتیبانی‌نشده فقط پیش‌نویس می‌ماند */
   status?: string
+  /** یک‌بار فعال‌شده — محتوای الگو برای همیشه قفل است (نسخه‌بندی جدا ندارد) */
+  has_been_activated?: boolean
   stages?: ObjectionStage[]
   status_groups?: ObjectionStatusGroup[]
   /** اتصال‌های تعهد (DRAFT/ACTIVE/HISTORY) */

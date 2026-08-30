@@ -192,4 +192,74 @@ begin
   end;
 end $$;
 
+-- ── 8) ever-activated template is permanently locked (status revert does not help) ──
+do $$
+declare
+  tid uuid;
+  steps jsonb := $j$[
+    { "id": "xs7", "title": "اقدام", "actor": "TAXPAYER",
+      "responsible_role": "MANAGER", "gap_value": 0, "gap_unit": "روز",
+      "step_nature": "MANDATORY", "stage_id": null, "fields": [], "transitions": [] }
+  ]$j$::jsonb;
+begin
+  tid := public.objection_template_save(null, 'قفل', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
+  if tid is null then raise exception 'FAIL: could not create pre-activation template'; end if;
+  perform public.activate_objection_template(tid, '{}'::uuid[], false);
+  if not exists (select 1 from public.objection_templates where id = tid and has_been_activated and status = 'ACTIVE') then
+    raise exception 'FAIL: has_been_activated was not set on activation';
+  end if;
+  -- even after activation (or a later revert to DRAFT) the content is locked:
+  begin
+    perform public.objection_template_save(tid, 'قفل-ویرایش', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
+    raise exception 'FAIL: ever-activated template could be rewritten';
+  exception when check_violation then null;
+  end;
+end $$;
+
+-- ── 9) stable step reference (STEP_n) survives save → reload → save → reload ──
+do $$
+declare
+  tid uuid;
+  codes text[];
+  steps jsonb := $j$[
+    { "id": "zs1", "title": "اقدام یک", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null,
+      "fields": [ { "id": "fz1", "key": "code", "label": "کد", "type": "text" } ],
+      "transitions": [
+        { "id": "tz1", "title": "ادامه", "trigger_type": "USER_ACTION",
+          "target_type": "TERMINAL_AGREED", "target_step_id": null,
+          "condition_expression": { "version": 1, "logic": "AND",
+            "clauses": [ { "id": "zc1", "source": "STEP_OUTPUT",
+              "field_key": "STEP_1.code", "field_label": "اقدام یک — کد",
+              "operator": "in", "value": ["a","b"] } ] } }
+      ] },
+    { "id": "zs2", "title": "اقدام دو", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null,
+      "fields": [ { "id": "fz2", "key": "amount", "label": "مبلغ", "type": "number" } ],
+      "transitions": [] }
+  ]$j$::jsonb;
+begin
+  tid := public.objection_template_save(null, 'پایدار', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
+  if tid is null then raise exception 'FAIL: stability save #1 null'; end if;
+  select array_agg(code order by sequence) into codes from public.objection_steps where template_id = tid;
+  if codes is distinct from array['STEP_1','STEP_2'] then
+    raise exception 'FAIL: codes after save #1: %', codes;
+  end if;
+  if not exists (
+    select 1 from public.objection_step_transitions t
+    left join lateral jsonb_array_elements(coalesce(t.condition_expression -> 'clauses', '[]'::jsonb)) c on true
+    where t.step_id in (select id from public.objection_steps where template_id = tid)
+      and c.value ->> 'field_key' = 'STEP_1.code'
+  ) then
+    raise exception 'FAIL: condition STEP_1.code reference not preserved after save #1';
+  end if;
+
+  -- save again (edit, same order) then reload: codes must remain STEP_1/STEP_2
+  perform public.objection_template_save(tid, 'پایدار-نسخه2', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
+  select array_agg(code order by sequence) into codes from public.objection_steps where template_id = tid;
+  if codes is distinct from array['STEP_1','STEP_2'] then
+    raise exception 'FAIL: codes changed after save #2: %', codes;
+  end if;
+end $$;
+
 rollback;

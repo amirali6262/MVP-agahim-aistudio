@@ -1088,7 +1088,7 @@ export default function ObjectionTemplateWizard({
       for (const f of step.fields ?? []) {
         const fieldKey = f.key || f.label || 'field'
         // ارجاع با «شناسه اقدام + کلید فیلد» تا دو فیلد هم‌نام از دو اقدام مبهم نباشند.
-        fields.push({ key: `${step.id}.${fieldKey}`, label: `${actionLabel} — ${f.label || fieldKey}`, source: 'STEP_OUTPUT' })
+        fields.push({ key: `${(step.code || `STEP_${draft.steps.indexOf(step) + 1}`)}.${fieldKey}`, label: `${actionLabel} — ${f.label || fieldKey}`, source: 'STEP_OUTPUT' })
       }
     }
     fields.push({ key: 'entity_type', label: 'نوع شخصیت شرکت', source: 'FACT' })
@@ -1336,7 +1336,7 @@ export default function ObjectionTemplateWizard({
 
   // بدون جداسازی نسخه، ذخیره روی الگوی فعال محتوایِ در حال استفاده را تغییر می‌دهد؛
   // بنابراین ویرایش مستقیم الگوی فعال (custom) مسدود است.
-  const blockedActiveEdit = mode === 'edit' && !!initial && !isBaseTemplate && initial.status === 'ACTIVE'
+  const blockedActiveEdit = mode === 'edit' && !!initial && !isBaseTemplate && (initial.status === 'ACTIVE' || initial.has_been_activated === true)
 
   const activeLinksByObligation = useMemo(() => {
     const map = new Map<string, ActiveObjectionLink>()
@@ -1355,17 +1355,10 @@ export default function ObjectionTemplateWizard({
         <div className="w-full max-w-lg rounded-2xl border border-amber-700/60 bg-[#211d1a] p-6 shadow-2xl">
           <div className="mb-3 flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-400" />
-            <h2 className="text-base font-bold text-zinc-100">ویرایش الگوی فعال مسدود است</h2>
+            <h2 className="text-base font-bold text-zinc-100">ویرایش الگوی فعال‌شده مسدود است</h2>
           </div>
-          <p className="text-sm leading-7 text-zinc-300">
-            این الگو «{initial?.template_name || '—'}» در وضعیت <b className="text-emerald-300">ACTIVE</b> است و
-            فرایند جاری از آن استفاده می‌کند. چون این نسخه جداسازی نسخه (draft/active snapshot) ندارد،
-            ذخیره‌کردن مستقیم روی آن، مراحل، اقدام‌ها، فیلدها و انتقال‌هایِ هم‌اکنونِ فعال را تغییر می‌دهد.
-          </p>
-          <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-xs leading-6 text-zinc-400">
-            برای تغییر، ابتدا الگو را به <b className="text-amber-300">پیش‌نویس</b> برگردانید (وضعیت ACTIVE را بردارید)
-            و سپس در همین ویرایشگر تغییر دهید. این محدودیت به‌عمد اعمال شده است؛ نسخه‌بندیِ خودکار هنوز ساخته نشده است.
-          </p>
+          <p className="text-sm leading-7 text-zinc-300">این الگو «{initial?.template_name || '—'}» قبلاً فعال شده و فرایندِ در حالِ استفاده از آن بهره می‌برد. چون این مدل جداسازی نسخه (draft/active snapshot) ندارد، محتوای آن (مراحل، اقدام‌ها، فیلدها و انتقال‌ها) برای همیشه قفل است و برگشتن به پیش‌نویس هم اجازهٔ بازنویسی نمی‌دهد.</p>
+          <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-xs leading-6 text-zinc-400">برای تغییر، یک الگوی جدید از روی آن بسازید (کپی) و پس از آماده‌شدن فعال کنید. این محدودیت به‌عمد اعمال شده است تا داده‌های پرونده‌های متصل دست‌نخورده بمانند؛ نسخه‌بندیِ کامل هنوز ساخته نشده است.</p>
           <div className="mt-5 flex justify-end">
             <Button variant="outline" onClick={onClose} className="border-zinc-700 text-zinc-300">
               <ArrowRight className="h-4 w-4" />

@@ -119,7 +119,8 @@ begin
     end if;
   end loop;
 
-  -- Activate the template (fires the guard trigger above).
+  -- Activate the template (fires the guard trigger above; the activation guard in a later
+  -- migration flips has_been_activated=true, permanently locking ever-activated content).
   update public.objection_templates
   set status = 'ACTIVE', is_active = true, updated_at = now()
   where id = p_template_id;

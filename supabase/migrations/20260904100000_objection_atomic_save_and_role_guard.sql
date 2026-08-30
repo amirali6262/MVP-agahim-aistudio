@@ -22,6 +22,41 @@
 begin;
 
 -- --------------------------------------------------------------------------
+-- 0. Once a template has ever been activated (published and in use by an
+--    obligation/company), its content is permanently locked. Reverting the
+--    status back to DRAFT must NOT re-open it for rewriting, because the
+--    process/steps/fields it defines are already referenced by live case data
+--    and this model has no draft/active version separation. This is the safe
+--    gate: an ever-activated template is immutable; full versioning is not built.
+-- --------------------------------------------------------------------------
+alter table public.objection_templates
+  add column if not exists has_been_activated boolean not null default false;
+
+-- Set the flag whenever a row becomes ACTIVE (also covers direct table writes).
+create or replace function public.objection_template_guard_activate()
+returns trigger language plpgsql security definer set search_path = pg_catalog
+as $$
+begin
+  if (new.status = 'ACTIVE' and old.status is distinct from 'ACTIVE')
+     or (new.is_active = true and old.is_active is distinct from true) then
+    if public.objection_template_has_conditions(new.id) then
+      raise exception 'الگوی دارای شروط پشتیبانینشده قابل فعالسازی نیست؛ ابتدا شروط را حذف کنید' using errcode = '23514';
+    end if;
+    if public.objection_template_has_unsupported_files(new.id) then
+      raise exception 'الگو فیلد از نوع «فایل/تصویر» دارد؛ بارگذاری فایل پشتیبانی نمیشود و الگو فقط بهصورت پیشنویس قابل ذخیره است' using errcode = '23514';
+    end if;
+    new.has_been_activated := true;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.objection_template_guard_activate() from public, anon, authenticated, service_role;
+drop trigger if exists objection_template_guard_activate on public.objection_templates;
+create trigger objection_template_guard_activate
+  before update of status, is_active on public.objection_templates
+  for each row execute function public.objection_template_guard_activate();
+
+-- --------------------------------------------------------------------------
 -- 1. Assignable-company-role / performer guard (no write path can bypass it)
 -- --------------------------------------------------------------------------
 create or replace function public.objection_step_performer_guard()
@@ -113,10 +148,10 @@ begin
     if not exists (select 1 from public.objection_templates where id = p_template_id) then
       raise exception 'template not found' using errcode = 'P0002';
     end if;
-    -- بدون جداسازی نسخه، ویرایش مستقیم الگوی فعال محتوایِ در حال استفاده را تغییر می‌دهد.
-    -- بنابراین نوشتن روی الگوی ACTIVE بسته است؛ ابتدا باید به پیش‌نویس برگردانده شود.
-    if exists (select 1 from public.objection_templates where id = p_template_id and status = 'ACTIVE') then
-      raise exception 'الگوی فعال را نمی‌توان مستقیم ویرایش کرد؛ ابتدا آن را به پیش‌نویس برگردانید (نسخه‌بندی جدا ندارد)'
+    -- الگویی که تاکنون فعال شده در حال استفاده است؛ محتوای آن قفل دائمی است و با
+    -- برگشتن به پیش‌نویس هم قابل بازنویسی نیست (نسخه‌بندی جدا ندارد).
+    if exists (select 1 from public.objection_templates where id = p_template_id and has_been_activated) then
+      raise exception 'این الگو قبلاً فعال شده و در حال استفاده است؛ محتوای آن بسته است و قابل بازنویسی نیست (نسخه‌بندی جدا ندارد)'
         using errcode = '23514';
     end if;
     update public.objection_templates

@@ -170,6 +170,7 @@ async function loadObjectionTemplates(includeInactive: boolean): Promise<Objecti
       description: template.description,
       is_base_template: false,
       status: template.status ?? (template.is_active ? 'ACTIVE' : 'DRAFT'),
+      has_been_activated: template.has_been_activated === true,
       created_at: template.created_at,
       stages: stages.filter((s: any) => s.template_id === template.id).map((s: any) => ({
         id: s.id,
@@ -193,6 +194,7 @@ async function loadObjectionTemplates(includeInactive: boolean): Promise<Objecti
       })),
       steps: templateSteps.map((step: any) => ({
         id: step.id,
+        code: step.code ?? undefined,
         title: step.title,
         actor: step.actor,
         performer_key: step.performer_key ?? null,
