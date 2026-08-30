@@ -14,20 +14,21 @@
 --      objection_step_transitions references objection_steps (cascade), so no
 --      external reference is harmed. ACTIVE/HISTORY obligation links and the
 --      template status are never touched here (activation is a separate RPC).
+--   3. Ever-activated templates are permanently locked (has_been_activated):
+--      the content of an in-use template is immutable; reverting the status
+--      to DRAFT does NOT re-open it for rewriting (no version separation).
 --   Field-key uniqueness within an action is enforced here and in the service;
 --   the engine analog resolves a field by key within the step's own response
 --   (validate_workflow_task_response), so per-action is the established scope.
+--   Condition field references use the stable per-action code (STEP_n) which
+--   the save RPC regenerates deterministically by order, so references survive
+--   save → reload → save.
 -- ==========================================================================
 
 begin;
 
 -- --------------------------------------------------------------------------
--- 0. Once a template has ever been activated (published and in use by an
---    obligation/company), its content is permanently locked. Reverting the
---    status back to DRAFT must NOT re-open it for rewriting, because the
---    process/steps/fields it defines are already referenced by live case data
---    and this model has no draft/active version separation. This is the safe
---    gate: an ever-activated template is immutable; full versioning is not built.
+-- 0. Ever-activated templates are permanently locked.
 -- --------------------------------------------------------------------------
 alter table public.objection_templates
   add column if not exists has_been_activated boolean not null default false;
@@ -116,6 +117,9 @@ declare
   rec jsonb;
   fld jsonb;
   tr jsonb;
+  v_stage jsonb;   -- plain jsonb copy of the current element (nested-query safe)
+  v_step jsonb;
+  v_group jsonb;
   v_seq int := 0;
   v_stage_id uuid;
   v_step_id uuid;
@@ -149,9 +153,9 @@ begin
       raise exception 'template not found' using errcode = 'P0002';
     end if;
     -- الگویی که تاکنون فعال شده در حال استفاده است؛ محتوای آن قفل دائمی است و با
-    -- برگشتن به پیش‌نویس هم قابل بازنویسی نیست (نسخه‌بندی جدا ندارد).
+    -- برگشتن به پیشنویس هم قابل بازنویسی نیست (نسخهبندی جدا ندارد).
     if exists (select 1 from public.objection_templates where id = p_template_id and has_been_activated) then
-      raise exception 'این الگو قبلاً فعال شده و در حال استفاده است؛ محتوای آن بسته است و قابل بازنویسی نیست (نسخه‌بندی جدا ندارد)'
+      raise exception 'این الگو قبلاً فعال شده و در حال استفاده است؛ محتوای آن بسته است و قابل بازنویسی نیست (نسخهبندی جدا ندارد)'
         using errcode = '23514';
     end if;
     update public.objection_templates
@@ -164,31 +168,32 @@ begin
 
   -- Pre-validate the whole payload before mutating anything (fail fast).
   for rec in select * from jsonb_array_elements(p_steps) as t(value) loop
-    if btrim(coalesce(rec.value ->> 'title', '')) = '' then
+    v_step := rec.value;
+    if btrim(coalesce(v_step ->> 'title', '')) = '' then
       raise exception 'عنوان اقدام اجباری است' using errcode = '22023';
     end if;
-    if (rec.value ->> 'responsible_role') is not null and not exists (
+    if v_step ->> 'responsible_role' is not null and not exists (
       select 1 from public.role_definitions r
-      where r."key" = (rec.value ->> 'responsible_role') and r."key" <> 'PLATFORM_ADMIN'
+      where r."key" = (v_step ->> 'responsible_role') and r."key" <> 'PLATFORM_ADMIN'
     ) then
       raise exception 'مسئول ثبت باید نقش قابلتخصیص فضای شرکت باشد (مدیر پلتفرم مجاز نیست)'
         using errcode = '23514';
     end if;
-    if (rec.value ->> 'performer_key') is not null and not exists (
+    if v_step ->> 'performer_key' is not null and not exists (
       select 1 from public.selection_list_options o
       join public.selection_lists l on l.id = o.list_id
       where l."key" = 'objection_step_actors'
-        and o."key" = (rec.value ->> 'performer_key')
+        and o."key" = (v_step ->> 'performer_key')
         and o.is_active
     ) then
       raise exception 'مرجع انجام اقدام باید از فهرست «objection_step_actors» انتخاب شود'
         using errcode = '23514';
     end if;
     v_seen := '{}'::text[];
-    for fld in select * from jsonb_array_elements(coalesce(rec.value -> 'fields', '[]'::jsonb)) as t(value) loop
+    for fld in select * from jsonb_array_elements(coalesce(v_step -> 'fields', '[]'::jsonb)) as t(value) loop
       if (fld.value ->> 'key') is not null and (fld.value ->> 'key') <> '' then
         if (fld.value ->> 'key') = any (v_seen) then
-          raise exception 'کلید فیلد «%» در اقدام «%» تکراری است', (fld.value ->> 'key'), (rec.value ->> 'title')
+          raise exception 'کلید فیلد «%» در اقدام «%» تکراری است', (fld.value ->> 'key'), (v_step ->> 'title')
             using errcode = '22023';
         end if;
         v_seen := array_append(v_seen, fld.value ->> 'key');
@@ -198,7 +203,8 @@ begin
 
   -- Stage: validate names.
   for rec in select * from jsonb_array_elements(p_stages) as t(value) loop
-    if btrim(coalesce(rec.value ->> 'title', '')) = '' then
+    v_stage := rec.value;
+    if btrim(coalesce(v_stage ->> 'title', '')) = '' then
       raise exception 'عنوان مرحله اجباری است' using errcode = '22023';
     end if;
   end loop;
@@ -211,40 +217,42 @@ begin
 
   v_order := 0;
   for rec in select * from jsonb_array_elements(p_stages) as t(value) loop
+    v_stage := rec.value;
     insert into public.objection_stages (template_id, title, sort_order)
-    values (v_tid, btrim(rec.value ->> 'title'), coalesce((rec.value ->> 'sort_order')::int, v_order))
+    values (v_tid, btrim(v_stage ->> 'title'), coalesce((v_stage ->> 'sort_order')::int, v_order))
     returning id into v_stage_id;
     v_order := v_order + 1;
-    v_stage_map := v_stage_map || jsonb_build_object(rec.value ->> 'id', v_stage_id::text);
+    v_stage_map := v_stage_map || jsonb_build_object(v_stage ->> 'id', v_stage_id::text);
   end loop;
 
   for rec in select * from jsonb_array_elements(p_steps) as t(value) loop
+    v_step := rec.value;
     v_seq := v_seq + 1;
     v_stage_id := null;
-    if rec.value ->> 'stage_id' is not null and v_stage_map ? (rec.value ->> 'stage_id') then
-      v_stage_id := (v_stage_map ->> (rec.value ->> 'stage_id'))::uuid;
+    if v_step ->> 'stage_id' is not null and v_stage_map ? (v_step ->> 'stage_id') then
+      v_stage_id := (v_stage_map ->> (v_step ->> 'stage_id'))::uuid;
     end if;
     insert into public.objection_steps (
       template_id, sequence, title, actor, performer_key, performer_label,
       responsible_role, responsible_role_label, gap_value, gap_unit, base_event,
       step_nature, legal_basis, form_schema, is_optional, stage_id
     ) values (
-      v_tid, v_seq, btrim(rec.value ->> 'title'),
-      coalesce(rec.value ->> 'actor', 'TAXPAYER'),
-      rec.value ->> 'performer_key', rec.value ->> 'performer_label',
-      rec.value ->> 'responsible_role', rec.value ->> 'responsible_role_label',
-      coalesce((rec.value ->> 'gap_value')::int, 0),
-      coalesce(rec.value ->> 'gap_unit', 'روز'),
-      rec.value ->> 'base_event',
-      coalesce(rec.value ->> 'step_nature', 'MANDATORY'),
-      rec.value ->> 'legal_basis',
-      jsonb_build_object('fields', coalesce(rec.value -> 'fields', '[]'::jsonb)),
-      coalesce((rec.value ->> 'is_skippable')::boolean, (rec.value ->> 'step_nature') = 'CONDITIONAL_EXPERT'),
+      v_tid, v_seq, btrim(v_step ->> 'title'),
+      coalesce(v_step ->> 'actor', 'TAXPAYER'),
+      v_step ->> 'performer_key', v_step ->> 'performer_label',
+      v_step ->> 'responsible_role', v_step ->> 'responsible_role_label',
+      coalesce((v_step ->> 'gap_value')::int, 0),
+      coalesce(v_step ->> 'gap_unit', 'روز'),
+      v_step ->> 'base_event',
+      coalesce(v_step ->> 'step_nature', 'MANDATORY'),
+      v_step ->> 'legal_basis',
+      jsonb_build_object('fields', coalesce(v_step -> 'fields', '[]'::jsonb)),
+      coalesce((v_step ->> 'is_skippable')::boolean, (v_step ->> 'step_nature') = 'CONDITIONAL_EXPERT'),
       v_stage_id
     ) returning id into v_step_id;
-    v_step_map := v_step_map || jsonb_build_object(rec.value ->> 'id', v_step_id::text);
+    v_step_map := v_step_map || jsonb_build_object(v_step ->> 'id', v_step_id::text);
 
-    for tr in select * from jsonb_array_elements(coalesce(rec.value -> 'transitions', '[]'::jsonb)) as t(value) loop
+    for tr in select * from jsonb_array_elements(coalesce(v_step -> 'transitions', '[]'::jsonb)) as t(value) loop
       v_target_step := null;
       if tr.value ->> 'target_type' = 'STEP' and tr.value ->> 'target_step_id' is not null
          and v_step_map ? (tr.value ->> 'target_step_id') then
@@ -271,10 +279,11 @@ begin
   where s.id = sub.id and s.template_id = v_tid;
 
   for rec in select * from jsonb_array_elements(p_status_groups) as t(value) loop
+    v_group := rec.value;
     insert into public.objection_template_status_groups (template_id, code, title, options, sort_order)
-    values (v_tid, rec.value ->> 'code', rec.value ->> 'title',
-            coalesce(rec.value -> 'options', '[]'::jsonb),
-            coalesce((rec.value ->> 'sort_order')::int, 0));
+    values (v_tid, v_group ->> 'code', v_group ->> 'title',
+            coalesce(v_group -> 'options', '[]'::jsonb),
+            coalesce((v_group ->> 'sort_order')::int, 0));
   end loop;
 
   if p_obligation_ids is not null and coalesce(array_length(p_obligation_ids, 1), 0) > 0 then
