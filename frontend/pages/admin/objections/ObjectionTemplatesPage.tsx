@@ -22,7 +22,7 @@ import {
 import FullScreenDialog from '../../../components/FullScreenDialog'
 import KeyRegistryField from '../../../components/KeyRegistryField'
 import { findDuplicateRawKey, registerRawScopedKey } from '../../../lib/systemKeys'
-import { fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, deleteObjectionTemplate } from '../../../lib/supabaseDb'
+import { fetchObjectionTemplates, fetchObligations, createObjectionTemplate, updateObjectionTemplate, updateBaseObjectionTemplate, deleteObjectionTemplate } from '../../../lib/supabaseDb'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ObjectionTemplate, ObjectionStep, Obligation, ObjectionStepNature, StepActor, WorkflowStepField, TaxTypeOverride } from '../../../lib/supabase'
 
@@ -676,7 +676,13 @@ export default function ObjectionTemplatesPage() {
         steps,
       }
       if (editingTemplate) {
-        await updateObjectionTemplate(editingTemplate.id, payload)
+        if (editingTemplate.id.startsWith('db-')) {
+          // الگوهای قانونی (ساخته‌شده از tax_objection_stages) شناسه مصنوعی دارند و
+          // ردیفی در objection_templates نیستند؛ تغییرات آن‌ها به مراحل زیرین نوشته می‌شود.
+          await updateBaseObjectionTemplate(editingTemplate.id, payload)
+        } else {
+          await updateObjectionTemplate(editingTemplate.id, payload)
+        }
       } else {
         await createObjectionTemplate(payload)
       }
