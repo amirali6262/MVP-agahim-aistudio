@@ -588,6 +588,85 @@ export async function deleteObjectionTemplate(id: string): Promise<boolean> {
   return !error
 }
 
+const OBJECTION_STAGE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function stageTypeFromNature(nature?: string): string {
+  if (nature === 'CONDITIONAL_EXPERT') return 'CONDITIONAL_EXPERT'
+  if (nature === 'EXPIRED_END') return 'EXPIRED_END'
+  if (nature === 'NEXT_STAGE') return 'NEXT_STAGE'
+  return 'MANDATORY'
+}
+
+function actorCodeFromActor(actor?: string): string {
+  if (actor === 'TAXPAYER') return 'TAXPAYER'
+  if (actor === 'COURT_DIVAN') return 'COURT_DIVAN'
+  return 'TAX_AUTHORITY'
+}
+
+/**
+ * Saves a legal/base objection template that is aggregated from
+ * tax_objection_stages rows (ids like "db-phase-…" / "db-combined-pit").
+ * Every existing step is written back to its stage row, removed steps are
+ * deactivated, and brand-new steps are inserted as active stages.
+ */
+export async function updateBaseObjectionTemplate(id: string, payload: ObjectionTemplateWrite): Promise<any> {
+  if (!isSupabaseConfigured) throw new Error('اتصال به پایگاه‌داده برقرار نیست.')
+  const isCombined = id === 'db-combined-pit'
+  const phase = isCombined ? null : id.slice('db-phase-'.length)
+
+  const existing = payload.steps.filter((s) => OBJECTION_STAGE_UUID_RE.test(s.id ?? ''))
+  const newSteps = payload.steps.filter((s) => !OBJECTION_STAGE_UUID_RE.test(s.id ?? ''))
+
+  for (const step of existing) {
+    const { error } = await (supabase as any).from('tax_objection_stages').update({
+      title_fa: step.title,
+      base_event: step.base_event || null,
+      gap_value: step.gap_value ?? 30,
+      gap_unit: step.gap_unit || 'روز',
+      user_guidance_fa: step.note || null,
+      form_schema: { fields: step.fields ?? [] },
+      step_type: stageTypeFromNature(step.step_nature),
+      actor_role_code: actorCodeFromActor(step.actor),
+    }).eq('id', step.id)
+    if (error) throw new Error(error.message)
+  }
+
+  let deactivate = (supabase as any).from('tax_objection_stages').update({ is_active: false })
+  if (isCombined) {
+    deactivate = deactivate.eq('is_active', true)
+  } else {
+    deactivate = deactivate.eq('phase_code', phase).eq('is_active', true)
+  }
+  if (existing.length > 0) {
+    deactivate = deactivate.not('id', 'in', `(${existing.map((s) => s.id).join(',')})`)
+  }
+  const { error: deactivateError } = await deactivate
+  if (deactivateError) throw new Error(deactivateError.message)
+
+  for (const step of newSteps) {
+    const { error } = await (supabase as any).from('tax_objection_stages').insert({
+      workflow_code: 'PIT',
+      code: `OBJ_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      title_fa: step.title,
+      description_fa: null,
+      phase_code: phase ?? 'PHASE_1',
+      step_type: stageTypeFromNature(step.step_nature),
+      display_order: 900,
+      actor_role_code: actorCodeFromActor(step.actor),
+      base_event: step.base_event || 'تاریخ ابلاغ برگ/اختیاریه',
+      gap_value: step.gap_value ?? 30,
+      gap_unit: step.gap_unit || 'روز',
+      user_guidance_fa: step.note || null,
+      form_schema: { fields: step.fields ?? [] },
+      is_required: true,
+      is_active: true,
+    })
+    if (error) throw new Error(error.message)
+  }
+
+  return { id }
+}
+
 // ---------------------------------------------------------------------------
 // Obligations CRUD
 // ---------------------------------------------------------------------------
