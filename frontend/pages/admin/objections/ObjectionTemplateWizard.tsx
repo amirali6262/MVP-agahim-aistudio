@@ -464,20 +464,21 @@ function FieldCard({ field, siblings, onUpdate, onMove, onRemove }: {
   return (
     <div id={`field-card-${field.id}`} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
       {/* header row */}
-      <div className="flex items-center gap-2">
-        <input
-          className={`${inputCls} min-w-0 flex-1`}
-          dir="rtl"
-          value={field.label}
-          onChange={(e) => onUpdate({ label: e.target.value })}
-          placeholder="عنوان فارسی فیلد"
-        />
+      <input
+        className={`${inputCls} flex-1`}
+        dir="rtl"
+        value={field.label}
+        onChange={(e) => onUpdate({ label: e.target.value })}
+        placeholder="عنوان فارسی فیلد"
+      />
+      {/* نوع + کنترلها (ردیف دوم) */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="shrink-0 text-xs font-semibold text-zinc-500">نوع فیلد</span>
         <select
-          className={`${inputCls} w-40 shrink-0`}
+          className={`${inputCls} w-44 shrink-0`}
           value={field.type}
           onChange={(e) => {
             const t = e.target.value as WorkflowStepField['type']
-            // تغییر نوع با درنگ: حفظ key ولی پاک کردن مقادیر وابستهٔ نوع قبلی
             onUpdate({
               type: t,
               options: undefined,
@@ -509,28 +510,30 @@ function FieldCard({ field, siblings, onUpdate, onMove, onRemove }: {
           />
           الزامی
         </label>
-        <button type="button" onClick={() => setOpenMore((o) => !o)} title="تنظیمات بیشتر" className="text-zinc-500 transition hover:text-amber-300">
-          <Settings2 className="h-4 w-4" />
-        </button>
-        <button type="button" disabled={siblings.findIndex((f) => f.id === field.id) === 0} onClick={() => onMove(-1)} className="text-zinc-600 transition hover:text-zinc-300 disabled:opacity-30">
-          <ChevronUp className="h-4 w-4" />
-        </button>
-        <button type="button" disabled={siblings.findIndex((f) => f.id === field.id) === siblings.length - 1} onClick={() => onMove(1)} className="text-zinc-600 transition hover:text-zinc-300 disabled:opacity-30">
-          <ChevronDown className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (field.key && siblings.some((f) => f.id !== field.id && f.key === field.key)) {
-              if (!window.confirm('این فیلد کلید تکراری دارد؛ با حذف، شروط ارجاع‌داده به آن نامعتبر می‌شوند. حذف می‌شود؟')) return
-            } else if (!window.confirm(`فیلد «${field.label}» حذف می‌شود. ادامه می‌دهید؟`)) return
-            onRemove()
-          }}
-          className="text-zinc-600 transition hover:text-red-400"
-          title="حذف فیلد"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="ms-auto flex items-center gap-2">
+          <button type="button" onClick={() => setOpenMore((o) => !o)} title="تنظیمات بیشتر" className="text-zinc-500 transition hover:text-amber-300">
+            <Settings2 className="h-4 w-4" />
+          </button>
+          <button type="button" disabled={siblings.findIndex((f) => f.id === field.id) === 0} onClick={() => onMove(-1)} className="text-zinc-600 transition hover:text-zinc-300 disabled:opacity-30">
+            <ChevronUp className="h-4 w-4" />
+          </button>
+          <button type="button" disabled={siblings.findIndex((f) => f.id === field.id) === siblings.length - 1} onClick={() => onMove(1)} className="text-zinc-600 transition hover:text-zinc-300 disabled:opacity-30">
+            <ChevronDown className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (field.key && siblings.some((f) => f.id !== field.id && f.key === field.key)) {
+                if (!window.confirm('این فیلد کلید تکراری دارد؛ با حذف، شروط ارجاعداده به آن نامعتبر میشوند. حذف میشود؟')) return
+              } else if (!window.confirm(`فیلد «${field.label}» حذف میشود. ادامه میدهید؟`)) return
+              onRemove()
+            }}
+            className="text-zinc-600 transition hover:text-red-400"
+            title="حذف فیلد"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* key row */}
