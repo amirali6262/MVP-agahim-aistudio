@@ -196,22 +196,34 @@ export default function AdminComplianceStudio() {
     let cancelled = false
     void (async () => {
       try {
-        const [defsRes, optsRes] = await Promise.all([
+        const [defsRes, optsRes, legacyRes] = await Promise.all([
           (supabase as any).from('company_field_definitions').select('*').eq('used_in_eligibility', true).eq('is_active', true).eq('status', 'PUBLISHED').order('sort_order', { ascending: true }),
           (supabase as any).from('company_field_options').select('*').eq('is_active', true).order('sort_order', { ascending: true }),
+          (supabase as any).from('eligibility_legacy_facts').select('*').eq('is_active', true).order('sort_order', { ascending: true }),
         ])
         if (defsRes.error || optsRes.error) return
         const optionsByField: Record<string, Array<{ value: string; label: string }>> = {}
         for (const option of (optsRes.data ?? []) as any[]) {
           (optionsByField[option.field_id] = optionsByField[option.field_id] ?? []).push({ value: option.value, label: option.label })
         }
-        const facts: EligibilityFactEntry[] = ((defsRes.data ?? []) as any[]).map((definition) => ({
-          key: definition.key,
-          title: definition.title,
-          field_type: definition.field_type,
-          options: optionsByField[definition.id] ?? [],
-          isDesignerField: !(definition.is_legacy ?? false),
-        }))
+        // فکت‌های طراح اطلاعات شرکت (company_field_definitions) + فکت‌های legacy
+        // (eligibility_legacy_facts — فقط متادیتا برای ویرایشگر قاعده).
+        const facts: EligibilityFactEntry[] = [
+          ...((defsRes.data ?? []) as any[]).map((definition) => ({
+            key: definition.key,
+            title: definition.title,
+            field_type: definition.field_type,
+            options: optionsByField[definition.id] ?? [],
+            isDesignerField: true,
+          })),
+          ...((legacyRes.data ?? []) as any[]).map((entry) => ({
+            key: entry.key,
+            title: entry.title,
+            field_type: entry.field_type,
+            options: [],
+            isDesignerField: false,
+          })),
+        ]
         if (!cancelled) setEligibilityFacts(facts)
       } catch {
         // اگر دریافت فیلدها ناموفق بود، کاتالوگ فکت خالی می‌ماند.

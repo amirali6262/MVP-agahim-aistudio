@@ -2,108 +2,54 @@ begin;
 
 -- ---------------------------------------------------------------------------
 -- Move the legacy eligibility facts (previously hardcoded in the frontend
--- FACTS array) into the database. Each row keeps its original key so existing
--- eligibility_conditions that reference it keep resolving; is_legacy marks the
--- row so it is excluded from the company-info wizard and only surfaces in the
--- eligibility rule editor when a stored rule already uses it.
+-- FACTS array) into the database.
+--
+-- IMPORTANT: these facts must NOT be inserted into company_field_definitions.
+-- The eligibility engine decides how to resolve a fact by looking it up in
+-- company_field_definitions: if a row is found it resolves from
+-- company_field_values (designer path), otherwise it falls back to the legacy
+-- profile-JSON path. Seeding legacy keys there would silently switch existing
+-- rules to the designer path (no stored value -> no match). So legacy facts
+-- get their own metadata table that only powers the Studio rule editor UI;
+-- the engine keeps resolving them from the company profile as before.
 -- ---------------------------------------------------------------------------
 
-alter table public.company_field_definitions
-  add column if not exists is_legacy boolean not null default false;
+create table if not exists public.eligibility_legacy_facts (
+  key text primary key,
+  title text not null,
+  field_type text not null,
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
 
-with ins as (
-  insert into public.company_field_definitions (
-    id, key, title, field_type, help_text, required, section,
-    wizard_step_id, sort_order, width, display_condition, ambiguous_titles,
-    is_active, is_system, is_deletable, used_in_eligibility, status, is_legacy
-  )
-  values
-    (
-      'f0000004-0000-0000-0000-000000000004',
-      'ENTITY_TYPE', 'نوع شخصیت', 'SELECT',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 10, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000005-0000-0000-0000-000000000005',
-      'LEGAL_FORM', 'قالب ثبتی', 'SELECT',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 11, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000006-0000-0000-0000-000000000006',
-      'PRIMARY_ACTIVITY', 'فعالیت اصلی', 'SELECT',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 12, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000007-0000-0000-0000-000000000007',
-      'ACTIVITY_CODES', 'کدهای فعالیت', 'MULTI_SELECT',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 13, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000008-0000-0000-0000-000000000008',
-      'TAX_REGISTRATION_STATUS', 'وضعیت ثبت مالیاتی', 'SELECT',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 14, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000009-0000-0000-0000-000000000009',
-      'VAT_REGISTRATION_STATUS', 'وضعیت ارزش افزوده', 'SELECT',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 15, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000010-0000-0000-0000-000000000010',
-      'EMPLOYEE_COUNT', 'تعداد کارکنان', 'NUMBER',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 16, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000011-0000-0000-0000-000000000011',
-      'ANNUAL_REVENUE', 'فروش سالانه', 'NUMBER',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 17, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000012-0000-0000-0000-000000000012',
-      'BRANCH_COUNT', 'تعداد شعب', 'NUMBER',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 18, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000013-0000-0000-0000-000000000013',
-      'HAS_ACTIVE_CONTRACTS', 'قرارداد فعال', 'BOOLEAN',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 19, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000014-0000-0000-0000-000000000014',
-      'CONTRACT_TYPES', 'نوع قراردادها', 'MULTI_SELECT',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 20, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    ),
-    (
-      'f0000015-0000-0000-0000-000000000015',
-      'PAYS_SALARIES', 'پرداخت حقوق', 'BOOLEAN',
-      'فکت قدیمی (قابل ارجاع در قواعد مشمولیت).', false, 'INITIAL',
-      null, 21, 'FULL', null, '{}'::jsonb,
-      true, true, false, true, 'PUBLISHED', true
-    )
-  on conflict (lower(key)) do nothing
-)
-select 1;
+alter table public.eligibility_legacy_facts
+  add constraint eligibility_legacy_facts_field_type_check
+  check (field_type in ('TEXT', 'LONG_TEXT', 'SELECT', 'MULTI_SELECT', 'BOOLEAN', 'NUMBER', 'DATE', 'NATIONAL_ID'));
+
+insert into public.eligibility_legacy_facts (key, title, field_type, sort_order) values
+  ('ENTITY_TYPE', 'نوع شخصیت', 'SELECT', 1),
+  ('LEGAL_FORM', 'قالب ثبتی', 'SELECT', 2),
+  ('PRIMARY_ACTIVITY', 'فعالیت اصلی', 'SELECT', 3),
+  ('ACTIVITY_CODES', 'کدهای فعالیت', 'MULTI_SELECT', 4),
+  ('TAX_REGISTRATION_STATUS', 'وضعیت ثبت مالیاتی', 'SELECT', 5),
+  ('VAT_REGISTRATION_STATUS', 'وضعیت ارزش افزوده', 'SELECT', 6),
+  ('EMPLOYEE_COUNT', 'تعداد کارکنان', 'NUMBER', 7),
+  ('ANNUAL_REVENUE', 'فروش سالانه', 'NUMBER', 8),
+  ('BRANCH_COUNT', 'تعداد شعب', 'NUMBER', 9),
+  ('HAS_ACTIVE_CONTRACTS', 'قرارداد فعال', 'BOOLEAN', 10),
+  ('CONTRACT_TYPES', 'نوع قراردادها', 'MULTI_SELECT', 11),
+  ('PAYS_SALARIES', 'پرداخت حقوق', 'BOOLEAN', 12)
+on conflict (key) do nothing;
+
+-- Only the Studio rule editor needs to read these metadata rows; the engine
+-- itself does not consult this table.
+alter table public.eligibility_legacy_facts enable row level security;
+
+create policy "eligibility_legacy_facts_select_authenticated"
+  on public.eligibility_legacy_facts
+  for select
+  to authenticated
+  using (true);
 
 commit;
