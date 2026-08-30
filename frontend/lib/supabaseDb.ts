@@ -3,7 +3,7 @@
  * Replaces all mockDb functions with real database queries.
  */
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { ObjectionTemplate, ObjectionStep, Obligation, WorkflowStepField, DeadlineExtension } from './supabase'
+import type { ObjectionTemplate, ObjectionStep, Obligation, WorkflowStepField, DeadlineExtension, TaxTypeOverride } from './supabase'
 
 // ---------------------------------------------------------------------------
 // Types (match the mockDb interfaces exactly)
@@ -152,6 +152,75 @@ export async function fetchObjectionTemplates(): Promise<ObjectionTemplate[]> {
         fields: step.form_schema?.fields ?? [],
       })),
   })) as ObjectionTemplate[]
+}
+
+// ---------------------------------------------------------------------------
+// Objection reference data (previously hardcoded in ObjectionTemplatesPage)
+// ---------------------------------------------------------------------------
+
+export async function fetchTaxTypeOverrideDefaults(): Promise<TaxTypeOverride[]> {
+  if (!isSupabaseConfigured) return []
+  const { data, error } = await (supabase as any)
+    .from('tax_type_override_defaults')
+    .select('*')
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row: any) => ({
+    tax_type: row.tax_type,
+    tax_type_title: row.tax_type_title,
+    statutory_deadline_override: row.statutory_deadline_override,
+    deadline_unit: row.deadline_unit,
+    legal_reference_override: row.legal_reference_override,
+    special_tribunal_name: row.special_tribunal_name,
+    notes: row.notes,
+    is_custom_path_active: row.is_custom_path_active,
+  })) as TaxTypeOverride[]
+}
+
+export async function fetchObjectionStepPresets(): Promise<Record<string, Partial<ObjectionStep>>> {
+  if (!isSupabaseConfigured) return {}
+  const { data, error } = await (supabase as any)
+    .from('objection_step_presets')
+    .select('*')
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+  if (error) throw new Error(error.message)
+  const presets: Record<string, Partial<ObjectionStep>> = {}
+  for (const row of data ?? []) {
+    presets[row.nature] = {
+      title: row.title ?? '',
+      base_event: row.base_event ?? 'تاریخ ابلاغ برگ/ااختیاریه',
+      gap_value: row.gap_value ?? 20,
+      gap_unit: row.gap_unit ?? 'روز',
+      step_nature: row.step_nature ?? 'MANDATORY',
+      actor: row.actor ?? 'TAXPAYER',
+      note: row.note ?? '',
+    }
+  }
+  return presets
+}
+
+export async function fetchObjectionFieldPacks(): Promise<Record<string, Array<Omit<WorkflowStepField, 'id'>>>> {
+  if (!isSupabaseConfigured) return {}
+  const { data, error } = await (supabase as any)
+    .from('objection_field_packs')
+    .select('*')
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+  if (error) throw new Error(error.message)
+  const packs: Record<string, Array<Omit<WorkflowStepField, 'id'>>> = {}
+  for (const row of data ?? []) {
+    packs[row.pack_type] = ((row.fields ?? []) as any[]).map((f: any) => ({
+      key: f.key,
+      label: f.label,
+      type: f.type,
+      required: f.required,
+      placeholder: f.placeholder,
+      options: f.options,
+    }))
+  }
+  return packs
 }
 
 // ---------------------------------------------------------------------------
