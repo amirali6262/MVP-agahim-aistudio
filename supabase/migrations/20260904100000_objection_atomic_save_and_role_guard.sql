@@ -1,0 +1,261 @@
+-- ==========================================================================
+-- Migration: Objection template atomic save + responsible-role guard
+-- Date: 2026-09-04
+-- Purpose:
+--   1. Server-side validation of the step "مسئول ثبت" (responsible_role) and
+--      "مرجع انجام اقدام" (performer_key): only assignable company roles
+--      (role_definitions, excluding PLATFORM_ADMIN) and options of the seeded
+--      objection_step_actors list. Enforced by a DB trigger so no write path
+--      can bypass it; choosing a role never creates a grant.
+--   2. public.objection_template_save(...) — one transactional RPC that
+--      persists header, stages, steps, transitions, status groups and draft
+--      obligation links atomically (all succeed or nothing is written).
+--      Subtree rows are rebuilt inside the transaction; only
+--      objection_step_transitions references objection_steps (cascade), so no
+--      external reference is harmed. ACTIVE/HISTORY obligation links and the
+--      template status are never touched here (activation is a separate RPC).
+--   Field-key uniqueness within an action is enforced here and in the service;
+--   the engine analog resolves a field by key within the step's own response
+--   (validate_workflow_task_response), so per-action is the established scope.
+-- ==========================================================================
+
+begin;
+
+-- --------------------------------------------------------------------------
+-- 1. Assignable-company-role / performer guard (no write path can bypass it)
+-- --------------------------------------------------------------------------
+create or replace function public.objection_step_performer_guard()
+returns trigger language plpgsql security definer set search_path = pg_catalog
+as $$
+begin
+  if new.responsible_role is not null and not exists (
+    select 1 from public.role_definitions r
+    where r."key" = new.responsible_role
+      and r."key" <> 'PLATFORM_ADMIN'
+  ) then
+    raise exception 'مسئول ثبت باید یک نقش قابلتخصیص فضای شرکت باشد (مدیر پلتفرم مجاز نیست)'
+      using errcode = '23514';
+  end if;
+  if new.performer_key is not null and not exists (
+    select 1 from public.selection_list_options o
+    join public.selection_lists l on l.id = o.list_id
+    where l."key" = 'objection_step_actors'
+      and o."key" = new.performer_key
+      and o.is_active
+      and l.is_active
+  ) then
+    raise exception 'مرجع انجام اقدام باید از فهرست «objection_step_actors» انتخاب شود'
+      using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.objection_step_performer_guard() from public, anon, authenticated, service_role;
+drop trigger if exists objection_step_performer_guard on public.objection_steps;
+create trigger objection_step_performer_guard
+  before insert or update of responsible_role, performer_key
+  on public.objection_steps
+  for each row execute function public.objection_step_performer_guard();
+
+-- --------------------------------------------------------------------------
+-- 2. Atomic save RPC (platform-admin only; one transaction)
+-- --------------------------------------------------------------------------
+create or replace function public.objection_template_save(
+  p_template_id uuid,
+  p_title text,
+  p_description text,
+  p_stages jsonb,
+  p_steps jsonb,
+  p_status_groups jsonb,
+  p_obligation_ids uuid[]
+)
+returns uuid
+language plpgsql security definer set search_path = pg_catalog
+as $$
+declare
+  uid uuid := auth.uid();
+  v_tid uuid;
+  v_stage_map jsonb := '{}'::jsonb;  -- sent stage id -> new real uuid text
+  v_step_map jsonb := '{}'::jsonb;   -- sent step id -> new real uuid text
+  v_seen text[];
+  rec jsonb;
+  fld jsonb;
+  tr jsonb;
+  v_seq int := 0;
+  v_stage_id uuid;
+  v_step_id uuid;
+  v_target_step uuid;
+  v_order int;
+begin
+  -- Authorization: platform admin only.
+  if uid is null
+     or coalesce((auth.jwt()->>'is_anonymous')::boolean, false)
+     or not private.is_platform_admin() then
+    raise exception 'platform admin required' using errcode = '42501';
+  end if;
+
+  -- Basic structural validation.
+  if p_title is null or btrim(p_title) = '' then
+    raise exception 'عنوان الگو اجباری است' using errcode = '22023';
+  end if;
+  if p_steps is null or jsonb_typeof(p_steps) <> 'array' or coalesce(jsonb_array_length(p_steps), 0) = 0 then
+    raise exception 'حداقل یک اقدام در مسیر تعریف کنید' using errcode = '22023';
+  end if;
+  if p_stages is null or jsonb_typeof(p_stages) <> 'array' then p_stages := '[]'::jsonb; end if;
+  if p_status_groups is null or jsonb_typeof(p_status_groups) <> 'array' then p_status_groups := '[]'::jsonb; end if;
+
+  -- Upsert template header (never touches status/is_active — activation is separate).
+  if p_template_id is null then
+    insert into public.objection_templates (title, description, status, is_active)
+    values (btrim(p_title), nullif(p_description, ''), 'DRAFT', false)
+    returning id into v_tid;
+  else
+    if not exists (select 1 from public.objection_templates where id = p_template_id) then
+      raise exception 'template not found' using errcode = 'P0002';
+    end if;
+    -- بدون جداسازی نسخه، ویرایش مستقیم الگوی فعال محتوایِ در حال استفاده را تغییر می‌دهد.
+    -- بنابراین نوشتن روی الگوی ACTIVE بسته است؛ ابتدا باید به پیش‌نویس برگردانده شود.
+    if exists (select 1 from public.objection_templates where id = p_template_id and status = 'ACTIVE') then
+      raise exception 'الگوی فعال را نمی‌توان مستقیم ویرایش کرد؛ ابتدا آن را به پیش‌نویس برگردانید (نسخه‌بندی جدا ندارد)'
+        using errcode = '23514';
+    end if;
+    update public.objection_templates
+    set title = btrim(p_title),
+        description = nullif(p_description, ''),
+        updated_at = now()
+    where id = p_template_id;
+    v_tid := p_template_id;
+  end if;
+
+  -- Pre-validate the whole payload before mutating anything (fail fast).
+  for rec in select * from jsonb_array_elements(p_steps) as t(value) loop
+    if btrim(coalesce(rec.value ->> 'title', '')) = '' then
+      raise exception 'عنوان اقدام اجباری است' using errcode = '22023';
+    end if;
+    if (rec.value ->> 'responsible_role') is not null and not exists (
+      select 1 from public.role_definitions r
+      where r."key" = (rec.value ->> 'responsible_role') and r."key" <> 'PLATFORM_ADMIN'
+    ) then
+      raise exception 'مسئول ثبت باید نقش قابلتخصیص فضای شرکت باشد (مدیر پلتفرم مجاز نیست)'
+        using errcode = '23514';
+    end if;
+    if (rec.value ->> 'performer_key') is not null and not exists (
+      select 1 from public.selection_list_options o
+      join public.selection_lists l on l.id = o.list_id
+      where l."key" = 'objection_step_actors'
+        and o."key" = (rec.value ->> 'performer_key')
+        and o.is_active
+    ) then
+      raise exception 'مرجع انجام اقدام باید از فهرست «objection_step_actors» انتخاب شود'
+        using errcode = '23514';
+    end if;
+    v_seen := '{}'::text[];
+    for fld in select * from jsonb_array_elements(coalesce(rec.value -> 'fields', '[]'::jsonb)) as t(value) loop
+      if (fld.value ->> 'key') is not null and (fld.value ->> 'key') <> '' then
+        if (fld.value ->> 'key') = any (v_seen) then
+          raise exception 'کلید فیلد «%» در اقدام «%» تکراری است', (fld.value ->> 'key'), (rec.value ->> 'title')
+            using errcode = '22023';
+        end if;
+        v_seen := array_append(v_seen, fld.value ->> 'key');
+      end if;
+    end loop;
+  end loop;
+
+  -- Stage: validate names.
+  for rec in select * from jsonb_array_elements(p_stages) as t(value) loop
+    if btrim(coalesce(rec.value ->> 'title', '')) = '' then
+      raise exception 'عنوان مرحله اجباری است' using errcode = '22023';
+    end if;
+  end loop;
+
+  -- Rebuild the template's subtree inside this transaction (all-or-nothing).
+  delete from public.objection_steps where template_id = v_tid;          -- cascades transitions
+  delete from public.objection_stages where template_id = v_tid;
+  delete from public.objection_template_status_groups where template_id = v_tid;
+  delete from public.objection_template_obligations where template_id = v_tid and link_status = 'DRAFT';
+
+  v_order := 0;
+  for rec in select * from jsonb_array_elements(p_stages) as t(value) loop
+    insert into public.objection_stages (template_id, title, sort_order)
+    values (v_tid, btrim(rec.value ->> 'title'), coalesce((rec.value ->> 'sort_order')::int, v_order))
+    returning id into v_stage_id;
+    v_order := v_order + 1;
+    v_stage_map := v_stage_map || jsonb_build_object(rec.value ->> 'id', v_stage_id::text);
+  end loop;
+
+  for rec in select * from jsonb_array_elements(p_steps) as t(value) loop
+    v_seq := v_seq + 1;
+    v_stage_id := null;
+    if rec.value ->> 'stage_id' is not null and v_stage_map ? (rec.value ->> 'stage_id') then
+      v_stage_id := (v_stage_map ->> (rec.value ->> 'stage_id'))::uuid;
+    end if;
+    insert into public.objection_steps (
+      template_id, sequence, title, actor, performer_key, performer_label,
+      responsible_role, responsible_role_label, gap_value, gap_unit, base_event,
+      step_nature, legal_basis, form_schema, is_optional, stage_id
+    ) values (
+      v_tid, v_seq, btrim(rec.value ->> 'title'),
+      coalesce(rec.value ->> 'actor', 'TAXPAYER'),
+      rec.value ->> 'performer_key', rec.value ->> 'performer_label',
+      rec.value ->> 'responsible_role', rec.value ->> 'responsible_role_label',
+      coalesce((rec.value ->> 'gap_value')::int, 0),
+      coalesce(rec.value ->> 'gap_unit', 'روز'),
+      rec.value ->> 'base_event',
+      coalesce(rec.value ->> 'step_nature', 'MANDATORY'),
+      rec.value ->> 'legal_basis',
+      jsonb_build_object('fields', coalesce(rec.value -> 'fields', '[]'::jsonb)),
+      coalesce((rec.value ->> 'is_skippable')::boolean, (rec.value ->> 'step_nature') = 'CONDITIONAL_EXPERT'),
+      v_stage_id
+    ) returning id into v_step_id;
+    v_step_map := v_step_map || jsonb_build_object(rec.value ->> 'id', v_step_id::text);
+
+    for tr in select * from jsonb_array_elements(coalesce(rec.value -> 'transitions', '[]'::jsonb)) as t(value) loop
+      v_target_step := null;
+      if tr.value ->> 'target_type' = 'STEP' and tr.value ->> 'target_step_id' is not null
+         and v_step_map ? (tr.value ->> 'target_step_id') then
+        v_target_step := (v_step_map ->> (tr.value ->> 'target_step_id'))::uuid;
+      end if;
+      insert into public.objection_step_transitions (
+        step_id, title, trigger_type, timeout_days, timeout_desc, target_type,
+        target_step_id, action_label, legal_reference, description, condition_expression
+      ) values (
+        v_step_id, coalesce(tr.value ->> 'title', 'ادامه'),
+        coalesce(tr.value ->> 'trigger_type', 'USER_ACTION'),
+        (tr.value ->> 'timeout_days')::int, tr.value ->> 'timeout_desc',
+        coalesce(tr.value ->> 'target_type', 'STEP'), v_target_step,
+        tr.value ->> 'action_label', tr.value ->> 'legal_reference',
+        tr.value ->> 'description', tr.value -> 'condition_expression'
+      );
+    end loop;
+  end loop;
+
+  update public.objection_steps s
+  set code = 'STEP_' || sub.rn
+  from (select id, row_number() over (order by sequence, id) as rn
+        from public.objection_steps where template_id = v_tid) sub
+  where s.id = sub.id and s.template_id = v_tid;
+
+  for rec in select * from jsonb_array_elements(p_status_groups) as t(value) loop
+    insert into public.objection_template_status_groups (template_id, code, title, options, sort_order)
+    values (v_tid, rec.value ->> 'code', rec.value ->> 'title',
+            coalesce(rec.value -> 'options', '[]'::jsonb),
+            coalesce((rec.value ->> 'sort_order')::int, 0));
+  end loop;
+
+  if p_obligation_ids is not null and coalesce(array_length(p_obligation_ids, 1), 0) > 0 then
+    insert into public.objection_template_obligations (template_id, obligation_id, link_status)
+    select v_tid, oid, 'DRAFT' from unnest(p_obligation_ids) oid
+    on conflict do nothing;
+  end if;
+
+  return v_tid;
+end;
+$$;
+revoke all on function public.objection_template_save(
+  uuid,text,text,jsonb,jsonb,jsonb,uuid[]
+) from public,anon,authenticated;
+grant execute on function public.objection_template_save(
+  uuid,text,text,jsonb,jsonb,jsonb,uuid[]
+) to authenticated;
+
+commit;

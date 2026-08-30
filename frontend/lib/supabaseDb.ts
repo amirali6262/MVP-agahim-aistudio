@@ -195,6 +195,10 @@ async function loadObjectionTemplates(includeInactive: boolean): Promise<Objecti
         id: step.id,
         title: step.title,
         actor: step.actor,
+        performer_key: step.performer_key ?? null,
+        performer_label: step.performer_label ?? null,
+        responsible_role: step.responsible_role ?? null,
+        responsible_role_label: step.responsible_role_label ?? null,
         gap_value: step.gap_value,
         gap_unit: step.gap_unit,
         base_event: step.base_event,
@@ -770,6 +774,18 @@ async function persistObjectionSteps(
   steps: ObjectionStep[],
   stageIdMap: Map<string, string>
 ): Promise<void> {
+  // یکتایی کلید فیلد در محدودهٔ همان اقدام — سرور هم کنترل می‌کند، نه فقط رابط.
+  for (const step of steps) {
+    const seen = new Set<string>()
+    for (const field of step.fields ?? []) {
+      const key = (field.key || '').trim()
+      if (!key) continue
+      if (seen.has(key)) {
+        throw new Error(`کلید فیلد «${key}» در اقدام «${step.title}» تکراری است`)
+      }
+      seen.add(key)
+    }
+  }
   const existing = await safeQuery<{ id: string }>(() =>
     (supabase as any).from('objection_steps').select('id').eq('template_id', templateId)
   )
@@ -790,6 +806,10 @@ async function persistObjectionSteps(
       base_event: step.base_event ?? null,
       step_nature: step.step_nature ?? 'MANDATORY',
       legal_basis: step.legal_basis ?? null,
+      performer_key: step.performer_key ?? null,
+      performer_label: step.performer_label ?? null,
+      responsible_role: step.responsible_role ?? null,
+      responsible_role_label: step.responsible_role_label ?? null,
       form_schema: { fields: step.fields ?? [] },
       is_optional: step.is_skippable ?? step.step_nature === 'CONDITIONAL_EXPERT',
       stage_id: stageId,
@@ -878,34 +898,41 @@ async function persistObjectionTemplateParts(templateId: string, payload: Object
   await persistDraftLinks(templateId, payload.obligationIds)
 }
 
-export async function createObjectionTemplate(payload: ObjectionTemplateWrite): Promise<any> {
+/**
+ * Atomic save helper shared by create/update: persists header + stages + steps
+ * + transitions + status groups + draft links in one DB transaction via the
+ * objection_template_save RPC, so a mid-way failure never leaves a partial
+ * template. The RPC also re-validates the responsible role (assignable company
+ * roles only, PLATFORM_ADMIN rejected) and performer against the real selection
+ * list, and enforces per-action field-key uniqueness.
+ */
+async function atomicSaveObjectionTemplate(
+  templateId: string | null,
+  payload: ObjectionTemplateWrite
+): Promise<string> {
   if (!isSupabaseConfigured) throw new Error('اتصال به پایگاه‌داده برقرار نیست.')
-  const { data, error } = await (supabase as any).from('objection_templates').insert({
-    title: payload.template_name,
-    description: payload.description ?? null,
-    is_active: false,
-    status: 'DRAFT',
-  }).select().single()
-  if (error || !data) throw new Error(error?.message ?? 'ایجاد الگو انجام نشد.')
-  try {
-    await persistObjectionTemplateParts(data.id, payload)
-  } catch (err) {
-    await (supabase as any).from('objection_templates').delete().eq('id', data.id).catch(() => undefined)
-    throw err
-  }
-  return data
+  const { data, error } = await (supabase as any).rpc('objection_template_save', {
+    p_template_id: templateId,
+    p_title: payload.template_name,
+    p_description: payload.description ?? null,
+    p_stages: payload.stages ?? [],
+    p_steps: payload.steps,
+    p_status_groups: payload.statusGroups ?? [],
+    p_obligation_ids: payload.obligationIds ?? [],
+  })
+  if (error) throw new Error(error.message)
+  if (!data) throw new Error('ذخیره الگو انجام نشد.')
+  return data as string
+}
+
+export async function createObjectionTemplate(payload: ObjectionTemplateWrite): Promise<any> {
+  const id = await atomicSaveObjectionTemplate(null, payload)
+  return { id }
 }
 
 export async function updateObjectionTemplate(id: string, payload: ObjectionTemplateWrite): Promise<any> {
-  if (!isSupabaseConfigured) throw new Error('اتصال به پایگاه‌داده برقرار نیست.')
-  const { data, error } = await (supabase as any).from('objection_templates').update({
-    title: payload.template_name,
-    description: payload.description ?? null,
-    updated_at: new Date().toISOString(),
-  }).eq('id', id).select().single()
-  if (error || !data) throw new Error(error?.message ?? 'ویرایش الگو انجام نشد.')
-  await persistObjectionTemplateParts(id, payload)
-  return data
+  await atomicSaveObjectionTemplate(id, payload)
+  return { id }
 }
 
 export async function hasObjectionTemplateConditions(template: Pick<ObjectionTemplate, 'steps'>): Promise<boolean> {

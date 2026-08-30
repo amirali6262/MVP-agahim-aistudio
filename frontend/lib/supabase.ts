@@ -52,17 +52,51 @@ export interface UserTenantWithTenant extends UserTenantRow {
   tenants: Tenant | null
 }
 
+export type WorkflowFieldType =
+  | 'text'        // متن کوتاه (textKind: متن چندخطی/ایمیل/شماره تماس)
+  | 'number'      // عدد (numberKind: صحیح/اعشاری/مبلغ)
+  | 'date'        // تقویم شمسی (includeTime: همراه ساعت)
+  | 'file'        // فایل/تصویر (فقط قابل تعریف؛ بارگذاری هنوز پشتیبانی نمی‌شود)
+  | 'select'      // لیست کشویی تک‌انتخابی
+  | 'multiselect' // لیست کشویی چندانتخابی
+  | 'boolean'     // بله / خیر
+  | 'checkbox'    // بله/خیر (نسخهٔ قدیمی — بدون تبدیل خودکار حفظ می‌شود)
+
 export interface WorkflowStepField {
   id: string
   label: string
   key: string
-  type: 'text' | 'number' | 'date' | 'file' | 'select' | 'checkbox'
+  type: WorkflowFieldType
   required?: boolean
   options?: string[]
   placeholder?: string
   cols?: 1 | 2 | 3 | 4  // تعداد ستون‌ها (پیش‌فرض: 1)
   helpText?: string     // راهنمای فیلد
   defaultValue?: string  // مقدار پیش‌فرض
+
+  // نوع‌های متنی (فقط برای type: text)
+  multiline?: boolean              // متن چندخطی
+  textKind?: 'text' | 'email' | 'phone'  // ایمیل / شماره تماس
+
+  // عدد (فقط برای type: number)
+  numberKind?: 'integer' | 'decimal' | 'amount'  // صحیح / اعشاری / مبلغ
+  min?: number
+  max?: number
+  precision?: number               // تعداد رقم اعشار
+  currency?: 'ریال' | 'تومان'      // واحد مبلغ
+
+  // تقویم شمسی (فقط برای type: date)
+  includeTime?: boolean            // تقویم شمسی و ساعت
+
+  // فایل (فقط برای type: file)
+  fileMaxSizeMb?: number
+  allowedFileTypes?: string[]      // mime-type های مجاز، خالی = تصویر+PDF
+  maxFiles?: number
+
+  // اتصال به فهرست انتخاب‌ها (فقط برای select / multiselect)
+  listKey?: string                 // کلید پایدار فهرست موجود در selection_lists
+  parentFieldKey?: string          // برای فهرست وابسته: کلید فیلد والدِ همین فرم
+  helpBeforeParent?: string        // راهنمای قبل از انتخاب والد (مثلاً «ابتدا شهرستان را انتخاب کنید»)
 }
 
 export interface WorkflowStep {
@@ -140,7 +174,14 @@ export interface ObjectionStep {
   gap_value: number
   gap_unit: string
   step_nature?: ObjectionStepNature | string
+  /** مقدار خام قبلی «مسئول/مرجع اقدام» — بدون تبدیل خودکار حفظ می‌شود. */
   actor?: StepActor | string
+  /** مرجع انجام اقدام (external actor) — کلید پایدار از فهرست انتخاب‌ها. */
+  performer_key?: string | null
+  performer_label?: string | null
+  /** مسئول ثبت و پیگیری در پلتفرم — کلید نقش (فقط نقش‌های قابل‌تخصیص). */
+  responsible_role?: string | null
+  responsible_role_label?: string | null
   note?: string
   legal_basis?: string
   fields?: WorkflowStepField[]
