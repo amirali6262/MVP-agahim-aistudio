@@ -233,11 +233,11 @@ begin
       v_stage_id := (v_stage_map ->> (v_step ->> 'stage_id'))::uuid;
     end if;
     insert into public.objection_steps (
-      template_id, sequence, title, actor, performer_key, performer_label,
+      template_id, sequence, code, title, actor, performer_key, performer_label,
       responsible_role, responsible_role_label, gap_value, gap_unit, base_event,
       step_nature, legal_basis, form_schema, is_optional, stage_id
     ) values (
-      v_tid, v_seq, btrim(v_step ->> 'title'),
+      v_tid, v_seq, 'STEP_' || v_seq, btrim(v_step ->> 'title'),
       coalesce(v_step ->> 'actor', 'TAXPAYER'),
       v_step ->> 'performer_key', v_step ->> 'performer_label',
       v_step ->> 'responsible_role', v_step ->> 'responsible_role_label',
