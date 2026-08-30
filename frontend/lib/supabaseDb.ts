@@ -3,7 +3,18 @@
  * Replaces all mockDb functions with real database queries.
  */
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { ObjectionTemplate, ObjectionStep, Obligation, WorkflowStepField, DeadlineExtension, TaxTypeOverride } from './supabase'
+import type {
+  ObjectionTemplate,
+  ObjectionStep,
+  ObjectionStage,
+  ObjectionStatusGroup,
+  StepTransition,
+  ConditionExpression,
+  Obligation,
+  WorkflowStepField,
+  DeadlineExtension,
+  TaxTypeOverride,
+} from './supabase'
 
 // ---------------------------------------------------------------------------
 // Types (match the mockDb interfaces exactly)
@@ -111,36 +122,76 @@ async function safeQuery<T>(queryFn: () => any): Promise<T[]> {
 // User-defined objection templates
 // ---------------------------------------------------------------------------
 
-export async function fetchObjectionTemplates(): Promise<ObjectionTemplate[]> {
+async function loadObjectionTemplates(includeInactive: boolean): Promise<ObjectionTemplate[]> {
   if (!isSupabaseConfigured) return []
-  const { data: templates, error } = await (supabase as any)
-    .from('objection_templates')
-    .select('*')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
+  let query = (supabase as any).from('objection_templates').select('*')
+  if (!includeInactive) query = query.eq('is_active', true)
+  const { data: templates, error } = await query.order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
 
   const templateIds = (templates ?? []).map((template: any) => template.id)
   let steps: any[] = []
+  let transitions: any[] = []
+  let stages: any[] = []
+  let statusGroups: any[] = []
+  let links: any[] = []
   if (templateIds.length > 0) {
-    const { data: stepRows, error: stepsError } = await (supabase as any)
-      .from('objection_steps')
-      .select('*')
-      .in('template_id', templateIds)
-      .order('sequence', { ascending: true })
-    if (stepsError) throw new Error(stepsError.message)
-    steps = stepRows ?? []
+    const [stepRes, stageRes, groupRes, linkRes] = await Promise.all([
+      (supabase as any).from('objection_steps').select('*').in('template_id', templateIds).order('sequence', { ascending: true }),
+      (supabase as any).from('objection_stages').select('*').in('template_id', templateIds).order('sort_order', { ascending: true }),
+      (supabase as any).from('objection_template_status_groups').select('*').in('template_id', templateIds).order('sort_order', { ascending: true }),
+      (supabase as any).from('objection_template_obligations').select('*').in('template_id', templateIds),
+    ])
+    if (stepRes.error) throw new Error(stepRes.error.message)
+    if (stageRes.error) throw new Error(stageRes.error.message)
+    if (groupRes.error) throw new Error(groupRes.error.message)
+    if (linkRes.error) throw new Error(linkRes.error.message)
+    steps = stepRes.data ?? []
+    stages = stageRes.data ?? []
+    statusGroups = groupRes.data ?? []
+    links = linkRes.data ?? []
+
+    const stepIds = steps.map((s: any) => s.id)
+    if (stepIds.length > 0) {
+      const { data: transitionRows, error: transError } = await (supabase as any)
+        .from('objection_step_transitions')
+        .select('*')
+        .in('step_id', stepIds)
+      if (transError) throw new Error(transError.message)
+      transitions = transitionRows ?? []
+    }
   }
 
-  return (templates ?? []).map((template: any) => ({
-    id: template.id,
-    template_name: template.title,
-    description: template.description,
-    is_base_template: true,
-    created_at: template.created_at,
-    steps: steps
-      .filter((step: any) => step.template_id === template.id)
-      .map((step: any) => ({
+  return (templates ?? []).map((template: any) => {
+    const templateSteps = steps.filter((step: any) => step.template_id === template.id)
+    return {
+      id: template.id,
+      template_name: template.title,
+      description: template.description,
+      is_base_template: false,
+      status: template.status ?? (template.is_active ? 'ACTIVE' : 'DRAFT'),
+      created_at: template.created_at,
+      stages: stages.filter((s: any) => s.template_id === template.id).map((s: any) => ({
+        id: s.id,
+        template_id: s.template_id,
+        title: s.title,
+        description: s.description,
+        sort_order: s.sort_order ?? 0,
+      })),
+      status_groups: statusGroups.filter((g: any) => g.template_id === template.id).map((g: any) => ({
+        id: g.id,
+        code: g.code,
+        title: g.title,
+        options: Array.isArray(g.options) ? g.options : [],
+        sort_order: g.sort_order ?? 0,
+      })),
+      links: links.filter((l: any) => l.template_id === template.id).map((l: any) => ({
+        id: l.id,
+        template_id: l.template_id,
+        obligation_id: l.obligation_id,
+        link_status: l.link_status ?? 'DRAFT',
+      })),
+      steps: templateSteps.map((step: any) => ({
         id: step.id,
         title: step.title,
         actor: step.actor,
@@ -150,8 +201,36 @@ export async function fetchObjectionTemplates(): Promise<ObjectionTemplate[]> {
         step_nature: step.step_nature,
         legal_basis: step.legal_basis,
         fields: step.form_schema?.fields ?? [],
+        is_skippable: step.is_optional ?? false,
+        stage_id: step.stage_id ?? null,
+        transitions: transitions
+          .filter((t: any) => t.step_id === step.id)
+          .map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            trigger_type: t.trigger_type ?? 'USER_ACTION',
+            timeout_days: t.timeout_days ?? undefined,
+            timeout_desc: t.timeout_desc ?? undefined,
+            target_type: t.target_type ?? 'STEP',
+            target_step_id: t.target_step_id ?? undefined,
+            action_label: t.action_label ?? undefined,
+            legal_reference: t.legal_reference ?? undefined,
+            description: t.description ?? undefined,
+            condition_expression: t.condition_expression ?? undefined,
+          })),
       })),
-  })) as ObjectionTemplate[]
+    } as ObjectionTemplate
+  })
+}
+
+/** فقط الگوهای فعال (مصرف‌کنندگان فعلی مثل داشبورد) */
+export async function fetchObjectionTemplates(): Promise<ObjectionTemplate[]> {
+  return loadObjectionTemplates(false)
+}
+
+/** همهٔ الگوها شامل پیش‌نویس‌ها (صفحهٔ مدیریت) */
+export async function fetchAllObjectionTemplates(): Promise<ObjectionTemplate[]> {
+  return loadObjectionTemplates(true)
 }
 
 // ---------------------------------------------------------------------------
@@ -591,27 +670,212 @@ export async function fetchObjectionTemplateById(id: string): Promise<ObjectionT
   return templates.find((template) => template.id === id) ?? null
 }
 
-type ObjectionTemplateWrite = {
+export type ObjectionTemplateWrite = {
   template_name: string
   description?: string
   steps: ObjectionStep[]
+  stages?: ObjectionStage[]
+  statusGroups?: ObjectionStatusGroup[]
+  /** شناسهٔ تعهدهای انتخاب‌شده — به‌صورت اتصال پیش‌نویس ذخیره می‌شود */
+  obligationIds?: string[]
 }
 
-function serializeObjectionSteps(templateId: string, steps: ObjectionStep[]) {
-  return steps.map((step, index) => ({
-    template_id: templateId,
-    sequence: index + 1,
-    code: `STEP_${index + 1}`,
-    title: step.title,
-    actor: step.actor ?? 'TAXPAYER',
-    gap_value: step.gap_value ?? 0,
-    gap_unit: step.gap_unit ?? 'روز',
-    base_event: step.base_event ?? null,
-    step_nature: step.step_nature ?? 'MANDATORY',
-    legal_basis: step.legal_basis ?? null,
-    form_schema: { fields: step.fields ?? [] },
-    is_optional: step.step_nature === 'CONDITIONAL_EXPERT',
-  }))
+const OBJECTION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isDbRowId(id?: string): boolean {
+  return !!id && OBJECTION_UUID_RE.test(id)
+}
+
+async function persistObjectionStages(
+  templateId: string,
+  stages: ObjectionStage[],
+  stageIdMap: Map<string, string>
+): Promise<void> {
+  const existing = await safeQuery<ObjectionStage>(() =>
+    (supabase as any).from('objection_stages').select('id').eq('template_id', templateId)
+  )
+  const existingIds = new Set(existing.map((s) => s.id))
+  const keepIds = new Set<string>()
+  for (let i = 0; i < stages.length; i++) {
+    const stage = stages[i]
+    const row = {
+      title: stage.title,
+      description: stage.description ?? null,
+      sort_order: i,
+      updated_at: new Date().toISOString(),
+    }
+    if (isDbRowId(stage.id) && existingIds.has(stage.id)) {
+      keepIds.add(stage.id)
+      const { error } = await (supabase as any).from('objection_stages').update(row).eq('id', stage.id)
+      if (error) throw new Error(error.message)
+    } else {
+      const { data, error } = await (supabase as any).from('objection_stages').insert({
+        template_id: templateId,
+        title: stage.title,
+        description: stage.description ?? null,
+        sort_order: i,
+      }).select('id').single()
+      if (error || !data) throw new Error(error?.message ?? 'ذخیره مرحله انجام نشد.')
+      keepIds.add(data.id)
+      stageIdMap.set(stage.id, data.id)
+    }
+  }
+  // حذف مرحله، اقدام‌هایش را خودکار حذف نمی‌کند (stage_id با SET NULL پاک می‌شود)
+  for (const id of existingIds) {
+    if (!keepIds.has(id)) {
+      const { error } = await (supabase as any).from('objection_stages').delete().eq('id', id)
+      if (error) throw new Error(error.message)
+    }
+  }
+}
+
+async function persistStepTransitions(stepId: string, transitions: StepTransition[] = []): Promise<void> {
+  const existing = await safeQuery<StepTransition>(() =>
+    (supabase as any).from('objection_step_transitions').select('id').eq('step_id', stepId)
+  )
+  const existingIds = new Set(existing.map((t) => t.id))
+  const keepIds = new Set<string>()
+  for (const transition of transitions) {
+    const row = {
+      title: transition.title ?? 'ادامه',
+      trigger_type: transition.trigger_type ?? 'USER_ACTION',
+      timeout_days: transition.timeout_days ?? null,
+      timeout_desc: transition.timeout_desc ?? null,
+      target_type: transition.target_type ?? 'STEP',
+      target_step_id: transition.target_step_id ?? null,
+      action_label: transition.action_label ?? null,
+      legal_reference: transition.legal_reference ?? null,
+      description: transition.description ?? null,
+      condition_expression: transition.condition_expression ?? null,
+    }
+    if (isDbRowId(transition.id) && existingIds.has(transition.id)) {
+      keepIds.add(transition.id)
+      const { error } = await (supabase as any).from('objection_step_transitions').update(row).eq('id', transition.id)
+      if (error) throw new Error(error.message)
+    } else {
+      const { error } = await (supabase as any).from('objection_step_transitions').insert({ step_id: stepId, ...row })
+      if (error) throw new Error(error.message)
+    }
+  }
+  for (const id of existingIds) {
+    if (!keepIds.has(id)) {
+      const { error } = await (supabase as any).from('objection_step_transitions').delete().eq('id', id)
+      if (error) throw new Error(error.message)
+    }
+  }
+}
+
+async function persistObjectionSteps(
+  templateId: string,
+  steps: ObjectionStep[],
+  stageIdMap: Map<string, string>
+): Promise<void> {
+  const existing = await safeQuery<{ id: string }>(() =>
+    (supabase as any).from('objection_steps').select('id').eq('template_id', templateId)
+  )
+  const existingIds = new Set(existing.map((s) => s.id))
+  const keepIds = new Set<string>()
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]
+    const stepId = isDbRowId(step.id) && existingIds.has(step.id) ? step.id : undefined
+    const stageId = step.stage_id ? (stageIdMap.get(step.stage_id) ?? step.stage_id) : null
+    const row = {
+      template_id: templateId,
+      sequence: i + 1,
+      code: `STEP_${i + 1}`,
+      title: step.title,
+      actor: step.actor ?? 'TAXPAYER',
+      gap_value: step.gap_value ?? 0,
+      gap_unit: step.gap_unit ?? 'روز',
+      base_event: step.base_event ?? null,
+      step_nature: step.step_nature ?? 'MANDATORY',
+      legal_basis: step.legal_basis ?? null,
+      form_schema: { fields: step.fields ?? [] },
+      is_optional: step.is_skippable ?? step.step_nature === 'CONDITIONAL_EXPERT',
+      stage_id: stageId,
+    }
+    if (stepId) {
+      keepIds.add(stepId)
+      const { error } = await (supabase as any).from('objection_steps').update(row).eq('id', stepId)
+      if (error) throw new Error(error.message)
+      await persistStepTransitions(stepId, step.transitions)
+    } else {
+      const { data, error } = await (supabase as any).from('objection_steps').insert(row).select('id').single()
+      if (error || !data) throw new Error(error?.message ?? 'ذخیره اقدام انجام نشد.')
+      keepIds.add(data.id)
+      await persistStepTransitions(data.id, step.transitions)
+    }
+  }
+  for (const id of existingIds) {
+    if (!keepIds.has(id)) {
+      const { error } = await (supabase as any).from('objection_steps').delete().eq('id', id)
+      if (error) throw new Error(error.message)
+    }
+  }
+}
+
+async function persistStatusGroups(templateId: string, groups: ObjectionStatusGroup[] = []): Promise<void> {
+  const existing = await safeQuery<{ id: string; code: string }>(() =>
+    (supabase as any).from('objection_template_status_groups').select('id, code').eq('template_id', templateId)
+  )
+  const existingByCode = new Map(existing.map((g) => [g.code, g.id]))
+  const keepIds = new Set<string>()
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i]
+    const existingId = existingByCode.get(group.code)
+    if (existingId) {
+      keepIds.add(existingId)
+      const { error } = await (supabase as any).from('objection_template_status_groups').update({
+        title: group.title,
+        options: group.options,
+        sort_order: i,
+        updated_at: new Date().toISOString(),
+      }).eq('id', existingId)
+      if (error) throw new Error(error.message)
+    } else {
+      const { error } = await (supabase as any).from('objection_template_status_groups').insert({
+        template_id: templateId,
+        code: group.code,
+        title: group.title,
+        options: group.options,
+        sort_order: i,
+      })
+      if (error) throw new Error(error.message)
+    }
+  }
+  for (const id of existingByCode.values()) {
+    if (!keepIds.has(id)) {
+      const { error } = await (supabase as any).from('objection_template_status_groups').delete().eq('id', id)
+      if (error) throw new Error(error.message)
+    }
+  }
+}
+
+async function persistDraftLinks(templateId: string, obligationIds: string[] = []): Promise<void> {
+  // اتصال‌های پیش‌نویس بازنویسی می‌شوند؛ اتصال‌های ACTIVE/HISTORY دست نمی‌خورند
+  const { error: deleteError } = await (supabase as any)
+    .from('objection_template_obligations')
+    .delete()
+    .eq('template_id', templateId)
+    .eq('link_status', 'DRAFT')
+  if (deleteError) throw new Error(deleteError.message)
+  if (obligationIds.length === 0) return
+  const { error } = await (supabase as any).from('objection_template_obligations').insert(
+    obligationIds.map((obligationId) => ({
+      template_id: templateId,
+      obligation_id: obligationId,
+      link_status: 'DRAFT',
+    }))
+  )
+  if (error) throw new Error(error.message)
+}
+
+async function persistObjectionTemplateParts(templateId: string, payload: ObjectionTemplateWrite): Promise<void> {
+  const stageIdMap = new Map<string, string>()
+  await persistObjectionStages(templateId, payload.stages ?? [], stageIdMap)
+  await persistObjectionSteps(templateId, payload.steps, stageIdMap)
+  await persistStatusGroups(templateId, payload.statusGroups)
+  await persistDraftLinks(templateId, payload.obligationIds)
 }
 
 export async function createObjectionTemplate(payload: ObjectionTemplateWrite): Promise<any> {
@@ -619,16 +883,15 @@ export async function createObjectionTemplate(payload: ObjectionTemplateWrite): 
   const { data, error } = await (supabase as any).from('objection_templates').insert({
     title: payload.template_name,
     description: payload.description ?? null,
-    is_active: true,
+    is_active: false,
+    status: 'DRAFT',
   }).select().single()
   if (error || !data) throw new Error(error?.message ?? 'ایجاد الگو انجام نشد.')
-
-  const { error: stepsError } = await (supabase as any)
-    .from('objection_steps')
-    .insert(serializeObjectionSteps(data.id, payload.steps))
-  if (stepsError) {
-    await (supabase as any).from('objection_templates').delete().eq('id', data.id)
-    throw new Error(stepsError.message)
+  try {
+    await persistObjectionTemplateParts(data.id, payload)
+  } catch (err) {
+    await (supabase as any).from('objection_templates').delete().eq('id', data.id).catch(() => undefined)
+    throw err
   }
   return data
 }
@@ -641,14 +904,100 @@ export async function updateObjectionTemplate(id: string, payload: ObjectionTemp
     updated_at: new Date().toISOString(),
   }).eq('id', id).select().single()
   if (error || !data) throw new Error(error?.message ?? 'ویرایش الگو انجام نشد.')
-
-  const { error: deleteError } = await (supabase as any).from('objection_steps').delete().eq('template_id', id)
-  if (deleteError) throw new Error(deleteError.message)
-  const { error: stepsError } = await (supabase as any)
-    .from('objection_steps')
-    .insert(serializeObjectionSteps(id, payload.steps))
-  if (stepsError) throw new Error(stepsError.message)
+  await persistObjectionTemplateParts(id, payload)
   return data
+}
+
+export async function hasObjectionTemplateConditions(template: Pick<ObjectionTemplate, 'steps'>): Promise<boolean> {
+  return template.steps.some((step) =>
+    (step.transitions ?? []).some((t) => {
+      const expr = t.condition_expression as ConditionExpression | null | undefined
+      return !!expr && Array.isArray(expr.clauses) && expr.clauses.length > 0
+    })
+  )
+}
+
+export async function activateObjectionTemplate(
+  templateId: string,
+  obligationIds: string[],
+  replaceConflicts: boolean
+): Promise<{ ok: boolean; message?: string }> {
+  if (!isSupabaseConfigured) return { ok: false, message: 'اتصال به پایگاه‌داده برقرار نیست.' }
+  const { error } = await (supabase as any).rpc('activate_objection_template', {
+    p_template_id: templateId,
+    p_obligation_ids: obligationIds,
+    p_replace_conflicts: replaceConflicts,
+  })
+  if (error) return { ok: false, message: error.message }
+  return { ok: true }
+}
+
+export interface StudioObligationOption {
+  id: string
+  code: string
+  title: string
+  family_title?: string
+}
+
+/** تعهدات ثبت‌شده در طراح تعهدات (obligation_definitions + خانواده) */
+export async function fetchDesignerObligations(): Promise<StudioObligationOption[]> {
+  if (!isSupabaseConfigured) return []
+  try {
+    const { data, error } = await (supabase as any)
+      .from('obligation_definitions')
+      .select('id, code, title, is_active, obligation_families(title)')
+      .eq('is_active', true)
+      .order('title')
+    if (error) return []
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      code: row.code ?? '',
+      title: row.title ?? '',
+      family_title: row.obligation_families?.title ?? undefined,
+    }))
+  } catch {
+    return []
+  }
+}
+
+export interface ActiveObjectionLink {
+  obligation_id: string
+  template_id: string
+  template_title: string
+}
+
+/** اتصال‌های فعال فعلی هر تعهد (برای نمایش «فرایند جاری» و تشخیص تعارض) */
+export async function fetchActiveObjectionLinks(): Promise<ActiveObjectionLink[]> {
+  if (!isSupabaseConfigured) return []
+  try {
+    const { data, error } = await (supabase as any)
+      .from('objection_template_obligations')
+      .select('obligation_id, template_id, objection_templates(title)')
+      .eq('link_status', 'ACTIVE')
+    if (error) return []
+    return (data ?? []).map((row: any) => ({
+      obligation_id: row.obligation_id,
+      template_id: row.template_id,
+      template_title: row.objection_templates?.title ?? '',
+    }))
+  } catch {
+    return []
+  }
+}
+
+/** برچسب‌های فارسی نقش‌ها (برای انتخاب مسئول/مرجع اقدام) — در نبود جدول، خالی برمی‌گردد */
+export async function fetchRoleLabels(): Promise<{ key: string; persian_label: string }[]> {
+  if (!isSupabaseConfigured) return []
+  try {
+    const { data, error } = await (supabase as any)
+      .from('role_definitions')
+      .select('key, persian_label')
+      .order('sort_order')
+    if (error) return []
+    return (data ?? []).map((row: any) => ({ key: row.key, persian_label: row.persian_label }))
+  } catch {
+    return []
+  }
 }
 
 export async function deleteObjectionTemplate(id: string): Promise<boolean> {
