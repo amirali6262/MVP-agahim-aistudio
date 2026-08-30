@@ -216,13 +216,14 @@ begin
   end;
 end $$;
 
--- ── 9) stable step reference (STEP_n) survives save → reload → save → reload ──
+-- ── 9) stable per-action identifier (step_ref) survives save/reorder/insert ──
+--     Conditions reference «stable step id + field key» (sr_a.code), never order.
 do $$
 declare
   tid uuid;
-  codes text[];
+  refs text[];
   steps jsonb := $j$[
-    { "id": "zs1", "title": "اقدام یک", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+    { "id": "cid_a", "step_ref": "sr_a", "title": "اقدام یک", "actor": "TAXPAYER", "responsible_role": "MANAGER",
       "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null,
       "fields": [ { "id": "fz1", "key": "code", "label": "کد", "type": "text" } ],
       "transitions": [
@@ -230,10 +231,10 @@ declare
           "target_type": "TERMINAL_AGREED", "target_step_id": null,
           "condition_expression": { "version": 1, "logic": "AND",
             "clauses": [ { "id": "zc1", "source": "STEP_OUTPUT",
-              "field_key": "STEP_1.code", "field_label": "اقدام یک — کد",
+              "field_key": "sr_a.code", "field_label": "اقدام یک — کد",
               "operator": "in", "value": ["a","b"] } ] } }
       ] },
-    { "id": "zs2", "title": "اقدام دو", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+    { "id": "cid_b", "step_ref": "sr_b", "title": "اقدام دو", "actor": "TAXPAYER", "responsible_role": "MANAGER",
       "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null,
       "fields": [ { "id": "fz2", "key": "amount", "label": "مبلغ", "type": "number" } ],
       "transitions": [] }
@@ -241,24 +242,160 @@ declare
 begin
   tid := public.objection_template_save(null, 'پایدار', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
   if tid is null then raise exception 'FAIL: stability save #1 null'; end if;
-  select array_agg(code order by sequence) into codes from public.objection_steps where template_id = tid;
-  if codes is distinct from array['STEP_1','STEP_2'] then
-    raise exception 'FAIL: codes after save #1: %', codes;
+  select array_agg(step_ref order by sequence) into refs from public.objection_steps where template_id = tid;
+  if refs is distinct from array['sr_a','sr_b'] then
+    raise exception 'FAIL: step_refs after save #1: %', refs;
   end if;
   if not exists (
     select 1 from public.objection_step_transitions t
     left join lateral jsonb_array_elements(coalesce(t.condition_expression -> 'clauses', '[]'::jsonb)) c on true
     where t.step_id in (select id from public.objection_steps where template_id = tid)
-      and c.value ->> 'field_key' = 'STEP_1.code'
+      and c.value ->> 'field_key' = 'sr_a.code'
   ) then
-    raise exception 'FAIL: condition STEP_1.code reference not preserved after save #1';
+    raise exception 'FAIL: condition sr_a.code reference not preserved after save #1';
   end if;
 
-  -- save again (edit, same order) then reload: codes must remain STEP_1/STEP_2
-  perform public.objection_template_save(tid, 'پایدار-نسخه2', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
-  select array_agg(code order by sequence) into codes from public.objection_steps where template_id = tid;
-  if codes is distinct from array['STEP_1','STEP_2'] then
-    raise exception 'FAIL: codes changed after save #2: %', codes;
+  -- reorder the two actions (swap) -> identifiers must NOT change
+  steps := $j$[
+    { "id": "cid_b", "step_ref": "sr_b", "title": "اقدام دو", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null, "fields": [], "transitions": [] },
+    { "id": "cid_a", "step_ref": "sr_a", "title": "اقدام یک", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null,
+      "fields": [ { "id": "fz1", "key": "code", "label": "کد", "type": "text" } ],
+      "transitions": [
+        { "id": "tz1", "title": "ادامه", "trigger_type": "USER_ACTION",
+          "target_type": "TERMINAL_AGREED", "target_step_id": null,
+          "condition_expression": { "version": 1, "logic": "AND",
+            "clauses": [ { "id": "zc1", "source": "STEP_OUTPUT",
+              "field_key": "sr_a.code", "field_label": "اقدام یک — کد",
+              "operator": "in", "value": ["a","b"] } ] } }
+      ] }
+  ]$j$::jsonb;
+  perform public.objection_template_save(tid, 'پایدار-مرتب', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
+  select array_agg(step_ref order by sequence) into refs from public.objection_steps where template_id = tid;
+  if refs is distinct from array['sr_b','sr_a'] then
+    raise exception 'FAIL: step_refs changed after reorder: %', refs;
+  end if;
+  if exists (
+    select 1 from public.objection_steps s
+    join public.objection_step_transitions t on t.step_id = s.id
+    left join lateral jsonb_array_elements(coalesce(t.condition_expression -> 'clauses', '[]'::jsonb)) c on true
+    where s.template_id = tid and s.step_ref = 'sr_b' and c.value ->> 'field_key' = 'sr_a.code'
+  ) then
+    raise exception 'FAIL: condition moved to the wrong action after reorder';
+  end if;
+  if not exists (
+    select 1 from public.objection_steps s
+    join public.objection_step_transitions t on t.step_id = s.id
+    left join lateral jsonb_array_elements(coalesce(t.condition_expression -> 'clauses', '[]'::jsonb)) c on true
+    where s.template_id = tid and s.step_ref = 'sr_a' and c.value ->> 'field_key' = 'sr_a.code'
+  ) then
+    raise exception 'FAIL: condition reference lost from sr_a after reorder';
+  end if;
+
+  -- insert a new action at the START of the path -> existing identifiers unchanged
+  steps := $j$[
+    { "id": "cid_new", "step_ref": "sr_new", "title": "اقدام جدید", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null, "fields": [], "transitions": [] },
+    { "id": "cid_b", "step_ref": "sr_b", "title": "اقدام دو", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null, "fields": [], "transitions": [] },
+    { "id": "cid_a", "step_ref": "sr_a", "title": "اقدام یک", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null,
+      "fields": [ { "id": "fz1", "key": "code", "label": "کد", "type": "text" } ],
+      "transitions": [
+        { "id": "tz1", "title": "ادامه", "trigger_type": "USER_ACTION",
+          "target_type": "TERMINAL_AGREED", "target_step_id": null,
+          "condition_expression": { "version": 1, "logic": "AND",
+            "clauses": [ { "id": "zc1", "source": "STEP_OUTPUT",
+              "field_key": "sr_a.code", "field_label": "اقدام یک — کد",
+              "operator": "in", "value": ["a","b"] } ] } }
+      ] }
+  ]$j$::jsonb;
+  perform public.objection_template_save(tid, 'پایدار-درج', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
+  select array_agg(step_ref order by sequence) into refs from public.objection_steps where template_id = tid;
+  if refs is distinct from array['sr_new','sr_b','sr_a'] then
+    raise exception 'FAIL: step_refs after insert-at-start: %', refs;
+  end if;
+  if not exists (
+    select 1 from public.objection_step_transitions t
+    left join lateral jsonb_array_elements(coalesce(t.condition_expression -> 'clauses', '[]'::jsonb)) c on true
+    where t.step_id in (select id from public.objection_steps where template_id = tid)
+      and c.value ->> 'field_key' = 'sr_a.code'
+  ) then
+    raise exception 'FAIL: condition reference lost after insert-at-start';
+  end if;
+end $$;
+
+-- ── 10) deleting an action that a condition references must be rejected ─────
+do $$
+declare
+  tid uuid;
+  steps jsonb := $j$[
+    { "id": "k1", "step_ref": "ref_keep", "title": "باقی", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null,
+      "fields": [ { "id": "df1", "key": "code", "label": "کد", "type": "text" } ],
+      "transitions": [
+        { "id": "kt1", "title": "ادامه", "trigger_type": "USER_ACTION",
+          "target_type": "TERMINAL_AGREED", "target_step_id": null,
+          "condition_expression": { "version": 1, "logic": "AND",
+            "clauses": [ { "id": "kc1", "source": "STEP_OUTPUT",
+              "field_key": "ref_other.code", "field_label": "اقدام دیگر — کد",
+              "operator": "eq", "value": "x" } ] } }
+      ] },
+    { "id": "o1", "step_ref": "ref_other", "title": "اقدام دیگر", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null, "fields": [], "transitions": [] }
+  ]$j$::jsonb;
+begin
+  tid := public.objection_template_save(null, 'حذف مرجع', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
+  if tid is null then raise exception 'FAIL: delete-block fixture save null'; end if;
+  -- attempt deletion: drop ref_other while the condition on ref_keep still points at it
+  steps := $j$[
+    { "id": "k1", "step_ref": "ref_keep", "title": "باقی", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 1, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null,
+      "fields": [ { "id": "df1", "key": "code", "label": "کد", "type": "text" } ],
+      "transitions": [
+        { "id": "kt1", "title": "ادامه", "trigger_type": "USER_ACTION",
+          "target_type": "TERMINAL_AGREED", "target_step_id": null,
+          "condition_expression": { "version": 1, "logic": "AND",
+            "clauses": [ { "id": "kc1", "source": "STEP_OUTPUT",
+              "field_key": "ref_other.code", "field_label": "اقدام دیگر — کد",
+              "operator": "eq", "value": "x" } ] } }
+      ] }
+  ]$j$::jsonb;
+  begin
+    perform public.objection_template_save(tid, 'حذف مرجع', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
+    raise exception 'FAIL: deleting a condition-referenced action was allowed';
+  exception when check_violation then null;
+  end;
+  -- the rejected save must not have touched the template (atomic)
+  if not exists (select 1 from public.objection_steps where template_id = tid) then
+    raise exception 'FAIL: rejected delete still wiped the steps';
+  end if;
+end $$;
+
+-- ── 11) has_been_activated is monotonic + set on any ACTIVE write ──────────
+do $$
+declare
+  tid uuid;
+  steps jsonb := $j$[
+    { "id": "la", "step_ref": "lock_a", "title": "اقدام", "actor": "TAXPAYER", "responsible_role": "MANAGER",
+      "gap_value": 0, "gap_unit": "روز", "step_nature": "MANDATORY", "stage_id": null, "fields": [], "transitions": [] }
+  ]$j$::jsonb;
+begin
+  tid := public.objection_template_save(null, 'قفل یکطرفه', null, '[]'::jsonb, steps, '[]'::jsonb, '{}'::uuid[]);
+  if tid is null then raise exception 'FAIL: lock fixture save null'; end if;
+  -- a normal request must never flip has_been_activated back to false
+  update public.objection_templates set has_been_activated = true where id = tid;
+  begin
+    update public.objection_templates set has_been_activated = false where id = tid;
+    raise exception 'FAIL: has_been_activated was flipped back to false';
+  exception when check_violation then null;
+  end;
+  -- any direct ACTIVE write sets the lock via the guard trigger
+  insert into public.objection_templates (title, status, is_active)
+  values ('فعال مستقیم', 'ACTIVE', true) returning id into tid;
+  if not exists (select 1 from public.objection_templates where id = tid and has_been_activated) then
+    raise exception 'FAIL: ACTIVE insert did not set has_been_activated';
   end if;
 end $$;
 

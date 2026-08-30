@@ -33,6 +33,47 @@ begin;
 alter table public.objection_templates
   add column if not exists has_been_activated boolean not null default false;
 
+-- Backfill: any template that was already ACTIVE before this migration is an
+-- in-use template — it gets locked permanently (never rewritable again).
+update public.objection_templates
+set has_been_activated = true
+where status = 'ACTIVE' or is_active = true;
+
+-- has_been_activated is monotonic: no normal request can flip it back to false.
+create or replace function public.objection_template_lock_guard()
+returns trigger language plpgsql security definer set search_path = pg_catalog
+as $$
+begin
+  if old.has_been_activated and not new.has_been_activated then
+    raise exception 'وضعیت قفل الگوی فعال‌شده را نمی‌توان با درخواست عادی به false برگرداند' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.objection_template_lock_guard() from public, anon, authenticated, service_role;
+drop trigger if exists objection_template_lock_guard on public.objection_templates;
+create trigger objection_template_lock_guard
+  before update of has_been_activated on public.objection_templates
+  for each row execute function public.objection_template_lock_guard();
+
+-- --------------------------------------------------------------------------
+-- 0b. Stable per-action identifier (step_ref): generated once at creation and
+--     preserved by every save/reorder/insert. Conditions reference this
+--     identifier (step_ref.field_key), never the display order, so reordering
+--     or inserting steps never breaks a stored condition reference.
+-- --------------------------------------------------------------------------
+alter table public.objection_steps
+  add column if not exists step_ref text;
+
+create unique index if not exists objection_steps_step_ref_uidx
+  on public.objection_steps (template_id, step_ref)
+  where step_ref is not null;
+
+-- Deterministic, stable backfill for existing actions (derived from their uuid).
+update public.objection_steps
+set step_ref = 'step_' || replace(id::text, '-', '')
+where step_ref is null;
+
 -- Set the flag whenever a row becomes ACTIVE (also covers direct table writes).
 create or replace function public.objection_template_guard_activate()
 returns trigger language plpgsql security definer set search_path = pg_catalog
@@ -54,7 +95,7 @@ $$;
 revoke all on function public.objection_template_guard_activate() from public, anon, authenticated, service_role;
 drop trigger if exists objection_template_guard_activate on public.objection_templates;
 create trigger objection_template_guard_activate
-  before update of status, is_active on public.objection_templates
+  before insert or update of status, is_active on public.objection_templates
   for each row execute function public.objection_template_guard_activate();
 
 -- --------------------------------------------------------------------------
@@ -114,9 +155,12 @@ declare
   v_stage_map jsonb := '{}'::jsonb;  -- sent stage id -> new real uuid text
   v_step_map jsonb := '{}'::jsonb;   -- sent step id -> new real uuid text
   v_seen text[];
+  v_refs text[] := '{}'::text[];
+  v_ref text;
   rec record;      -- loop row: has column "value" (alias t(value))
   fld record;
   tr record;
+  cl record;
   v_stage jsonb;   -- plain jsonb copy of the current element (nested-query safe)
   v_step jsonb;
   v_group jsonb;
@@ -199,6 +243,33 @@ begin
         v_seen := array_append(v_seen, fld.value ->> 'key');
       end if;
     end loop;
+    -- شناسه پایدار اقدام: فقط هنگام ایجاد تولید می‌شود و هر ذخیره/جابه‌جایی آن را حفظ می‌کند.
+    v_ref := coalesce(nullif(v_step ->> 'step_ref', ''), v_step ->> 'id');
+    if v_ref is null or btrim(v_ref) = '' then
+      raise exception 'شناسه پایدار اقدام اجباری است' using errcode = '22023';
+    end if;
+    if v_ref = any (v_refs) then
+      raise exception 'شناسه اقدام «%» تکراری است', v_ref using errcode = '22023';
+    end if;
+    v_refs := array_append(v_refs, v_ref);
+  end loop;
+
+  -- حذف اقدامِ دارای ارجاع شرطی مسدود است: هر شرط «خروجی اقدام قبلی» باید به اقدامی
+  -- که در همین بار ارسال شده ارجاع دهد؛ در غیر این صورت یعنی اقدام مرجع حذف شده است.
+  for rec in select * from jsonb_array_elements(p_steps) as t(value) loop
+    v_step := rec.value;
+    for tr in select * from jsonb_array_elements(coalesce(v_step -> 'transitions', '[]'::jsonb)) as t(value) loop
+      for cl in select * from jsonb_array_elements(coalesce(tr.value -> 'condition_expression' -> 'clauses', '[]'::jsonb)) as t(value) loop
+        if (cl.value ->> 'source') = 'STEP_OUTPUT' then
+          v_ref := split_part(coalesce(cl.value ->> 'field_key', ''), '.', 1);
+          if v_ref <> '' and not (v_ref = any (v_refs)) then
+            raise exception 'حذف اقدام مرجع شرط مجاز نیست؛ ابتدا شرط «%» را اصلاح کنید',
+              coalesce(cl.value ->> 'field_label', cl.value ->> 'field_key')
+              using errcode = '23514';
+          end if;
+        end if;
+      end loop;
+    end loop;
   end loop;
 
   -- Stage: validate names.
@@ -232,12 +303,13 @@ begin
     if v_step ->> 'stage_id' is not null and v_stage_map ? (v_step ->> 'stage_id') then
       v_stage_id := (v_stage_map ->> (v_step ->> 'stage_id'))::uuid;
     end if;
+    v_ref := coalesce(nullif(v_step ->> 'step_ref', ''), v_step ->> 'id');
     insert into public.objection_steps (
-      template_id, sequence, code, title, actor, performer_key, performer_label,
+      template_id, sequence, code, step_ref, title, actor, performer_key, performer_label,
       responsible_role, responsible_role_label, gap_value, gap_unit, base_event,
       step_nature, legal_basis, form_schema, is_optional, stage_id
     ) values (
-      v_tid, v_seq, 'STEP_' || v_seq, btrim(v_step ->> 'title'),
+      v_tid, v_seq, 'STEP_' || v_seq, v_ref, btrim(v_step ->> 'title'),
       coalesce(v_step ->> 'actor', 'TAXPAYER'),
       v_step ->> 'performer_key', v_step ->> 'performer_label',
       v_step ->> 'responsible_role', v_step ->> 'responsible_role_label',

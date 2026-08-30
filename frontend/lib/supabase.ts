@@ -171,6 +171,9 @@ export interface ObjectionStep {
   id: string
   /** کد پایدار اقدام (STEP_N)؛ با ترتیب، پس از هر ذخیره ثابت می‌ماند */
   code?: string
+  /** شناسه پایدار اقدام — فقط هنگام ایجاد تولید می‌شود و جابه‌جایی/تکرار/ذخیره آن را عوض نمی‌کند.
+   *  شرط‌ها با «شناسه پایدار اقدام + کلید فیلد» ارجاع می‌دهند، نه با ترتیب نمایش. */
+  step_ref?: string
   title: string
   base_event: string
   gap_value: number

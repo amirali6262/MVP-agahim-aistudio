@@ -112,8 +112,10 @@ function newId(prefix: string): string {
 }
 
 function newStep(): ObjectionStep {
+  const ref = newId('step')
   return {
-    id: newId('step'),
+    id: ref,
+    step_ref: ref,
     title: 'اقدام جدید',
     base_event: 'تاریخ وقوع رویداد',
     gap_value: 0,
@@ -1087,8 +1089,10 @@ export default function ObjectionTemplateWizard({
       const actionLabel = step.title || 'اقدام بدون عنوان'
       for (const f of step.fields ?? []) {
         const fieldKey = f.key || f.label || 'field'
-        // ارجاع با «شناسه اقدام + کلید فیلد» تا دو فیلد هم‌نام از دو اقدام مبهم نباشند.
-        fields.push({ key: `${(step.code || `STEP_${draft.steps.indexOf(step) + 1}`)}.${fieldKey}`, label: `${actionLabel} — ${f.label || fieldKey}`, source: 'STEP_OUTPUT' })
+        // ارجاع با «شناسه پایدار اقدام + کلید فیلد» تا دو فیلد هم‌نام از دو اقدام مبهم نباشند؛
+        // این شناسه فقط هنگام ایجاد ساخته می‌شود و جابه‌جایی/تکرار/ذخیره آن را تغییر نمی‌دهد.
+        const ref = step.step_ref || step.id
+        fields.push({ key: `${ref}.${fieldKey}`, label: `${actionLabel} — ${f.label || fieldKey}`, source: 'STEP_OUTPUT' })
       }
     }
     fields.push({ key: 'entity_type', label: 'نوع شخصیت شرکت', source: 'FACT' })
@@ -1214,9 +1218,11 @@ export default function ObjectionTemplateWizard({
   const duplicateStep = (id: string) => {
     const source = draft.steps.find((s) => s.id === id)
     if (!source) return
+    const copyRef = newId('step')
     const copy: ObjectionStep = {
       ...source,
-      id: newId('step'),
+      id: copyRef,
+      step_ref: copyRef,
       title: `${source.title} (کپی)`,
       fields: (source.fields ?? []).map((f) => ({ ...f, id: newId('f') })),
       transitions: (source.transitions ?? []).map((t) => ({ ...t, id: newId('tr') })),
@@ -1250,6 +1256,32 @@ export default function ObjectionTemplateWizard({
         } as StepTransition,
       ],
     })
+  }
+
+  const stepRefOf = (step: ObjectionStep): string => step.step_ref || step.id
+
+  /** حذف اقدامی که شرطی به آن ارجاع می‌دهد ممنوع است؛ ادمین ابتدا باید ارجاع را اصلاح کند. */
+  const handleDeleteStep = (stepId: string) => {
+    const target = draft.steps.find((s) => s.id === stepId)
+    if (!target) return
+    const targetRef = stepRefOf(target)
+    const referencing: string[] = []
+    for (const other of draft.steps) {
+      if (other.id === stepId) continue
+      for (const t of other.transitions ?? []) {
+        const expr = t.condition_expression as ConditionExpression | null | undefined
+        for (const clause of expr?.clauses ?? []) {
+          if (clause.source === 'STEP_OUTPUT' && clause.field_key.split('.')[0] === targetRef) {
+            referencing.push(`${other.title || 'اقدام'} → ${clause.field_label || clause.field_key}`)
+          }
+        }
+      }
+    }
+    if (referencing.length > 0) {
+      toast.error(`حذف این اقدام ممکن نیست؛ ابتدا شرط‌های زیر را اصلاح کنید: ${referencing.join('، ')}`)
+      return
+    }
+    patch({ steps: draft.steps.filter((s) => s.id !== stepId) })
   }
 
   const removeTransition = (stepId: string, transitionId: string) => {
@@ -1595,7 +1627,7 @@ export default function ObjectionTemplateWizard({
                             <button type="button" onClick={() => moveStep(step.id, 1)} disabled={index === group.steps.length - 1} className="rounded-lg border border-zinc-800 p-1.5 text-zinc-500 transition hover:text-zinc-300 disabled:opacity-30">
                               <ChevronDown className="h-3.5 w-3.5" />
                             </button>
-                            <button type="button" onClick={() => patch({ steps: draft.steps.filter((s) => s.id !== step.id) })} className="rounded-lg border border-zinc-800 p-1.5 text-zinc-500 transition hover:text-red-400" title="حذف اقدام">
+                            <button type="button" onClick={() => handleDeleteStep(step.id)} className="rounded-lg border border-zinc-800 p-1.5 text-zinc-500 transition hover:text-red-400" title="حذف اقدام">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>

@@ -195,6 +195,7 @@ async function loadObjectionTemplates(includeInactive: boolean): Promise<Objecti
       steps: templateSteps.map((step: any) => ({
         id: step.id,
         code: step.code ?? undefined,
+        step_ref: step.step_ref ?? undefined,
         title: step.title,
         actor: step.actor,
         performer_key: step.performer_key ?? null,
