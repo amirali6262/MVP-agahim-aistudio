@@ -1311,3 +1311,53 @@ export async function fetchMenuPublishStatus(): Promise<{ published_at: string |
   const latest = rows.reduce((a, b) => (a.published_at > b.published_at ? a : b))
   return { published_at: latest.published_at, item_count: rows.length }
 }
+
+// ---------------------------------------------------------------------------
+// Platform role definitions + permission matrix (admin display metadata)
+// ---------------------------------------------------------------------------
+
+export interface DbRoleDefinition {
+  key: string
+  label: string
+  persian_label: string
+  description: string
+  permissions: string[]
+  restrictions: string[]
+  sort_order: number
+}
+
+export interface DbPermissionMatrixRow {
+  id: number
+  label: string
+  role_checks: Record<string, boolean>
+  sort_order: number
+}
+
+export async function fetchRoleDefinitions(): Promise<DbRoleDefinition[]> {
+  if (!isSupabaseConfigured) return []
+  const rows = await safeQuery<DbRoleDefinition>(() =>
+    (supabase as any).from('role_definitions').select('*').order('sort_order', { ascending: true })
+  )
+  return rows.map((row) => ({
+    key: row.key,
+    label: row.label,
+    persian_label: row.persian_label,
+    description: row.description ?? '',
+    permissions: Array.isArray(row.permissions) ? row.permissions : [],
+    restrictions: Array.isArray(row.restrictions) ? row.restrictions : [],
+    sort_order: row.sort_order ?? 0,
+  }))
+}
+
+export async function fetchPermissionMatrix(): Promise<DbPermissionMatrixRow[]> {
+  if (!isSupabaseConfigured) return []
+  const rows = await safeQuery<DbPermissionMatrixRow>(() =>
+    (supabase as any).from('permission_matrix').select('*').order('sort_order', { ascending: true })
+  )
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    role_checks: (row.role_checks ?? {}) as Record<string, boolean>,
+    sort_order: row.sort_order ?? 0,
+  }))
+}
