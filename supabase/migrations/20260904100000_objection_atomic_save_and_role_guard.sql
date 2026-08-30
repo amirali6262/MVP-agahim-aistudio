@@ -114,9 +114,9 @@ declare
   v_stage_map jsonb := '{}'::jsonb;  -- sent stage id -> new real uuid text
   v_step_map jsonb := '{}'::jsonb;   -- sent step id -> new real uuid text
   v_seen text[];
-  rec jsonb;
-  fld jsonb;
-  tr jsonb;
+  rec record;      -- loop row: has column "value" (alias t(value))
+  fld record;
+  tr record;
   v_stage jsonb;   -- plain jsonb copy of the current element (nested-query safe)
   v_step jsonb;
   v_group jsonb;
