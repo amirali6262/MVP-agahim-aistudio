@@ -108,7 +108,7 @@ export async function listOptions(listId: string): Promise<SelectionListOption[]
 // ---------------------------------------------------------------------------
 // Resolve a published, active list's options by its stable key.
 // Returns [{ key, label }] in sort_order — used by forms that previously
-// hardcoded option arrays (Studio, penalties, extensions, objections, …).
+// hardcoded option arrays (Studio, penalties, extensions, …).
 // ---------------------------------------------------------------------------
 export async function fetchSelectionListOptions(listKey: string): Promise<Array<{ key: string; label: string }>> {
   if (!isSupabaseConfigured || !listKey) return []

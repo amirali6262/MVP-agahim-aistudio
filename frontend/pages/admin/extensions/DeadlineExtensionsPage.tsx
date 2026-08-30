@@ -24,11 +24,11 @@ import type { DeadlineExtension, Obligation } from '../../../lib/supabase'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import JalaliDatePicker from '../../../components/JalaliDatePicker'
 import type { DependencyCheckResult } from '../../../lib/dependencyChecker'
-
-const FISCAL_YEARS = ['۱۴۰۲', '۱۴۰۳', '۱۴۰۴']
-const EXTENSION_TYPES = ['تاریخ ثابت', 'روزهای اضافه'] as const
+import { useSelectionListOptions } from '../../../lib/selectionLists'
 
 export default function DeadlineExtensionsPage() {
+  const fiscalYears = useSelectionListOptions('fiscal_years')
+  const extensionTypes = useSelectionListOptions('extension_types')
   const [extensions, setExtensions] = useState<DeadlineExtension[]>([])
   const [obligations, setObligations] = useState<Obligation[]>([])
   const [isCreating, setIsCreating] = useState(false)
@@ -286,9 +286,9 @@ export default function DeadlineExtensionsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                      {FISCAL_YEARS.map((y) => (
-                        <SelectItem key={y} value={y} className="text-zinc-100 focus:bg-zinc-700">
-                          {y}
+                      {fiscalYears.map(({ key, label }) => (
+                        <SelectItem key={key} value={key} className="text-zinc-100 focus:bg-zinc-700">
+                          {label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -310,9 +310,9 @@ export default function DeadlineExtensionsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                      {EXTENSION_TYPES.map((t) => (
-                        <SelectItem key={t} value={t} className="text-zinc-100 focus:bg-zinc-700">
-                          {t}
+                      {extensionTypes.map(({ key, label }) => (
+                        <SelectItem key={key} value={key} className="text-zinc-100 focus:bg-zinc-700">
+                          {label}
                         </SelectItem>
                       ))}
                     </SelectContent>

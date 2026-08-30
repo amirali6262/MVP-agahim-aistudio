@@ -15,6 +15,7 @@ import { updateObligation } from '../../../lib/supabaseDb'
 import type { Obligation, PenaltyItem } from '../../../lib/supabase'
 import DeleteGuardModal from '../../../components/DeleteGuardModal'
 import type { DependencyCheckResult } from '../../../lib/dependencyChecker'
+import { useSelectionListOptions } from '../../../lib/selectionLists'
 
 interface Props {
   obligation: Obligation
@@ -22,11 +23,10 @@ interface Props {
   onSaved: () => void
 }
 
-const PENALTY_TYPE_OPTIONS = ['درصدی/روزشمار', 'مبلغ ثابت', 'لغو مجوز/ممنوع‌الخروجی']
-const CALC_UNIT_OPTIONS = ['در روز', 'در ماه', 'یکجا']
-const CALC_BASE_OPTIONS = ['مبلغ اصل مالیات', 'مبلغ معاملات', 'روزهای تاخیر']
-
 export default function PenaltiesManager({ obligation, onBack, onSaved }: Props) {
+  const penaltyTypes = useSelectionListOptions('penalty_types')
+  const calcUnits = useSelectionListOptions('calc_units')
+  const calcBases = useSelectionListOptions('calc_bases')
   const [penalties, setPenalties] = useState<PenaltyItem[]>(
     obligation.penalties && obligation.penalties.length > 0
       ? obligation.penalties
@@ -198,8 +198,8 @@ export default function PenaltiesManager({ obligation, onBack, onSaved }: Props)
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="border-zinc-700 style-menu" style={{ background: '#1e2020' }}>
-                        {PENALTY_TYPE_OPTIONS.map((o) => (
-                          <SelectItem key={o} value={o} className="text-zinc-100 focus:bg-zinc-700">{o}</SelectItem>
+                        {penaltyTypes.map(({ key, label }) => (
+                          <SelectItem key={key} value={key} className="text-zinc-100 focus:bg-zinc-700">{label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -232,8 +232,8 @@ export default function PenaltiesManager({ obligation, onBack, onSaved }: Props)
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                        {CALC_UNIT_OPTIONS.map((o) => (
-                          <SelectItem key={o} value={o} className="text-zinc-100 focus:bg-zinc-700">{o}</SelectItem>
+                        {calcUnits.map(({ key, label }) => (
+                          <SelectItem key={key} value={key} className="text-zinc-100 focus:bg-zinc-700">{label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -250,8 +250,8 @@ export default function PenaltiesManager({ obligation, onBack, onSaved }: Props)
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="border-zinc-700" style={{ background: '#1e2020' }}>
-                        {CALC_BASE_OPTIONS.map((o) => (
-                          <SelectItem key={o} value={o} className="text-zinc-100 focus:bg-zinc-700">{o}</SelectItem>
+                        {calcBases.map(({ key, label }) => (
+                          <SelectItem key={key} value={key} className="text-zinc-100 focus:bg-zinc-700">{label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
