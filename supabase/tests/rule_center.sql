@@ -119,7 +119,7 @@ begin
   select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
 
   insert into public.obligation_families (id, code, title, domain) values
-    ('b2000000-0000-0000-0000-000000000001', 'RC_FAM', 'خانوادهٔ آزمون', 'عمومی');
+    ('b2000000-0000-0000-0000-000000000001', 'RC_FAM', 'خانوادهٔ آزمون', 'TAX');
   insert into public.obligation_definitions (id, family_id, code, title) values
     ('b2000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_A', 'تعهد الف'),
     ('b2000000-0000-0000-0000-000000000003', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_B', 'تعهد ب');
