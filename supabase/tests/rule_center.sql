@@ -64,12 +64,12 @@ select set_config('request.jwt.claim.sub', 'a2000000-0000-0000-0000-000000000001
 select set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
   test_id uuid;
   res jsonb;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_10DAYS', 'آزمون: ده روز پس از دریافت', 'قاعدهٔ آزمایشی برای آزمون‌های مرکز قواعد',
     null, null, null, null, 'INTERNAL', '2026-01-01', null,
     $j${
@@ -84,9 +84,9 @@ begin
     }$j$::jsonb,
     $j$[ { "key": "base_date", "label": "تاریخ دریافت", "type": "DATE", "required": true } ]$j$::jsonb
   );
-  if rule_id is null then raise exception 'FAIL: rule save null'; end if;
+  if v_rule_id is null then raise exception 'FAIL: rule save null'; end if;
 
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   if version_id is null then raise exception 'FAIL: version not created'; end if;
 
   -- نمونهٔ سند: دریافت در ۱۴۰۵/۰۲/۰۵ (2026-04-25)، روز شروع شمرده نشود → روز دهم ۱۴۰۵/۰۲/۱۵ (2026-05-05)
@@ -108,15 +108,15 @@ end $$;
 -- ── 3) Same rule version in two obligations + one action ─────────────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
   o1 uuid; o2 uuid; ov1 uuid; ov2 uuid;
   step_id uuid; tpl_id uuid;
   conn1 uuid; conn2 uuid;
   res jsonb;
 begin
-  select id into rule_id from public.rule_center_rules where code = 'RC_TEST_10DAYS';
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select id into v_rule_id from public.rule_center_rules where code = 'RC_TEST_10DAYS';
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
 
   insert into public.obligation_families (id, code, title, domain) values
     ('b2000000-0000-0000-0000-000000000001', 'RC_FAM', 'خانوادهٔ آزمون', 'عمومی');
@@ -171,11 +171,11 @@ end $$;
 -- ── 5) Fiscal-year dependent: two different fiscal years ─────────────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
   res jsonb;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_FY', 'آزمون: دو ماه پس از پایان سال مالی',
     null, null, null, null, null, 'INTERNAL', null, null,
     $j${
@@ -189,7 +189,7 @@ begin
     }$j$::jsonb,
     '[]'::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
 
   -- شرکت الف: پایان سال مالی ۱۴۰۴/۰۶/۳۱ (2025-09-22) → +۲ ماه شمسی = ۱۴۰۴/۰۸/۳۰ (2025-11-21)
   res := public.rule_center_calc_deadline(version_id,
@@ -222,11 +222,11 @@ on conflict ("key") do nothing;
 
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
   res jsonb;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_WD', 'آزمون: ده روز کاری', null, null, null, null, null, 'INTERNAL', null, null,
     $j${
       "deadline": {
@@ -239,14 +239,14 @@ begin
     }$j$::jsonb,
     $j$[ { "key": "base_date", "label": "مبدأ", "type": "DATE", "required": true } ]$j$::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   -- ۱۰ روز کاری از شنبه 2026-04-26 با تعطیلی پنجشنبه/جمعه → 2026-05-10
   res := public.rule_center_calc_deadline(version_id,
     $j$ { "base_date": { "value": "2026-04-26", "type": "DATE" } }$j$::jsonb, 'PREVIEW');
   if (res ->> 'effective_deadline') <> '2026-05-10' then raise exception 'FAIL: working days %', res; end if;
 
   -- اصلاح تعطیل‌بودن روز آخر: دوشنبه 2026-04-27 + ۴ روز تقویمی = جمعه 2026-05-01 → 2026-05-03
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_ROLL', 'آزمون: انتقال روز آخر تعطیل', null, null, null, null, null, 'INTERNAL', null, null,
     $j${
       "deadline": {
@@ -259,7 +259,7 @@ begin
     }$j$::jsonb,
     $j$[ { "key": "base_date", "label": "مبدأ", "type": "DATE", "required": true } ]$j$::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   res := public.rule_center_calc_deadline(version_id,
     $j$ { "base_date": { "value": "2026-04-27", "type": "DATE" } }$j$::jsonb, 'PREVIEW');
   if (res ->> 'effective_deadline') <> '2026-05-03' then raise exception 'FAIL: holiday roll %', res; end if;
@@ -268,11 +268,11 @@ end $$;
 -- ── 8) Overlapping pauses not double-counted ─────────────────────────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
   res jsonb;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_PAUSE', 'آزمون: توقف هم‌پوشان', null, null, null, null, null, 'INTERNAL', null, null,
     $j${
       "deadline": {
@@ -289,7 +289,7 @@ begin
     }$j$::jsonb,
     $j$[ { "key": "base_date", "label": "مبدأ", "type": "DATE", "required": true } ]$j$::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   -- مبدأ 2026-04-25، دو بازهٔ توقف هم‌پوشان: 26 تا 28 و 27 تا 29 → فقط ۴ روز توقف
   res := public.rule_center_calc_deadline(version_id,
     $j$ {
@@ -306,11 +306,11 @@ end $$;
 -- ── 9) Penalty — documented per-day example ──────────────────────────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
   res jsonb;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'PENALTY', 'RC_TEST_PEN', 'آزمون: جریمهٔ روزانهٔ ۱۰۰ هزار ریال', null, null, null, null, null, 'INTERNAL', null, null,
     $j${
       "conditions": { "logic": "ALL", "clauses": [
@@ -331,7 +331,7 @@ begin
     }$j$::jsonb,
     $j$[ { "key": "debt_amount", "label": "مبلغ بدهی", "type": "AMOUNT", "required": true } ]$j$::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
 
   -- نمونهٔ سند: موعد ۱۴۰۵/۰۲/۱۵ (2026-05-05)، انجام ۱۴۰۵/۰۲/۱۸ (2026-05-08) → روزهای ۱۶ و ۱۷ → ۲۰۰ هزار ریال
   res := public.rule_center_calc_penalty(version_id,
@@ -348,11 +348,11 @@ end $$;
 -- ── 10) Percent penalty with unknown base → PENDING_INPUT ────────────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
   res jsonb;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'PENALTY', 'RC_TEST_PENPCT', 'آزمون: درصد با مبنای نامعلوم', null, null, null, null, null, 'INTERNAL', null, null,
     $j${
       "conditions": { "logic": "ALL", "clauses": [] },
@@ -367,7 +367,7 @@ begin
     }$j$::jsonb,
     $j$[ { "key": "debt_amount", "label": "مبلغ بدهی", "type": "AMOUNT", "required": true } ]$j$::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   res := public.rule_center_calc_penalty(version_id, '{}'::jsonb, 'PREVIEW');
   if (res ->> 'status') <> 'PENDING_INPUT' then
     raise exception 'FAIL: unknown base must be PENDING_INPUT, got %', res ->> 'status';
@@ -377,12 +377,12 @@ end $$;
 -- ── 11) Tiered bracket vs whole ──────────────────────────────────────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
   res jsonb;
 begin
   -- نرخ هر بخش (BRACKET): ۵٪ تا ۱٬۰۰۰٬۰۰۰، ۱۰٪ بالاتر → مبلغ ۲٬۰۰۰٬۰۰۰ → ۵۰٬۰۰۰ + ۱۰۰٬۰۰۰ = ۱۵۰٬۰۰۰
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'PENALTY', 'RC_TEST_TIER', 'آزمون: پلکانی', null, null, null, null, null, 'INTERNAL', null, null,
     $j${
       "conditions": { "logic": "ALL", "clauses": [] },
@@ -398,7 +398,7 @@ begin
     }$j$::jsonb,
     $j$[ { "key": "debt_amount", "label": "مبلغ بدهی", "type": "AMOUNT", "required": true } ]$j$::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   res := public.rule_center_calc_penalty(version_id,
     $j$ { "debt_amount": { "value": "2000000", "type": "AMOUNT" } }$j$::jsonb, 'PREVIEW');
   if (res ->> 'estimated_amount')::numeric <> 150000 then raise exception 'FAIL: tiered bracket %', res; end if;
@@ -415,15 +415,15 @@ end $$;
 -- ── 12) Published version immutable ───────────────────────────────────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_LOCK', 'آزمون: قفل انتشار', null, null, null, null, null, 'INTERNAL', null, null,
     $j$ { "deadline": { "method": "FIXED_IN_PERIOD", "fixed_in_period": { "position": "END" }, "count": {}, "holiday_roll": { "enabled": false } }, "reminders": [] }$j$::jsonb,
     '[]'::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   -- انتشار از مسیر رسمی
   perform public.rule_center_transition(version_id, 'IN_REVIEW');
   perform public.rule_center_transition(version_id, 'APPROVED');
@@ -450,15 +450,15 @@ end $$;
 -- ── 13) ACTIVE connection requires PUBLISHED version ─────────────────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_CONN', 'آزمون: اتصال فعال', null, null, null, null, null, 'INTERNAL', null, null,
     $j$ { "deadline": { "method": "FIXED_IN_PERIOD", "fixed_in_period": { "position": "END" }, "count": {}, "holiday_roll": { "enabled": false } }, "reminders": [] }$j$::jsonb,
     '[]'::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   begin
     perform public.rule_center_save_connection(version_id, 'OBLIGATION_VERSION', 'b2000000-0000-0000-0000-000000000004', '{}'::jsonb, 'UNCHECKED', null, true);
     raise exception 'FAIL: ACTIVE connection to unpublished version allowed';
@@ -469,15 +469,15 @@ end $$;
 -- ── 14) Obligation publish blocked while rule connection not ready ───────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_GATE', 'آزمون: گیت انتشار تعهد', null, null, null, null, null, 'INTERNAL', null, null,
     $j$ { "deadline": { "method": "FIXED_IN_PERIOD", "fixed_in_period": { "position": "END" }, "count": {}, "holiday_roll": { "enabled": false } }, "reminders": [] }$j$::jsonb,
     '[]'::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   perform public.rule_center_save_connection(version_id, 'OBLIGATION_VERSION', 'b2000000-0000-0000-0000-000000000005', '{}'::jsonb, 'UNCHECKED', null, false);
   begin
     update public.obligation_versions
@@ -491,15 +491,15 @@ end $$;
 -- ── 15) Objection activation blocked with unpublished rule link ──────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_ACT', 'آزمون: فعال‌سازی الگو', null, null, null, null, null, 'INTERNAL', null, null,
     $j$ { "deadline": { "method": "FIXED_IN_PERIOD", "fixed_in_period": { "position": "END" }, "count": {}, "holiday_roll": { "enabled": false } }, "reminders": [] }$j$::jsonb,
     '[]'::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   update public.objection_steps
   set deadline_rule_version_id = version_id
   where id = 'b2000000-0000-0000-0000-000000000007';
@@ -540,16 +540,16 @@ end $$;
 -- ── 17) RLS: company user cannot write rules, can read published ─────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   version_id uuid;
   cnt integer;
 begin
-  rule_id := public.rule_center_save_rule(
+  v_rule_id := public.rule_center_save_rule(
     null, 'DEADLINE', 'RC_TEST_RLS', 'آزمون: دسترسی', null, null, null, null, null, 'INTERNAL', null, null,
     $j$ { "deadline": { "method": "FIXED_IN_PERIOD", "fixed_in_period": { "position": "END" }, "count": {}, "holiday_roll": { "enabled": false } }, "reminders": [] }$j$::jsonb,
     '[]'::jsonb
   );
-  select v.id into version_id from public.rule_center_versions v where v.rule_id = rule_id;
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   perform public.rule_center_transition(version_id, 'IN_REVIEW');
   perform public.rule_center_transition(version_id, 'APPROVED');
   perform public.rule_center_transition(version_id, 'PUBLISHED');
@@ -582,13 +582,13 @@ end $$;
 -- ── 18) New version keeps old version untouched ──────────────────────────
 do $$
 declare
-  rule_id uuid;
+  v_rule_id uuid;
   v1 uuid;
   v2 uuid;
 begin
-  select id into rule_id from public.rule_center_rules where code = 'RC_TEST_10DAYS';
-  select id into v1 from public.rule_center_versions where rule_id = rule_id order by version_number desc limit 1;
-  v2 := public.rule_center_new_version(rule_id, '{"deadline":{"method":"FIXED_IN_PERIOD","fixed_in_period":{"position":"START"},"count":{},"holiday_roll":{"enabled":false}},"reminders":[]}'::jsonb, '[]'::jsonb);
+  select id into v_rule_id from public.rule_center_rules where code = 'RC_TEST_10DAYS';
+  select id into v1 from public.rule_center_versions where rule_id = v_rule_id order by version_number desc limit 1;
+  v2 := public.rule_center_new_version(v_rule_id, '{"deadline":{"method":"FIXED_IN_PERIOD","fixed_in_period":{"position":"START"},"count":{},"holiday_roll":{"enabled":false}},"reminders":[]}'::jsonb, '[]'::jsonb);
   if v2 is null or v2 = v1 then raise exception 'FAIL: new version not created'; end if;
   if (select version_number from public.rule_center_versions where id = v2) <=
      (select version_number from public.rule_center_versions where id = v1) then
