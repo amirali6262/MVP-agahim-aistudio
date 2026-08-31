@@ -462,8 +462,6 @@ create or replace function public.rule_center_publish_check(p_connection_id uuid
 returns jsonb language plpgsql security definer set search_path = pg_catalog as $$
 declare
   v_conn record;
-  v_rule record;
-  v_version record;
   v_checks jsonb := '[]'::jsonb;
   v_ok boolean := true;
   v_missing text[] := '{}'::text[];
@@ -472,7 +470,7 @@ declare
   v_tests_ok boolean;
 begin
   select c.*, r.kind, r.legal_source, r.nature, v.version_number, v.status as vstatus
-    into v_conn, v_rule, v_version
+    into v_conn
   from public.rule_center_connections c
   join public.rule_center_versions v on v.id = c.version_id
   join public.rule_center_rules r on r.id = v.rule_id
@@ -482,15 +480,15 @@ begin
   end if;
 
   -- ۱) نسخه منتشر شده باشد
-  if v_version.vstatus = 'PUBLISHED' then
+  if v_conn.vstatus = 'PUBLISHED' then
     v_checks := v_checks || jsonb_build_object('key','version_status','ok',true,'label','نسخهٔ قاعده منتشر شده است');
   else
     v_ok := false;
-    v_checks := v_checks || jsonb_build_object('key','version_status','ok',false,'label','نسخهٔ قاعده باید «منتشرشده» باشد (وضعیت فعلی: ' || v_version.vstatus || ')');
+    v_checks := v_checks || jsonb_build_object('key','version_status','ok',false,'label','نسخهٔ قاعده باید «منتشرشده» باشد (وضعیت فعلی: ' || v_conn.vstatus || ')');
   end if;
 
   -- ۲) ورودی‌های الزامی نگاشت معتبر داشته باشند
-  for v_rec in select * from jsonb_array_elements(coalesce(v_version.inputs, '[]'::jsonb)) as t(value) loop
+  for v_rec in select * from jsonb_array_elements(coalesce(v_conn.inputs, '[]'::jsonb)) as t(value) loop
     v_in := v_rec.value;
     if coalesce((v_in ->> 'required')::boolean, false) and not (v_conn.mapping ? (v_in ->> 'key')) then
       v_missing := array_append(v_missing, v_in ->> 'label');
@@ -504,7 +502,7 @@ begin
   end if;
 
   -- ۳) منبع قانونی (فقط برای قاعده با ماهیت LEGAL)
-  if v_rule.nature = 'LEGAL' and coalesce(v_rule.legal_source, '') = '' then
+  if v_conn.nature = 'LEGAL' and coalesce(v_conn.legal_source, '') = '' then
     v_ok := false;
     v_checks := v_checks || jsonb_build_object('key','legal_source','ok',false,'label','منبع قانونی برای قاعدهٔ قانونی اجباری است');
   else
@@ -512,7 +510,7 @@ begin
   end if;
 
   -- ۴) دست‌کم یک آزمون موفق برای نسخه
-  select exists (select 1 from public.rule_center_tests t where t.version_id = v_version.id and t.status = 'PASS')
+  select exists (select 1 from public.rule_center_tests t where t.version_id = v_conn.version_id and t.status = 'PASS')
     into v_tests_ok;
   if v_tests_ok then
     v_checks := v_checks || jsonb_build_object('key','tests','ok',true,'label','آزمون موفق برای این نسخه ثبت شده است');
@@ -522,10 +520,10 @@ begin
   end if;
 
   -- ۵) وضعیت جریمهٔ تعهد مشخص باشد (فقط اتصال جریمه)
-  if v_rule.kind = 'PENALTY' and v_conn.decided_status = 'UNCHECKED' then
+  if v_conn.kind = 'PENALTY' and v_conn.decided_status = 'UNCHECKED' then
     v_ok := false;
     v_checks := v_checks || jsonb_build_object('key','penalty_decided','ok',false,'label','وضعیت جریمه باید مشخص شود (بررسی‌شده، بدون جریمه یا نیازمند مرجع)');
-  elsif v_rule.kind = 'PENALTY' then
+  elsif v_conn.kind = 'PENALTY' then
     v_checks := v_checks || jsonb_build_object('key','penalty_decided','ok',true,'label','وضعیت جریمه مشخص است');
   else
     v_checks := v_checks || jsonb_build_object('key','penalty_decided','ok',true,'label','قاعدهٔ جریمه نیست');
@@ -606,7 +604,6 @@ create or replace function public.rule_center_calc_deadline(
 language plpgsql security definer set search_path = pg_catalog as $$
 declare
   v_version record;
-  v_rule record;
   v_def jsonb;
   v_dl jsonb;
   v_rec record;
@@ -653,7 +650,7 @@ declare
   v_choose text;
   v_engine text := 'rule-center-1';
 begin
-  select v.*, r.kind, r.code into v_version, v_rule
+  select v.*, r.kind, r.code into v_version
   from public.rule_center_versions v
   join public.rule_center_rules r on r.id = v.rule_id
   where v.id = p_version_id;
@@ -947,7 +944,6 @@ create or replace function public.rule_center_calc_penalty(
 language plpgsql security definer set search_path = pg_catalog as $$
 declare
   v_version record;
-  v_rule record;
   v_def jsonb;
   v_calc jsonb;
   v_cond jsonb;
@@ -994,7 +990,7 @@ declare
   v_effective_deadline date;
   v_decided_status text;
 begin
-  select v.*, r.kind, r.code into v_version, v_rule
+  select v.*, r.kind, r.code into v_version
   from public.rule_center_versions v
   join public.rule_center_rules r on r.id = v.rule_id
   where v.id = p_version_id;
