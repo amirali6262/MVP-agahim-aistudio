@@ -105,6 +105,23 @@ begin
   end if;
 end $$;
 
+-- ── 3a) Fixtures as superuser (obligation_*/objection_* tables have RLS
+--         policies but no INSERT grants for authenticated; same convention
+--         as eligibility_dynamic_facts.sql: fixtures run as postgres) ────
+insert into public.obligation_families (id, code, title, domain) values
+  ('b2000000-0000-0000-0000-000000000001', 'RC_FAM', 'خانوادهٔ آزمون', 'TAX');
+insert into public.obligation_definitions (id, family_id, code, title) values
+  ('b2000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_A', 'تعهد الف'),
+  ('b2000000-0000-0000-0000-000000000003', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_B', 'تعهد ب');
+insert into public.obligation_versions (id, obligation_id, version_number, status) values
+  ('b2000000-0000-0000-0000-000000000004', 'b2000000-0000-0000-0000-000000000002', 1, 'DRAFT'),
+  ('b2000000-0000-0000-0000-000000000005', 'b2000000-0000-0000-0000-000000000003', 1, 'DRAFT');
+
+insert into public.objection_templates (id, title, status, is_active) values
+  ('b2000000-0000-0000-0000-000000000006', 'الگوی آزمون قواعد', 'DRAFT', false);
+insert into public.objection_steps (id, template_id, sequence, code, step_ref, title, gap_value, gap_unit)
+values ('b2000000-0000-0000-0000-000000000007', 'b2000000-0000-0000-0000-000000000006', 1, 'STEP_1', 'rc_step_a', 'اقدام آزمون', 0, 'روز');
+
 -- ── 3) Same rule version in two obligations + one action ─────────────────
 do $$
 declare
@@ -117,20 +134,6 @@ declare
 begin
   select id into v_rule_id from public.rule_center_rules where code = 'RC_TEST_10DAYS';
   select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
-
-  insert into public.obligation_families (id, code, title, domain) values
-    ('b2000000-0000-0000-0000-000000000001', 'RC_FAM', 'خانوادهٔ آزمون', 'TAX');
-  insert into public.obligation_definitions (id, family_id, code, title) values
-    ('b2000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_A', 'تعهد الف'),
-    ('b2000000-0000-0000-0000-000000000003', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_B', 'تعهد ب');
-  insert into public.obligation_versions (id, obligation_id, version_number, status) values
-    ('b2000000-0000-0000-0000-000000000004', 'b2000000-0000-0000-0000-000000000002', 1, 'DRAFT'),
-    ('b2000000-0000-0000-0000-000000000005', 'b2000000-0000-0000-0000-000000000003', 1, 'DRAFT');
-
-  insert into public.objection_templates (id, title, status, is_active) values
-    ('b2000000-0000-0000-0000-000000000006', 'الگوی آزمون قواعد', 'DRAFT', false);
-  insert into public.objection_steps (id, template_id, sequence, code, step_ref, title, gap_value, gap_unit)
-  values ('b2000000-0000-0000-0000-000000000007', 'b2000000-0000-0000-0000-000000000006', 1, 'STEP_1', 'rc_step_a', 'اقدام آزمون', 0, 'روز');
 
   -- اتصال‌های پیش‌نویس (فعال فقط پس از انتشار قاعده مجاز است)
   conn1 := public.rule_center_save_connection(version_id, 'OBLIGATION_VERSION', 'b2000000-0000-0000-0000-000000000004',
@@ -554,6 +557,7 @@ begin
   perform public.rule_center_transition(version_id, 'APPROVED');
   perform public.rule_center_transition(version_id, 'PUBLISHED');
 
+  -- 17a) RLS 读测试：公司用户能读已发布规则
   reset role;
   set local role authenticated;
   select set_config('request.jwt.claim.sub', 'a2000000-0000-0000-0000-000000000002', true);
@@ -577,6 +581,9 @@ begin
     raise exception 'FAIL: company user called admin RPC';
   exception when insufficient_privilege then null;
   end;
+
+  -- 17b) 回到超级用户：后续块（18）以 postgres 运行
+  reset role;
 end $$;
 
 -- ── 18) New version keeps old version untouched ──────────────────────────
