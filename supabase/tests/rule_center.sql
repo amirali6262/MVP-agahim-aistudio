@@ -614,4 +614,45 @@ begin
   end if;
 end $$;
 
+-- ── 19) save_connection mapping guard: REQUIRED-only ────────────────────
+do $$
+declare
+  v_rule_id uuid;
+  version_id uuid;
+  v_conn uuid;
+begin
+  v_rule_id := public.rule_center_save_rule(
+    null, 'DEADLINE', 'RC_TEST_REQ', 'آزمون: نگاشت ورودی‌های الزامی', null, null, null, null, null, 'INTERNAL', null, null,
+    $j$ { "deadline": { "method": "INTERVAL_FROM_BASE", "interval": { "value": 5, "unit": "DAY", "direction": "AFTER", "base_input": "base_date" }, "count": { "calendar": "CALENDAR_DAYS", "month_calendar": "iran_solar" }, "holiday_roll": { "enabled": false } }, "reminders": [] }$j$::jsonb,
+    $j$[
+      { "key": "base_date", "label": "تاریخ دریافت", "type": "DATE", "required": true },
+      { "key": "note",      "label": "یادداشت (اختیاری)", "type": "TEXT", "required": false }
+    ]$j$::jsonb
+  );
+  select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
+
+  -- الف) ورودی الزامی بدون نگاشت → رد با 23514
+  begin
+    perform public.rule_center_save_connection(version_id, 'OBLIGATION_VERSION', 'b2000000-0000-0000-0000-000000000004',
+      $j$ { "other": { "source_type": "CASE_EVENT", "source_ref": "x" } }$j$::jsonb, 'UNCHECKED', null, false);
+    raise exception 'FAIL: missing REQUIRED input was accepted';
+  exception when others then
+    if sqlstate <> '23514' then raise; end if;
+  end;
+
+  -- ب) ورودی اختیاری بدون نگاشت → پذیرفته می‌شود
+  v_conn := public.rule_center_save_connection(version_id, 'OBLIGATION_VERSION', 'b2000000-0000-0000-0000-000000000005',
+    $j$ { "base_date": { "source_type": "CASE_EVENT", "source_ref": "receipt_date" } }$j$::jsonb, 'UNCHECKED', null, false);
+  if v_conn is null then raise exception 'FAIL: optional input omission rejected connection'; end if;
+
+  -- ج) کلید ناشناخته در نگاشت → رد با 22023
+  begin
+    perform public.rule_center_save_connection(version_id, 'OBLIGATION_VERSION', 'b2000000-0000-0000-0000-000000000004',
+      $j$ { "base_date": { "source_type": "CASE_EVENT", "source_ref": "receipt_date" }, "unknown_key": { "source_type": "CASE_EVENT", "source_ref": "y" } }$j$::jsonb, 'UNCHECKED', null, false);
+    raise exception 'FAIL: unknown mapping key accepted';
+  exception when others then
+    if sqlstate <> '22023' then raise; end if;
+  end;
+end $$;
+
 rollback;
