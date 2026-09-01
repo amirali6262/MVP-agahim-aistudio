@@ -1495,6 +1495,7 @@ declare
   v_conn uuid;
   v_rule_kind text;
   v_required_keys text[] := '{}'::text[];
+  v_ref text;
   v_rec record;
 begin
   if uid is null or not private.is_platform_admin() then
@@ -1511,14 +1512,10 @@ begin
   -- نگاشت باید زیرمجموعهٔ ورودی‌های تعریف‌شده باشد
   if not (p_mapping = '{}'::jsonb) then
     for v_rec in select * from jsonb_array_elements(coalesce((select inputs from public.rule_center_versions where id = p_version_id), '[]'::jsonb)) as t(value) loop
-      if p_mapping ? (v_rec.value ->> 'key') then
-        null;
-      end if;
-    end loop;
-    for v_rec in select * from jsonb_array_elements(coalesce((select inputs from public.rule_center_versions where id = p_version_id), '[]'::jsonb)) as t(value) loop
       v_ref := v_rec.value ->> 'key';
-      if v_ref is not null and v_ref <> '' and not (p_mapping ? v_ref) then
-        raise exception 'fehlendes Mapping-Feld: %', v_ref using errcode = '23514';
+      if coalesce((v_rec.value ->> 'required')::boolean, false)
+         and v_ref is not null and v_ref <> '' and not (p_mapping ? v_ref) then
+        raise exception 'ورودی الزامی «%» در نگاشت اتصال تعیین نشده است', v_ref using errcode = '23514';
       end if;
     end loop;
     if exists (
