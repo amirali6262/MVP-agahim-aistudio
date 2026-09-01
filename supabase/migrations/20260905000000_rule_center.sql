@@ -1515,6 +1515,12 @@ begin
         null;
       end if;
     end loop;
+    for v_rec in select * from jsonb_array_elements(coalesce((select inputs from public.rule_center_versions where id = p_version_id), '[]'::jsonb)) as t(value) loop
+      v_ref := v_rec.value ->> 'key';
+      if v_ref is not null and v_ref <> '' and not (p_mapping ? v_ref) then
+        raise exception 'fehlendes Mapping-Feld: %', v_ref using errcode = '23514';
+      end if;
+    end loop;
     if exists (
       select 1
       from jsonb_object_keys(p_mapping) k
