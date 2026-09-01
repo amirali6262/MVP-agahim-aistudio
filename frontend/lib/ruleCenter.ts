@@ -387,6 +387,12 @@ export async function runRuleTest(versionId: string, title: string, inputs: Reco
   return data as string
 }
 
+export async function deleteRuleTest(testId: string): Promise<void> {
+  if (!isSupabaseConfigured) throw new Error('اتصال به پایگاه‌داده برقرار نیست.')
+  const { error } = await (supabase as any).rpc('rule_center_delete_test', { p_test_id: testId })
+  if (error) throw rpcError(error, 'حذف آزمون انجام نشد.')
+}
+
 export async function fetchRuleTests(versionId: string): Promise<RuleCenterTestRow[]> {
   if (!isSupabaseConfigured) return []
   const { data, error } = await (supabase as any)

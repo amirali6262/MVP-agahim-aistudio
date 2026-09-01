@@ -9,6 +9,7 @@ import {
   fetchRuleCenterRule,
   fetchRuleCenterRules,
   fetchRuleTests,
+  deleteRuleTest,
   fetchRuleUsage,
   fetchRuleVersion,
   rulePublishCheck,
@@ -20,7 +21,7 @@ import {
   type RuleKind,
   type RuleVersionStatus,
 } from '../../../lib/ruleCenter'
-import { parseJalaliDate, jalaliToGregorian } from '../../../lib/jalaliUtils'
+import { parseJalaliDate, jalaliToGregorian, gregorianToJalali } from '../../../lib/jalaliUtils'
 import { fetchRoleDefinitions } from '../../../lib/supabaseDb'
 
 function jalaliToIso(value: string): string | null {
@@ -28,6 +29,56 @@ function jalaliToIso(value: string): string | null {
   if (!p) return null
   const g = jalaliToGregorian(p.year, p.month, p.day)
   return `${g.gy}-${String(g.gm).padStart(2, '0')}-${String(g.gd).padStart(2, '0')}`
+}
+
+function isoToJalaliFa(iso?: string | null): string {
+  if (!iso) return '—'
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  if (!m) return iso
+  const g = gregorianToJalali(Number(m[1]), Number(m[2]), Number(m[3]))
+  return `${g.jy}/${String(g.jm).padStart(2, '0')}/${String(g.jd).padStart(2, '0')}`
+}
+
+function testBaseDate(t: { inputs?: Record<string, any> }): string {
+  const inp = t.inputs ?? {}
+  for (const key of ['fiscal_year_end', 'period_end']) {
+    const v = inp[key]?.value
+    if (v) return isoToJalaliFa(String(v))
+  }
+  for (const v of Object.values(inp)) {
+    const val = (v as any)?.value
+    if (val) return isoToJalaliFa(String(val))
+  }
+  return '—'
+}
+
+function testMethodLabel(t: { actual?: Record<string, any> | null }): string {
+  const steps = t.actual?.steps
+  if (Array.isArray(steps)) {
+    const s = steps.find((x: any) => x?.step === 'interval')
+    if (s?.text) return s.text
+  }
+  return '—'
+}
+
+function testDayDiff(t: { expected?: Record<string, any>; actual?: Record<string, any> | null }): string {
+  const exp = t.expected?.effective_deadline
+  const act = t.actual?.effective_deadline
+  if (!exp || !act) return '—'
+  const da = Date.parse(String(act))
+  const db = Date.parse(String(exp))
+  if (Number.isNaN(da) || Number.isNaN(db)) return '—'
+  return String(Math.round(Math.abs(da - db) / 86400000))
+}
+
+function testFailureReason(t: { actual?: Record<string, any> | null; expected?: Record<string, any> }): string {
+  const a = t.actual ?? {}
+  if (a.error) return String(a.error)
+  if (Array.isArray(a.missing) && a.missing.length > 0) return 'ورودی‌های لازم: ' + a.missing.join('، ')
+  const act = a.effective_deadline
+  const exp = t.expected?.effective_deadline
+  if (exp && act && exp !== act) return `موعد محاسبه‌شده (${isoToJalaliFa(act)}) با موعد مورد انتظار (${isoToJalaliFa(exp)}) یکسان نیست`
+  return 'نتیجه با انتظار ادمین همخوانی ندارد'
 }
 
 const inputCls =
@@ -192,6 +243,7 @@ export default function RuleWizard({
   const [baseFixed, setBaseFixed] = useState('PERIOD_START')
   const [gapValue, setGapValue] = useState('10')
   const [gapUnit, setGapUnit] = useState('DAY')
+  const [monthApplication, setMonthApplication] = useState('END_OF_NTH_MONTH_AFTER_EVENT')
   const [direction, setDirection] = useState('AFTER')
   const [includeStart, setIncludeStart] = useState(false)
   const [countCalendar, setCountCalendar] = useState('CALENDAR_DAYS')
@@ -240,7 +292,7 @@ export default function RuleWizard({
   const [testInputs, setTestInputs] = useState<Record<string, string>>({})
   const [expectedDeadline, setExpectedDeadline] = useState('')
   const [expectedAmount, setExpectedAmount] = useState('')
-  const [tests, setTests] = useState<Array<{ id: string; title: string; status: string; created_at?: string }>>([])
+  const [tests, setTests] = useState<Array<{ id: string; title: string; status: string; inputs?: Record<string, any>; expected?: Record<string, any>; actual?: Record<string, any> | null; created_at?: string }>>([])
   const [runningTest, setRunningTest] = useState(false)
 
   const [usage, setUsage] = useState<Array<any>>([])
@@ -356,6 +408,7 @@ export default function RuleWizard({
       setBaseEventKey(dl.interval?.base_event ?? '')
       setGapValue(String(dl.interval?.value ?? 10))
       setGapUnit(dl.interval?.unit ?? 'DAY')
+      setMonthApplication(dl.interval?.month_application ?? 'END_OF_NTH_MONTH_AFTER_EVENT')
       setDirection(dl.interval?.direction ?? 'AFTER')
       setIncludeStart(Boolean(dl.count?.include_start))
       setCountCalendar(dl.count?.calendar ?? 'CALENDAR_DAYS')
@@ -435,7 +488,7 @@ export default function RuleWizard({
       : {
           method: dlMethod,
           interval: dlMethod === 'INTERVAL_FROM_BASE'
-            ? { value: Number(gapValue || 0), unit: gapUnit, direction, base_input: baseInput || null, base: baseInput ? null : baseFixed, base_event: baseFixed === 'CASE_EVENT' && baseEventKey ? baseEventKey : null }
+            ? { value: Number(gapValue || 0), unit: gapUnit, month_application: gapUnit === 'MONTH' ? monthApplication : null, direction, base_input: baseInput || null, base: baseInput ? null : baseFixed, base_event: baseFixed === 'CASE_EVENT' && baseEventKey ? baseEventKey : null }
             : { value: 0, unit: 'DAY', direction: 'AFTER' },
           fixed_date: dlMethod === 'FIXED_DATE' ? { month: Number(fixedMonth), day: Number(fixedDay) } : {},
           fixed_in_period: dlMethod === 'FIXED_IN_PERIOD' ? { position: periodPos, n: Number(periodN || 1) } : {},
@@ -551,7 +604,7 @@ export default function RuleWizard({
       fetchRuleTests(versionId),
       fetchRuleUsage(versionId),
     ])
-    setTests(testRows.map((t) => ({ id: t.id, title: t.title, status: t.status, created_at: t.created_at })))
+    setTests(testRows.map((t) => ({ id: t.id, title: t.title, status: t.status, inputs: t.inputs, expected: t.expected, actual: t.actual, created_at: t.created_at })))
     setUsage(usageRows)
   }
 
@@ -577,6 +630,33 @@ export default function RuleWizard({
       setRunningTest(false)
     }
   }
+  async function rerunTest(t: { id: string; title: string; inputs?: Record<string, any>; expected?: Record<string, any> }) {
+    const vid = (savedVersionId ?? versionId) as string
+    if (!vid) return toast.error('ابتدا پیش‌نویس را ذخیره کنید.')
+    setRunningTest(true)
+    try {
+      await runRuleTest(vid, t.title, t.inputs ?? {}, t.expected ?? { status: 'OK' })
+      toast.success('آزمون دوباره اجرا شد.')
+      await loadTestsAndUsage(vid)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'اجرای مجدد آزمون انجام نشد.')
+    } finally {
+      setRunningTest(false)
+    }
+  }
+
+  async function deleteTest(t: { id: string }) {
+    if (!window.confirm('این آزمون حذف شود؟')) return
+    try {
+      await deleteRuleTest(t.id)
+      toast.success('آزمون حذف شد.')
+      const vid = (savedVersionId ?? versionId) as string
+      if (vid) await loadTestsAndUsage(vid)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'حذف آزمون انجام نشد.')
+    }
+  }
+
 
   async function doTransition(to: 'IN_REVIEW' | 'APPROVED' | 'PUBLISHED') {
     const vid = (savedVersionId ?? versionId) as string
@@ -920,6 +1000,16 @@ export default function RuleWizard({
                 </div>
                 {dlMethod === 'INTERVAL_FROM_BASE' && (
                   <>
+                    {gapUnit === 'MONTH' && (
+                      <div className="sm:col-span-2">
+                        <FieldLabel>روش اعمال ماه</FieldLabel>
+                        <select className={inputCls} value={monthApplication} onChange={(e) => { setMonthApplication(e.target.value); setDirty(true) }}>
+                          <option value="SAME_DAY_AFTER_N_MONTHS">تاریخ متناظر پس از N ماه</option>
+                          <option value="END_OF_NTH_MONTH_AFTER_EVENT">پایان ماه N‌ام پس از رویداد</option>
+                          <option value="START_OF_NTH_MONTH_AFTER_EVENT">آغاز ماه N‌ام پس از رویداد</option>
+                        </select>
+                      </div>
+                    )}
                     <div>
                       <FieldLabel>مبدأ محاسبه</FieldLabel>
                       <select className={inputCls} value={baseInput || baseFixed} onChange={(e) => { const v = e.target.value; if (v.startsWith('INPUT:')) { setBaseInput(v.slice(6)); setBaseFixed('') } else { setBaseInput(''); setBaseFixed(v) } setDirty(true) }}>
@@ -1381,11 +1471,31 @@ export default function RuleWizard({
               {tests.length > 0 && (
                 <ul className="mt-3 space-y-1.5">
                   {tests.map((t) => (
-                    <li key={t.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-[#141615] px-3 py-2 text-xs">
-                      <span className="text-zinc-300">{t.title}</span>
-                      <span className={`font-bold ${t.status === 'PASS' ? 'text-emerald-400' : t.status === 'FAIL' ? 'text-red-400' : 'text-amber-400'}`}>
-                        {t.status === 'PASS' ? 'موفق ✓' : t.status === 'FAIL' ? 'ناموفق ✗' : 'در انتظار'}
-                      </span>
+                    <li key={t.id} className="rounded-lg border border-zinc-800 bg-[#141615] px-3 py-2.5 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-zinc-200">{t.title}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`font-bold ${t.status === 'PASS' ? 'text-emerald-400' : t.status === 'FAIL' ? 'text-red-400' : 'text-amber-400'}`}>
+                            {t.status === 'PASS' ? 'موفق ✓' : t.status === 'FAIL' ? 'ناموفق ✗' : 'در انتظار'}
+                          </span>
+                          <button type="button" onClick={() => void rerunTest(t)} disabled={runningTest} className="rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-amber-600 hover:text-amber-300 disabled:opacity-40" title="اجرای مجدد آزمون">
+                            <FlaskConical className="inline-block h-3 w-3" /> اجرای مجدد
+                          </button>
+                          <button type="button" onClick={() => void deleteTest(t)} className="rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-red-400 hover:border-red-700" title="حذف آزمون">
+                            <Trash2 className="inline-block h-3 w-3" /> حذف
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                        <div className="flex justify-between gap-3 text-zinc-400"><span>تاریخ مبنا</span><span className="text-zinc-200">{testBaseDate(t)}</span></div>
+                        <div className="flex justify-between gap-3 text-zinc-400"><span>روش محاسبه</span><span className="text-zinc-200">{testMethodLabel(t)}</span></div>
+                        <div className="flex justify-between gap-3 text-zinc-400"><span>موعد مورد انتظار</span><span className="text-zinc-200">{isoToJalaliFa(t.expected?.effective_deadline)}</span></div>
+                        <div className="flex justify-between gap-3 text-zinc-400"><span>موعد محاسبه‌شده</span><span className="text-zinc-200">{isoToJalaliFa(t.actual?.effective_deadline)}</span></div>
+                        <div className="flex justify-between gap-3 text-zinc-400"><span>اختلاف روز</span><span className="text-zinc-200">{testDayDiff(t)}</span></div>
+                        {t.status === 'FAIL' && (
+                          <div className="flex justify-between gap-3 text-zinc-400 sm:col-span-2"><span>علت شکست</span><span className="text-red-300">{testFailureReason(t)}</span></div>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
