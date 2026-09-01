@@ -155,7 +155,7 @@ begin
 
   -- همان قاعده برای اقدام: بدون فرم محاسباتی جدا
   perform public.rule_center_save_connection(version_id, 'ACTION_STEP', 'b2000000-0000-0000-0000-000000000007',
-    $j$ { "base_date": { "source_type": "ACTION_FIELD", "source_ref": "doc_date" } }$j$::jsonb, 'UNCHECKED', null, false);
+    $j$ { "base_date": { "source_type": "ACTION_FIELD", "source_ref": "doc_date" } }$j$::jsonb, 'UNCHECKED', null, false, 'rc_step_a');
   if not exists (select 1 from public.rule_center_connections
                  where target_type = 'ACTION_STEP' and target_id = 'b2000000-0000-0000-0000-000000000007') then
     raise exception 'FAIL: action step connection missing';
