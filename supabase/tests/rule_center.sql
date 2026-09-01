@@ -592,8 +592,8 @@ begin
   -- 17a) RLS 读测试：公司用户能读已发布规则
   reset role;
   set local role authenticated;
-  select set_config('request.jwt.claim.sub', 'a2000000-0000-0000-0000-000000000002', true);
-  select set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+  perform set_config('request.jwt.claim.sub', 'a2000000-0000-0000-0000-000000000002', true);
+  perform set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 
   -- خواندن قاعدهٔ منتشرشده مجاز است
   select count(*) into cnt from public.rule_center_rules where code = 'RC_TEST_RLS';
@@ -625,6 +625,9 @@ declare
   v1 uuid;
   v2 uuid;
 begin
+  -- بلاک ۱۷ نقش را به postgres برگرداند؛ برای RPCهای مدیریتی همان ادمین را به‌عنوان هویت اعلام کن
+  perform set_config('request.jwt.claim.sub', 'a2000000-0000-0000-0000-000000000001', true);
+  perform set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
   select id into v_rule_id from public.rule_center_rules where code = 'RC_TEST_10DAYS';
   select id into v1 from public.rule_center_versions where rule_id = v_rule_id order by version_number desc limit 1;
   v2 := public.rule_center_new_version(v_rule_id, '{"deadline":{"method":"FIXED_IN_PERIOD","fixed_in_period":{"position":"START"},"count":{},"holiday_roll":{"enabled":false}},"reminders":[]}'::jsonb, '[]'::jsonb);
