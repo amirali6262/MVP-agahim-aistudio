@@ -290,6 +290,7 @@ export default function RuleWizard({
   // آزمون
   const [testTitle, setTestTitle] = useState('')
   const [testInputs, setTestInputs] = useState<Record<string, string>>({})
+  const [testFieldErrors, setTestFieldErrors] = useState<Record<string, string>>({})
   const [expectedDeadline, setExpectedDeadline] = useState('')
   const [expectedAmount, setExpectedAmount] = useState('')
   const [tests, setTests] = useState<Array<{ id: string; title: string; status: string; inputs?: Record<string, any>; expected?: Record<string, any>; actual?: Record<string, any> | null; created_at?: string }>>([])
@@ -611,16 +612,53 @@ export default function RuleWizard({
   async function runTest() {
     if (!savedVersionId && !versionId) return toast.error('ابتدا پیش‌نویس را ذخیره کنید.')
     const vid = (savedVersionId ?? versionId) as string
+    const errors: Record<string, string> = {}
+    const dateKeys = new Set<string>(['fiscal_year_end', 'period_end', 'effective_deadline', 'payment_date', 'deadline'])
+    for (const i of inputs) {
+      if (i.type === 'DATE' || i.type === 'DATETIME') dateKeys.add(i.key)
+    }
+    const requiredKeys = new Set(inputs.filter((i) => i.required === true).map((i) => i.key))
+    const payload: Record<string, any> = {}
+    for (const [k, v] of Object.entries(testInputs)) {
+      const raw = String(v ?? '').trim()
+      if (!dateKeys.has(k)) {
+        const iso = raw.includes('/') ? jalaliToIso(raw) : raw
+        if (iso) payload[k] = { value: iso, type: k.includes('amount') || k.includes('debt') ? 'AMOUNT' : 'DATE' }
+        continue
+      }
+      if (!raw) {
+        if (requiredKeys.has(k)) errors[k] = 'این تاریخ الزامی است.'
+        else payload[k] = { value: null, type: 'DATE' }
+        continue
+      }
+      const iso = raw.includes('/') ? jalaliToIso(raw) : raw
+      if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+        errors[k] = 'تاریخ معتبر نیست.'
+        continue
+      }
+      payload[k] = { value: iso, type: 'DATE' }
+    }
+    const expected: Record<string, any> = { status: 'OK' }
+    if (isPenalty) {
+      expected.estimated_amount = Number(expectedAmount || 0)
+    } else {
+      const expRaw = (expectedDeadline ?? '').trim()
+      if (expRaw) {
+        const expIso = jalaliToIso(expRaw)
+        if (!expIso) errors['expected_deadline'] = 'تاریخ مورد انتظار معتبر نیست.'
+        else expected.effective_deadline = expIso
+      } else {
+        expected.effective_deadline = null
+      }
+    }
+    if (Object.keys(errors).length > 0) {
+      setTestFieldErrors(errors)
+      toast.error('یکی از تاریخ‌های واردشده معتبر نیست.')
+      return
+    }
+    setTestFieldErrors({})
     setRunningTest(true)
     try {
-      const payload: Record<string, any> = {}
-      for (const [k, v] of Object.entries(testInputs)) {
-        const iso = v.includes('/') ? jalaliToIso(v) : v
-        if (iso) payload[k] = { value: iso, type: k.includes('amount') || k.includes('debt') ? 'AMOUNT' : 'DATE' }
-      }
-      const expected: Record<string, any> = { status: 'OK' }
-      if (isPenalty) expected.estimated_amount = Number(expectedAmount || 0)
-      else expected.effective_deadline = expectedDeadline ? (jalaliToIso(expectedDeadline) ?? '') : ''
       await runRuleTest(vid, testTitle || `آزمون ${tests.length + 1}`, payload, expected)
       toast.success('آزمون اجرا و مقایسه شد.')
       await loadTestsAndUsage(vid)
@@ -1414,6 +1452,7 @@ export default function RuleWizard({
                   <div>
                     <FieldLabel>موعد مورد انتظار (شمسی)</FieldLabel>
                     <JalaliDatePicker value={expectedDeadline} onChange={setExpectedDeadline} size="sm" />
+                    {testFieldErrors['expected_deadline'] && <p className="mt-1 text-[11px] text-red-400">{testFieldErrors['expected_deadline']}</p>}
                   </div>
                 )}
                 {isPenalty && (
@@ -1428,6 +1467,7 @@ export default function RuleWizard({
                   <div key={input.key}>
                     <FieldLabel>{input.label}</FieldLabel>
                     <JalaliDatePicker value={testInputs[input.key] ?? ''} onChange={(v) => setTestInputs({ ...testInputs, [input.key]: v })} size="sm" />
+                    {testFieldErrors[input.key] && <p className="mt-1 text-[11px] text-red-400">{testFieldErrors[input.key]}</p>}
                   </div>
                 ))}
                 {inputs.filter((i) => i.type === 'AMOUNT' || i.type === 'NUMBER').map((input) => (
@@ -1441,10 +1481,12 @@ export default function RuleWizard({
                     <div>
                       <FieldLabel>پایان سال مالی (در صورت نیاز)</FieldLabel>
                       <JalaliDatePicker value={testInputs['fiscal_year_end'] ?? ''} onChange={(v) => setTestInputs({ ...testInputs, fiscal_year_end: v })} size="sm" />
+                      {testFieldErrors['fiscal_year_end'] && <p className="mt-1 text-[11px] text-red-400">{testFieldErrors['fiscal_year_end']}</p>}
                     </div>
                     <div>
                       <FieldLabel>پایان دوره (در صورت نیاز)</FieldLabel>
                       <JalaliDatePicker value={testInputs['period_end'] ?? ''} onChange={(v) => setTestInputs({ ...testInputs, period_end: v })} size="sm" />
+                      {testFieldErrors['period_end'] && <p className="mt-1 text-[11px] text-red-400">{testFieldErrors['period_end']}</p>}
                     </div>
                   </>
                 )}
@@ -1453,10 +1495,12 @@ export default function RuleWizard({
                     <div>
                       <FieldLabel>موعد مؤثر</FieldLabel>
                       <JalaliDatePicker value={testInputs['effective_deadline'] ?? ''} onChange={(v) => setTestInputs({ ...testInputs, effective_deadline: v })} size="sm" />
+                      {testFieldErrors['effective_deadline'] && <p className="mt-1 text-[11px] text-red-400">{testFieldErrors['effective_deadline']}</p>}
                     </div>
                     <div>
                       <FieldLabel>تاریخ پرداخت</FieldLabel>
                       <JalaliDatePicker value={testInputs['payment_date'] ?? ''} onChange={(v) => setTestInputs({ ...testInputs, payment_date: v })} size="sm" />
+                      {testFieldErrors['payment_date'] && <p className="mt-1 text-[11px] text-red-400">{testFieldErrors['payment_date']}</p>}
                     </div>
                   </>
                 )}
@@ -1520,9 +1564,14 @@ export default function RuleWizard({
                   </Button>
                 )}
                 {versionStatus === 'IN_REVIEW' && (
-                  <Button variant="outline" className="border-emerald-800 text-emerald-300 gap-1.5 text-xs" onClick={() => void doTransition('APPROVED')} disabled={transitioning}>
+                  <>
+                  <Button variant="outline" className="border-emerald-800 text-emerald-300 gap-1.5 text-xs" onClick={() => void doTransition('APPROVED')} disabled={transitioning || !tests.some((t) => t.status === 'PASS')}>
                     {transitioning && <Loader2 className="h-3.5 w-3.5 animate-spin" />} تأیید نسخه
                   </Button>
+                  {versionStatus === 'IN_REVIEW' && !tests.some((t) => t.status === 'PASS') && (
+                    <span className="text-[11px] text-amber-400">تأیید نسخه نیازمند حداقل یک آزمون موفق است.</span>
+                  )}
+                  </>
                 )}
                 {versionStatus === 'APPROVED' && (
                   <Button className="bg-emerald-700 hover:bg-emerald-600 text-white gap-1.5 text-xs" onClick={() => void doTransition('PUBLISHED')} disabled={transitioning}>
