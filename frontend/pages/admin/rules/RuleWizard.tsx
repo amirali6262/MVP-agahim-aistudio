@@ -21,6 +21,7 @@ import {
   type RuleVersionStatus,
 } from '../../../lib/ruleCenter'
 import { parseJalaliDate, jalaliToGregorian } from '../../../lib/jalaliUtils'
+import { fetchRoleDefinitions } from '../../../lib/supabaseDb'
 
 function jalaliToIso(value: string): string | null {
   const p = parseJalaliDate(value)
@@ -82,6 +83,28 @@ const EVENT_OPTIONS: Array<{ key: string; label: string }> = [
 const EVENT_SOURCE_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'CASE_EVENT', label: 'رویداد پرونده' },
   { key: 'RULE_OUTPUT', label: 'خروجی قاعدهٔ دیگر' },
+]
+
+// عنوان‌های نمایشی نوع ورودی و کانال یادآوری (مقدار فنی در value بدون تغییر می‌ماند)
+const INPUT_TYPE_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'DATE', label: 'تاریخ' },
+  { key: 'DATETIME', label: 'تاریخ و ساعت' },
+  { key: 'TEXT', label: 'متن' },
+  { key: 'NUMBER', label: 'عدد' },
+  { key: 'AMOUNT', label: 'مبلغ' },
+  { key: 'BOOL', label: 'بله/خیر' },
+  { key: 'SELECT', label: 'فهرست انتخابی' },
+  { key: 'PERIOD_REF', label: 'ارجاع دوره' },
+  { key: 'FISCAL_YEAR_REF', label: 'ارجاع سال مالی' },
+  { key: 'CASE_EVENT', label: 'رویداد پرونده' },
+  { key: 'RULE_OUTPUT', label: 'خروجی قاعده' },
+]
+
+const CHANNEL_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'IN_APP', label: 'داخل سامانه' },
+  { key: 'EMAIL', label: 'ایمیل' },
+  { key: 'SMS', label: 'پیامک' },
+  { key: 'PUSH', label: 'اعلان' },
 ]
 
 function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
@@ -158,6 +181,7 @@ export default function RuleWizard({
   const [eventDedup, setEventDedup] = useState(true)
   const [dedupKey, setDedupKey] = useState('')
   const [rulesForOutput, setRulesForOutput] = useState<Array<{ id: string; code: string; title_fa: string }>>([])
+  const [roleOptions, setRoleOptions] = useState<Array<{ key: string; label: string }>>([])
   const [recError, setRecError] = useState('')
   // مبدأ رویداد صفحهٔ سوم (ساختاریافته)
   const [baseEventKey, setBaseEventKey] = useState('')
@@ -269,6 +293,10 @@ export default function RuleWizard({
       fetchRuleCenterRules()
         .then((list) => setRulesForOutput(list.map((r) => ({ id: r.id, code: r.code, title_fa: r.title_fa }))))
         .catch(() => { /* فهرست قواعد برای منبع RULE_OUTPUT؛ در نبود اتصال، انتخاب غیرفعال می‌ماند */ })
+      // نقش‌های قابل انتساب برای یادآوری — از role_definitions (بدون PLATFORM_ADMIN)
+      fetchRoleDefinitions()
+        .then((list) => setRoleOptions(list.filter((r) => r.key !== 'PLATFORM_ADMIN').map((r) => ({ key: r.key, label: r.label || r.persian_label || r.key }))))
+        .catch(() => { /* در نبود دسترسی، فهرست نقش خالی می‌ماند */ })
     })()
   }, [ruleId, versionId, mode])
 
@@ -1228,7 +1256,7 @@ export default function RuleWizard({
                     <input className={inputCls} dir="ltr" placeholder="کلید فنی (مثل base_date)" value={input.key} onChange={(e) => { const next = [...inputs]; next[i] = { ...input, key: e.target.value }; setInputs(next); setDirty(true) }} />
                     <input className={inputCls} placeholder="عنوان فارسی" value={input.label} onChange={(e) => { const next = [...inputs]; next[i] = { ...input, label: e.target.value }; setInputs(next); setDirty(true) }} />
                     <select className={inputCls} value={input.type} onChange={(e) => { const next = [...inputs]; next[i] = { ...input, type: e.target.value as any }; setInputs(next); setDirty(true) }}>
-                      {['DATE', 'DATETIME', 'AMOUNT', 'NUMBER', 'TEXT', 'SELECT', 'BOOL', 'PERIOD_REF', 'FISCAL_YEAR_REF', 'CASE_EVENT', 'RULE_OUTPUT'].map((t) => <option key={t} value={t}>{t}</option>)}
+                      {INPUT_TYPE_OPTIONS.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
                     </select>
                     <input className={inputCls} dir="ltr" placeholder="واحد" value={input.unit ?? ''} onChange={(e) => { const next = [...inputs]; next[i] = { ...input, unit: e.target.value }; setInputs(next); setDirty(true) }} />
                     <label className="flex items-center gap-1.5 text-xs text-zinc-300">
@@ -1252,8 +1280,12 @@ export default function RuleWizard({
                       <select className={inputCls} value={r.unit} onChange={(e) => { const next = [...reminders]; next[i] = { ...r, unit: e.target.value }; setReminders(next); setDirty(true) }}>
                         <option value="DAY">روز</option><option value="HOUR">ساعت</option>
                       </select>
-                      <input className={inputCls} dir="ltr" placeholder="نقش گیرنده (MANAGER…)" value={r.role_key} onChange={(e) => { const next = [...reminders]; next[i] = { ...r, role_key: e.target.value }; setReminders(next); setDirty(true) }} />
-                      <input className={inputCls} dir="ltr" placeholder="کانال" value={r.channel} onChange={(e) => { const next = [...reminders]; next[i] = { ...r, channel: e.target.value }; setReminders(next); setDirty(true) }} />
+                      <select className={inputCls} value={r.role_key} onChange={(e) => { const next = [...reminders]; next[i] = { ...r, role_key: e.target.value }; setReminders(next); setDirty(true) }}>
+                        {roleOptions.length > 0 ? roleOptions.map((ro) => <option key={ro.key} value={ro.key}>{ro.label}</option>) : <option value={r.role_key}>{r.role_key}</option>}
+                      </select>
+                      <select className={inputCls} value={r.channel} onChange={(e) => { const next = [...reminders]; next[i] = { ...r, channel: e.target.value }; setReminders(next); setDirty(true) }}>
+                        {CHANNEL_OPTIONS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                      </select>
                       <Button variant="ghost" size="icon" className="text-red-400" onClick={() => { setReminders(reminders.filter((_, j) => j !== i)); setDirty(true) }}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   ))}
