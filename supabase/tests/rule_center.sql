@@ -25,6 +25,8 @@
 --   Block 16: action-step save rejects mapping to a deleted field/action
 --   Block 17: RLS — company user cannot write rules, can read published
 --   Block 18: new version keeps old version content untouched
+--   Block 20: recurrence schedule (صفحهٔ ۲ ویزارد) round-trip: RECURRING fiscal-year
+--             + EVENT_DRIVEN event_config — storage contract only
 -- ==========================================================================
 
 \set ON_ERROR_STOP on
@@ -683,6 +685,82 @@ begin
   exception when others then
     if sqlstate <> '22023' then raise; end if;
   end;
+-- ── 20) قرارداد تناوب و دوره‌سازی (صفحهٔ ۲): ذخیره و بازخوانی ─────────────
+do $$
+declare
+  v_rule_id uuid;
+  v_def jsonb;
+begin
+  -- الف) تکرارشوندهٔ سالانه بر اساس سال مالی شرکت؛ موعد ۴ ماه شمسی پس از پایان دوره
+  v_rule_id := public.rule_center_save_rule(
+    null, 'DEADLINE', 'RC_TEST_SCHED', 'آزمون: تناوب و دوره‌سازی', null, null, null, null, null, 'INTERNAL', null, null,
+    $j${
+      "recurrence": {
+        "schedule_mode": "RECURRING",
+        "frequency_unit": "YEAR",
+        "frequency_interval": 1,
+        "period_basis": "COMPANY_FISCAL_YEAR",
+        "period_source_key": "case_fiscal_year",
+        "instance_generation_timing": "PERIOD_END",
+        "event_config": null
+      },
+      "deadline": {
+        "method": "INTERVAL_FROM_BASE",
+        "interval": { "value": 4, "unit": "MONTH", "direction": "AFTER", "base": "PERIOD_END" },
+        "count": { "include_start": false, "calendar": "CALENDAR_DAYS", "month_calendar": "iran_solar", "missing_day_policy": "LAST_DAY", "timezone": "Asia/Tehran" },
+        "holiday_roll": { "enabled": false, "calendar_id": "iran_official" },
+        "pauses": [], "extensions": [], "no_deadline": false
+      },
+      "reminders": []
+    }$j$::jsonb,
+    '[]'::jsonb
+  );
+  select v.definition into v_def from public.rule_center_versions v where v.rule_id = v_rule_id;
+  if (v_def -> 'recurrence' ->> 'schedule_mode') <> 'RECURRING' then raise exception 'FAIL: schedule_mode round-trip'; end if;
+  if (v_def -> 'recurrence' ->> 'frequency_unit') <> 'YEAR' then raise exception 'FAIL: frequency_unit round-trip'; end if;
+  if (v_def -> 'recurrence' ->> 'frequency_interval')::int <> 1 then raise exception 'FAIL: frequency_interval round-trip'; end if;
+  if (v_def -> 'recurrence' ->> 'period_basis') <> 'COMPANY_FISCAL_YEAR' then raise exception 'FAIL: period_basis round-trip'; end if;
+  if (v_def -> 'recurrence' ->> 'period_source_key') <> 'case_fiscal_year' then raise exception 'FAIL: period_source_key round-trip'; end if;
+  if (v_def -> 'recurrence' ->> 'instance_generation_timing') <> 'PERIOD_END' then raise exception 'FAIL: instance_generation_timing round-trip'; end if;
+  -- مبدأ موعد از «پایان دورهٔ تشکیل‌شده» (PERIOD_END ساختاریافته، نه متن آزاد)
+  if (v_def -> 'deadline' -> 'interval' ->> 'base') <> 'PERIOD_END' then raise exception 'FAIL: deadline base not PERIOD_END'; end if;
+
+  -- ب) رویدادمحور با event_config کامل
+  v_rule_id := public.rule_center_save_rule(
+    null, 'DEADLINE', 'RC_TEST_EVTSCH', 'آزمون: رویدادمحور', null, null, null, null, null, 'INTERNAL', null, null,
+    $j${
+      "recurrence": {
+        "schedule_mode": "EVENT_DRIVEN",
+        "frequency_unit": null,
+        "frequency_interval": null,
+        "period_basis": null,
+        "period_source_key": null,
+        "instance_generation_timing": "SOURCE_EVENT_RECEIVED",
+        "event_config": {
+          "event_key": "PAYMENT",
+          "event_source": "CASE_EVENT",
+          "new_instance_per_occurrence": true,
+          "prevent_duplicate": true,
+          "dedup_key": "case_id|PAYMENT"
+        }
+      },
+      "deadline": {
+        "method": "INTERVAL_FROM_BASE",
+        "interval": { "value": 10, "unit": "DAY", "direction": "AFTER", "base_input": "base_date" },
+        "count": { "include_start": false, "calendar": "CALENDAR_DAYS", "month_calendar": "iran_solar", "missing_day_policy": "LAST_DAY", "timezone": "Asia/Tehran" },
+        "holiday_roll": { "enabled": false, "calendar_id": "iran_official" },
+        "pauses": [], "extensions": [], "no_deadline": false
+      },
+      "reminders": []
+    }$j$::jsonb,
+    $j$[ { "key": "base_date", "label": "تاریخ دریافت", "type": "DATE", "required": true } ]$j$::jsonb
+  );
+  select v.definition into v_def from public.rule_center_versions v where v.rule_id = v_rule_id;
+  if (v_def -> 'recurrence' ->> 'schedule_mode') <> 'EVENT_DRIVEN' then raise exception 'FAIL: event-driven mode round-trip'; end if;
+  if (v_def -> 'recurrence' ->> 'instance_generation_timing') <> 'SOURCE_EVENT_RECEIVED' then raise exception 'FAIL: event timing round-trip'; end if;
+  if (v_def -> 'recurrence' -> 'event_config' ->> 'event_key') <> 'PAYMENT' then raise exception 'FAIL: event_config.event_key round-trip'; end if;
+  if (v_def -> 'recurrence' -> 'event_config' ->> 'event_source') <> 'CASE_EVENT' then raise exception 'FAIL: event_config.event_source round-trip'; end if;
+  if (v_def -> 'recurrence' -> 'event_config' ->> 'dedup_key') <> 'case_id|PAYMENT' then raise exception 'FAIL: event_config.dedup_key round-trip'; end if;
 end $$;
 
 rollback;
