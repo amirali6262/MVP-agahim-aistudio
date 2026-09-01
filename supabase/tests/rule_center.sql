@@ -105,6 +105,8 @@ begin
   end if;
 end $$;
 
+reset role;
+
 -- ── 3a) Fixtures as superuser (obligation_*/objection_* tables have RLS
 --         policies but no INSERT grants for authenticated; same convention
 --         as eligibility_dynamic_facts.sql: fixtures run as postgres) ────
