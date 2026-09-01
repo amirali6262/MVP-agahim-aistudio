@@ -9,6 +9,7 @@ import {
   fetchRuleCenterRule,
   fetchRuleCenterRules,
   fetchRuleTests,
+  deleteRuleTest,
   fetchRuleUsage,
   fetchRuleVersion,
   rulePublishCheck,
@@ -192,6 +193,7 @@ export default function RuleWizard({
   const [baseFixed, setBaseFixed] = useState('PERIOD_START')
   const [gapValue, setGapValue] = useState('10')
   const [gapUnit, setGapUnit] = useState('DAY')
+  const [monthApplication, setMonthApplication] = useState('END_OF_NTH_MONTH_AFTER_EVENT')
   const [direction, setDirection] = useState('AFTER')
   const [includeStart, setIncludeStart] = useState(false)
   const [countCalendar, setCountCalendar] = useState('CALENDAR_DAYS')
@@ -240,7 +242,7 @@ export default function RuleWizard({
   const [testInputs, setTestInputs] = useState<Record<string, string>>({})
   const [expectedDeadline, setExpectedDeadline] = useState('')
   const [expectedAmount, setExpectedAmount] = useState('')
-  const [tests, setTests] = useState<Array<{ id: string; title: string; status: string; created_at?: string }>>([])
+  const [tests, setTests] = useState<Array<{ id: string; title: string; status: string; inputs?: Record<string, any>; expected?: Record<string, any>; actual?: Record<string, any> | null; created_at?: string }>>([])
   const [runningTest, setRunningTest] = useState(false)
 
   const [usage, setUsage] = useState<Array<any>>([])
@@ -356,6 +358,7 @@ export default function RuleWizard({
       setBaseEventKey(dl.interval?.base_event ?? '')
       setGapValue(String(dl.interval?.value ?? 10))
       setGapUnit(dl.interval?.unit ?? 'DAY')
+      setMonthApplication(dl.interval?.month_application ?? 'END_OF_NTH_MONTH_AFTER_EVENT')
       setDirection(dl.interval?.direction ?? 'AFTER')
       setIncludeStart(Boolean(dl.count?.include_start))
       setCountCalendar(dl.count?.calendar ?? 'CALENDAR_DAYS')
@@ -435,7 +438,7 @@ export default function RuleWizard({
       : {
           method: dlMethod,
           interval: dlMethod === 'INTERVAL_FROM_BASE'
-            ? { value: Number(gapValue || 0), unit: gapUnit, direction, base_input: baseInput || null, base: baseInput ? null : baseFixed, base_event: baseFixed === 'CASE_EVENT' && baseEventKey ? baseEventKey : null }
+            ? { value: Number(gapValue || 0), unit: gapUnit, month_application: gapUnit === 'MONTH' ? monthApplication : null, direction, base_input: baseInput || null, base: baseInput ? null : baseFixed, base_event: baseFixed === 'CASE_EVENT' && baseEventKey ? baseEventKey : null }
             : { value: 0, unit: 'DAY', direction: 'AFTER' },
           fixed_date: dlMethod === 'FIXED_DATE' ? { month: Number(fixedMonth), day: Number(fixedDay) } : {},
           fixed_in_period: dlMethod === 'FIXED_IN_PERIOD' ? { position: periodPos, n: Number(periodN || 1) } : {},
@@ -551,7 +554,7 @@ export default function RuleWizard({
       fetchRuleTests(versionId),
       fetchRuleUsage(versionId),
     ])
-    setTests(testRows.map((t) => ({ id: t.id, title: t.title, status: t.status, created_at: t.created_at })))
+    setTests(testRows.map((t) => ({ id: t.id, title: t.title, status: t.status, inputs: t.inputs, expected: t.expected, actual: t.actual, created_at: t.created_at })))
     setUsage(usageRows)
   }
 
@@ -920,6 +923,16 @@ export default function RuleWizard({
                 </div>
                 {dlMethod === 'INTERVAL_FROM_BASE' && (
                   <>
+                    {gapUnit === 'MONTH' && (
+                      <div className="sm:col-span-2">
+                        <FieldLabel>روش اعمال ماه</FieldLabel>
+                        <select className={inputCls} value={monthApplication} onChange={(e) => { setMonthApplication(e.target.value); setDirty(true) }}>
+                          <option value="SAME_DAY_AFTER_N_MONTHS">تاریخ متناظر پس از N ماه</option>
+                          <option value="END_OF_NTH_MONTH_AFTER_EVENT">پایان ماه N‌ام پس از رویداد</option>
+                          <option value="START_OF_NTH_MONTH_AFTER_EVENT">آغاز ماه N‌ام پس از رویداد</option>
+                        </select>
+                      </div>
+                    )}
                     <div>
                       <FieldLabel>مبدأ محاسبه</FieldLabel>
                       <select className={inputCls} value={baseInput || baseFixed} onChange={(e) => { const v = e.target.value; if (v.startsWith('INPUT:')) { setBaseInput(v.slice(6)); setBaseFixed('') } else { setBaseInput(''); setBaseFixed(v) } setDirty(true) }}>
