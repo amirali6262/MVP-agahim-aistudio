@@ -175,6 +175,7 @@ grant select on table public.rule_center_rules, public.rule_center_versions,
   public.rule_center_connections, public.rule_center_results,
   public.rule_center_tests, public.rule_center_working_calendars
   to authenticated;
+grant insert, update on table public.rule_center_working_calendars to authenticated;
 
 -- خواندن برای همهٔ کاربران احرازشده (قواعد مرکزی عمومی‌اند)؛
 -- نوشتن فقط از طریق RPCهای admin؛ جدول results برای کاربر شرکت در دامنهٔ خودش.
@@ -183,6 +184,10 @@ create policy rule_center_versions_read on public.rule_center_versions for selec
 create policy rule_center_connections_read on public.rule_center_connections for select to authenticated using (true);
 create policy rule_center_tests_read on public.rule_center_tests for select to authenticated using (true);
 create policy rule_center_calendars_read on public.rule_center_working_calendars for select to authenticated using (true);
+create policy rule_center_calendars_admin_write on public.rule_center_working_calendars
+  for insert to authenticated with check (private.is_platform_admin());
+create policy rule_center_calendars_admin_update on public.rule_center_working_calendars
+  for update to authenticated using (private.is_platform_admin()) with check (private.is_platform_admin());
 create policy rule_center_results_read_own_tenant on public.rule_center_results
   for select to authenticated
   using (private.is_platform_admin() or tenant_id is null
