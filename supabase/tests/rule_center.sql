@@ -388,6 +388,7 @@ do $$
 declare
   v_rule_id uuid;
   version_id uuid;
+  v2 uuid;
   res jsonb;
 begin
   -- نرخ هر بخش (BRACKET): ۵٪ تا ۱٬۰۰۰٬۰۰۰، ۱۰٪ بالاتر → مبلغ ۲٬۰۰۰٬۰۰۰ → ۵۰٬۰۰۰ + ۱۰۰٬۰۰۰ = ۱۵۰٬۰۰۰
@@ -413,10 +414,24 @@ begin
   if (res ->> 'estimated_amount')::numeric <> 150000 then raise exception 'FAIL: tiered bracket %', res; end if;
 
   -- نرخ یک پله بر کل مبلغ (WHOLE): مبلغ ۲٬۰۰۰٬۰۰۰ در پلهٔ دوم → ۱۰٪ کل = ۲۰۰٬۰۰۰
-  update public.rule_center_versions
-  set definition = jsonb_set(definition, '{calculation,tier_mode}', '"WHOLE"')
-  where id = version_id and status = 'DRAFT';
-  res := public.rule_center_calc_penalty(version_id,
+  -- (کلاینت اجازهٔ ویرایش مستقیم نسخه را ندارد؛ پیش‌نویس جدید از مسیر رسمی ساخته و محاسبه می‌شود)
+  v2 := public.rule_center_new_version(v_rule_id,
+    $j${
+      "conditions": { "logic": "ALL", "clauses": [] },
+      "calculation": {
+        "method": "TIERED",
+        "tier_mode": "WHOLE",
+        "tiers": [ { "up_to": 1000000, "rate_percent": 5 }, { "up_to": null, "rate_percent": 10 } ],
+        "currency": "ریال",
+        "base_input": "debt_amount",
+        "limits": { "round_to": 1, "rounding": "NEAREST" }
+      },
+      "decided": { "status": "RULE_ATTACHED" }
+    }$j$::jsonb,
+    $j$[ { "key": "debt_amount", "label": "مبلغ بدهی", "type": "AMOUNT", "required": true } ]$j$::jsonb
+  );
+  if v2 is null then raise exception 'FAIL: WHOLE draft version not created'; end if;
+  res := public.rule_center_calc_penalty(v2,
     $j$ { "debt_amount": { "value": "2000000", "type": "AMOUNT" } }$j$::jsonb, 'PREVIEW');
   if (res ->> 'estimated_amount')::numeric <> 200000 then raise exception 'FAIL: tiered whole %', res; end if;
 end $$;
@@ -440,20 +455,26 @@ begin
   if not exists (select 1 from public.rule_center_versions where id = version_id and status = 'PUBLISHED' and published_at is not null) then
     raise exception 'FAIL: version not published';
   end if;
-  -- بازنویسی مستقیم مسدود است
+  -- بازنویسی مستقیم مسدود است (کلاینت اصلاً UPDATE ندارد؛ constraint هم دفاع دوم است)
   begin
     update public.rule_center_versions
     set definition = '{"deadline":{}}'::jsonb
     where id = version_id;
     raise exception 'FAIL: published version was overwritten';
-  exception when check_violation then null;
+  exception when insufficient_privilege or check_violation then null;
   end;
+  if (select definition from public.rule_center_versions where id = version_id) = '{"deadline":{}}'::jsonb then
+    raise exception 'FAIL: published definition changed after blocked write';
+  end if;
   -- برگشت به APPROVED مسدود است
   begin
     update public.rule_center_versions set status = 'APPROVED' where id = version_id;
     raise exception 'FAIL: published version status rolled back';
-  exception when check_violation then null;
+  exception when insufficient_privilege or check_violation then null;
   end;
+  if exists (select 1 from public.rule_center_versions where id = version_id and status <> 'PUBLISHED') then
+    raise exception 'FAIL: published version status changed after blocked update';
+  end if;
 end $$;
 
 -- ── 13) ACTIVE connection requires PUBLISHED version ─────────────────────
@@ -488,6 +509,10 @@ begin
   );
   select v.id into version_id from public.rule_center_versions v where v.rule_id = v_rule_id;
   perform public.rule_center_save_connection(version_id, 'OBLIGATION_VERSION', 'b2000000-0000-0000-0000-000000000005', '{}'::jsonb, 'UNCHECKED', null, false);
+  -- انتشار مستقیم (حتی با دسترسی کامل جدول) باید توسط گیت انتشار مسدود شود؛
+  -- از آنجا که کلاینت UPDATE مستقیم obligation_versions ندارد، این بررسی با نقش مالک جدول اجرا می‌شود
+  -- تا خودِ تریگر گیت (و نه لایهٔ grant) تحت آزمون قرار گیرد.
+  reset role;
   begin
     update public.obligation_versions
     set status = 'PUBLISHED'
@@ -495,6 +520,7 @@ begin
     raise exception 'FAIL: obligation published with unready rule connection';
   exception when check_violation then null;
   end;
+  set local role authenticated;
 end $$;
 
 -- ── 15) Objection activation blocked with unpublished rule link ──────────
