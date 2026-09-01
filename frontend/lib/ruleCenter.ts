@@ -377,11 +377,26 @@ export async function calcPenalty(versionId: string, inputs: Record<string, any>
 
 export async function runRuleTest(versionId: string, title: string, inputs: Record<string, any>, expected: Record<string, any>): Promise<string> {
   if (!isSupabaseConfigured) throw new Error('اتصال به پایگاه‌داده برقرار نیست.')
+  // دفاع تکمیلی: رشتهٔ خالی/فاصله در مقادیر تاریخ → null، تا تبدیل مستقیم به date خطا ندهد
+  const payload: Record<string, any> = {}
+  for (const [k, v] of Object.entries(inputs ?? {})) {
+    if (v && typeof v === 'object' && 'value' in v) {
+      let val = (v as any).value
+      if (typeof val === 'string') val = val.trim() === '' ? null : val.trim()
+      payload[k] = { ...v, value: val }
+    } else {
+      payload[k] = v
+    }
+  }
+  const exp: Record<string, any> = { ...(expected ?? {}) }
+  if (typeof exp.effective_deadline === 'string' && exp.effective_deadline.trim() === '') {
+    exp.effective_deadline = null
+  }
   const { data, error } = await (supabase as any).rpc('rule_center_run_test', {
     p_version_id: versionId,
     p_title: title,
-    p_inputs: inputs,
-    p_expected: expected,
+    p_inputs: payload,
+    p_expected: exp,
   })
   if (error) throw rpcError(error, 'اجرای آزمون انجام نشد.')
   return data as string
