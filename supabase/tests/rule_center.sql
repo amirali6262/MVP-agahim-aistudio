@@ -685,6 +685,8 @@ begin
   exception when others then
     if sqlstate <> '22023' then raise; end if;
   end;
+end $$;
+
 -- ── 20) قرارداد تناوب و دوره‌سازی (صفحهٔ ۲): ذخیره و بازخوانی ─────────────
 do $$
 declare
