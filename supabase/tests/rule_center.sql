@@ -113,12 +113,12 @@ reset role;
 reset role;
 insert into public.obligation_families (id, code, title, domain) values
   ('b2000000-0000-0000-0000-000000000001', 'RC_FAM', 'خانوادهٔ آزمون', 'TAX');
-insert into public.obligation_definitions (id, family_id, code, title) values
-  ('b2000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_A', 'تعهد الف'),
-  ('b2000000-0000-0000-0000-000000000003', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_B', 'تعهد ب');
-insert into public.obligation_versions (id, obligation_id, version_number, status) values
-  ('b2000000-0000-0000-0000-000000000004', 'b2000000-0000-0000-0000-000000000002', 1, 'DRAFT'),
-  ('b2000000-0000-0000-0000-000000000005', 'b2000000-0000-0000-0000-000000000003', 1, 'DRAFT');
+insert into public.obligations (id, family_id, code, title, created_by) values
+  ('b2000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_A', 'تعهد الف', 'a2000000-0000-0000-0000-000000000001'),
+  ('b2000000-0000-0000-0000-000000000003', 'b2000000-0000-0000-0000-000000000001', 'RC_OBL_B', 'تعهد ب', 'a2000000-0000-0000-0000-000000000001');
+insert into public.obligation_versions (id, obligation_id, version_number, status, created_by) values
+  ('b2000000-0000-0000-0000-000000000004', 'b2000000-0000-0000-0000-000000000002', 1, 'DRAFT', 'a2000000-0000-0000-0000-000000000001'),
+  ('b2000000-0000-0000-0000-000000000005', 'b2000000-0000-0000-0000-000000000003', 1, 'DRAFT', 'a2000000-0000-0000-0000-000000000001');
 
 insert into public.objection_templates (id, title, status, is_active) values
   ('b2000000-0000-0000-0000-000000000006', 'الگوی آزمون قواعد', 'DRAFT', false);

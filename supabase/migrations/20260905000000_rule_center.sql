@@ -1648,7 +1648,7 @@ returns jsonb language sql stable security definer set search_path = pg_catalog 
   )), '[]'::jsonb)
   from public.rule_center_connections c
   left join public.obligation_versions ov on ov.id = c.target_id and c.target_type = 'OBLIGATION_VERSION'
-  left join public.obligation_definitions o on o.id = ov.obligation_id
+  left join public.obligations o on o.id = ov.obligation_id
   left join public.objection_steps s on s.template_id = c.target_id and s.step_ref = c.target_ref and c.target_type = 'ACTION_STEP'
   left join public.objection_templates t on t.id = s.template_id
   where c.version_id = p_version_id
