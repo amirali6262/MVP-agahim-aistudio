@@ -482,7 +482,7 @@ declare
   v_in jsonb;
   v_tests_ok boolean;
 begin
-  select c.*, r.kind, r.legal_source, r.nature, v.version_number, v.status as vstatus
+  select c.*, r.kind, r.legal_source, r.nature, v.version_number, v.status as vstatus, v.inputs
     into v_conn
   from public.rule_center_connections c
   join public.rule_center_versions v on v.id = c.version_id
