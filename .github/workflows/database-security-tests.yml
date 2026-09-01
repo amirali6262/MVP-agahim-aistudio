@@ -75,6 +75,11 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -X -v ON_ERROR_STOP=1 -f supabase/tests/objection_atomic_save.sql
 
+      - name: Test rule center (deadline + penalty engines, versioning, guards)
+        env:
+          PGPASSWORD: postgres
+        run: psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -X -v ON_ERROR_STOP=1 -f supabase/tests/rule_center.sql
+
       - name: Stop disposable local Supabase
         if: always()
         run: supabase stop --no-backup

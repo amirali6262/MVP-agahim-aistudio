@@ -32,6 +32,11 @@ type Props = {
   steps: any[]
   reviewRequests: any[]
   penaltySchemaReady: boolean
+  /** کنترل‌های صحت اتصال به قواعد مرکزی (مهلت/تناوب + جریمه) */
+  ruleChecks: Array<{ key: string; ok: boolean; label: string; fixKind?: 'DEADLINE' | 'PENALTY' }>
+  /** خلاصهٔ قواعد متصل به این نسخهٔ تعهد */
+  ruleSummary: Array<{ kind: 'DEADLINE' | 'PENALTY'; title: string; version: string; status: string; decidedLabel: string }>
+  onFixRule?: (kind: 'DEADLINE' | 'PENALTY') => void
   busy: boolean
   mode: StudioMode
   onSeed: () => Promise<void>
@@ -65,6 +70,9 @@ export default function PublishReadinessWorkflowModal({
   steps,
   reviewRequests,
   penaltySchemaReady,
+  ruleChecks = [],
+  ruleSummary = [],
+  onFixRule,
   busy,
   mode,
   onSeed,
@@ -95,7 +103,7 @@ export default function PublishReadinessWorkflowModal({
     return false
   })
 
-  const allChecksPass = Boolean(version.effective_from) && Boolean(version.source_url) && Boolean(version.legal_reference) && rules.length > 0 && steps.length > 0 && penaltySchemaReady
+  const allChecksPass = Boolean(version.effective_from) && Boolean(version.source_url) && Boolean(version.legal_reference) && rules.length > 0 && steps.length > 0 && penaltySchemaReady && ruleChecks.every((c) => c.ok)
 
   return (
     <FullScreen title={`چرخه انتشار نسخه ${version.version_number}`} onBack={onClose}>
@@ -289,8 +297,53 @@ export default function PublishReadinessWorkflowModal({
             <CheckRow ok={Boolean(version.legal_reference)} label="مرجع قانونی" />
             <CheckRow ok={rules.length > 0} label="حداقل یک قاعده تشخیص" />
             <CheckRow ok={steps.length > 0} label="حداقل یک مرحله فرایند" />
-            <CheckRow ok={penaltySchemaReady} label="ساختار جرایم آماده" />
+            <CheckRow ok={penaltySchemaReady} label="ساختار داده‌های جرایم آماده" />
+            {ruleChecks.map((c) => (
+              <div key={c.key} className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800/70 bg-[#141615] px-3 py-2">
+                <CheckRow ok={c.ok} label={c.label} />
+                {!c.ok && c.fixKind && onFixRule && (
+                  <Button size="sm" variant="outline" className="h-6 shrink-0 border-amber-700/60 text-amber-300 text-[10px] gap-1 px-2" onClick={() => onFixRule(c.fixKind!)}>
+                    <AlertTriangle className="h-3 w-3" /> رفع مشکل
+                  </Button>
+                )}
+              </div>
+            ))}
           </div>
+        </div>
+
+        {/* ── قواعد متصل (خلاصه؛ بدون فرم ساخت جریمه/مهلت) ── */}
+        <div className="rounded-2xl border border-zinc-800/60 bg-[#101211] p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <ShieldAlert className="h-4 w-4 text-amber-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-zinc-200">قواعد مهلت و جریمهٔ متصل (نسخهٔ مشخص)</h4>
+                <p className="text-xs text-zinc-500">تعریف جریمه/مهلت در این صفحه وجود ندارد؛ فقط خلاصه و کنترل صحت اتصال‌ها</p>
+              </div>
+            </div>
+          </div>
+          {ruleSummary.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-zinc-700/60 p-6 text-center text-xs text-zinc-500">
+              قاعده‌ای به این نسخهٔ تعهد متصل نیست. در صورت نیاز از «ویرایش تعهد ← قواعد مهلت و جریمه» اتصال را تنظیم کنید.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {ruleSummary.map((s, i) => (
+                <div key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800/70 bg-[#141615] px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="border-zinc-700 text-zinc-400 text-[10px]">
+                      {s.kind === 'PENALTY' ? 'جریمه' : 'مهلت/تناوب'}
+                    </Badge>
+                    <span className="text-sm font-bold text-zinc-200">{s.title}</span>
+                    <span className="text-[11px] text-zinc-500">{s.version}</span>
+                  </div>
+                  <span className="text-[11px] text-zinc-400">{s.status} · {s.decidedLabel}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Review Timeline ── */}

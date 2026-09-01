@@ -57,6 +57,7 @@ const CORE_MENU: MenuSection[] = [
     icon: Workflow,
     children: [
       { id: 'compliance-studio', label: 'استودیوی تعهدات و مراحل', path: '/admin/studio', active: true },
+      { id: 'rule-center', label: 'قواعد مهلت و جریمه', path: '/admin/rules', active: true },
       { id: 'circular-center', label: 'مرکز مهلت و بخشنامه', path: '/admin/circulars', active: true },
       { id: 'company-info', label: 'طراحی اطلاعات شرکت', path: '/admin/company-info', active: true },
       { id: 'selection-lists', label: 'فهرستهای انتخابی', path: '/admin/selection-lists', active: true },

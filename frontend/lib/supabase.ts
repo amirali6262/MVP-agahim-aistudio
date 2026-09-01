@@ -195,6 +195,10 @@ export interface ObjectionStep {
   transitions?: StepTransition[]
   /** مرحلهٔ این اقدام (اختیاری؛ قدیمی‌ها بدون مرحله نمایش داده می‌شوند) */
   stage_id?: string | null
+  /** اتصال به نسخهٔ مشخصِ قاعدهٔ مهلت مرکزی (قاعده‌های مهلت و جریمه) */
+  deadline_rule_version_id?: string | null
+  /** نگاشت ورودی‌های قاعدهٔ مهلت به فیلدهای اقدام/پرونده — ساختاریافته */
+  deadline_mapping?: Record<string, { source_type: string; source_ref?: string; source_step_ref?: string; source_step_label?: string }>
 }
 
 export interface ObjectionStage {

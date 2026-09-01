@@ -16,6 +16,7 @@ import TaxCorporatePage from './pages/admin/tax/TaxCorporatePage'
 import CommercialBooksAdminPage from './pages/admin/books/CommercialBooksAdminPage'
 import ChecklistAdminPage from './pages/admin/checklists/ChecklistAdminPage'
 import ObjectionTemplatesPage from './pages/admin/objections/ObjectionTemplatesPage'
+import RuleCenterPage from './pages/admin/rules/RuleCenterPage'
 import CompanyMenuManagerPage from './pages/admin/CompanyMenuManagerPage'
 import CompanyInfoDesignerPage from './pages/admin/CompanyInfoDesignerPage'
 import SelectionListsPage from './pages/admin/SelectionListsPage'
@@ -312,6 +313,15 @@ export default function App() {
               element={
                 <AdminPage>
                   <DeadlineExtensionsPage />
+                </AdminPage>
+              }
+            />
+
+            <Route
+              path="/admin/rules"
+              element={
+                <AdminPage>
+                  <RuleCenterPage />
                 </AdminPage>
               }
             />
