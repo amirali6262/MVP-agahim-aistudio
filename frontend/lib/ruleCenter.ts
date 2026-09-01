@@ -443,12 +443,13 @@ export function emptyDeadlineDefinition(): Record<string, any> {
 export function emptyRecurrenceDefinition(): Record<string, any> {
   return {
     recurrence: {
-      mode: 'ONCE',
-      calendar: 'iran_solar',
-      interval: { value: 1, unit: 'MONTH' },
-      period_boundary: 'FROM_START',
-      fiscal_year_period: 'ANNUAL',
-      offset: { value: 1, unit: 'MONTH', from: 'EVENT' },
+      schedule_mode: 'ONE_TIME',
+      frequency_unit: null,
+      frequency_interval: null,
+      period_basis: null,
+      period_source_key: null,
+      instance_generation_timing: 'MANUAL',
+      event_config: null,
     },
     deadline: {
       method: 'INTERVAL_FROM_BASE',
