@@ -110,6 +110,7 @@ reset role;
 -- ── 3a) Fixtures as superuser (obligation_*/objection_* tables have RLS
 --         policies but no INSERT grants for authenticated; same convention
 --         as eligibility_dynamic_facts.sql: fixtures run as postgres) ────
+reset role;
 insert into public.obligation_families (id, code, title, domain) values
   ('b2000000-0000-0000-0000-000000000001', 'RC_FAM', 'خانوادهٔ آزمون', 'TAX');
 insert into public.obligation_definitions (id, family_id, code, title) values
@@ -123,6 +124,8 @@ insert into public.objection_templates (id, title, status, is_active) values
   ('b2000000-0000-0000-0000-000000000006', 'الگوی آزمون قواعد', 'DRAFT', false);
 insert into public.objection_steps (id, template_id, sequence, code, step_ref, title, gap_value, gap_unit)
 values ('b2000000-0000-0000-0000-000000000007', 'b2000000-0000-0000-0000-000000000006', 1, 'STEP_1', 'rc_step_a', 'اقدام آزمون', 0, 'روز');
+
+set local role authenticated;
 
 -- ── 3) Same rule version in two obligations + one action ─────────────────
 do $$
