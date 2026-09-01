@@ -7,6 +7,7 @@ import { Button } from '../../../lib/shadcn/button'
 import JalaliDatePicker from '../../../components/JalaliDatePicker'
 import {
   fetchRuleCenterRule,
+  fetchRuleCenterRules,
   fetchRuleTests,
   fetchRuleUsage,
   fetchRuleVersion,
@@ -30,6 +31,58 @@ function jalaliToIso(value: string): string | null {
 
 const inputCls =
   'w-full rounded-lg border border-zinc-700 bg-[#1d1a18] px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-amber-500/70 transition'
+
+// ── قرارداد صفحهٔ ۲ «تناوب و دوره‌سازی» (مقدار فنی پایدار؛ عنوان فارسی فقط برای نمایش) ──
+const EXECUTION_MODES: Array<{ key: 'ONE_TIME' | 'RECURRING' | 'EVENT_DRIVEN'; label: string; desc: string }> = [
+  { key: 'ONE_TIME', label: 'یک‌باره', desc: 'این قاعده فقط برای یک رویداد یا پرونده اجرا می‌شود.' },
+  { key: 'RECURRING', label: 'تکرارشونده', desc: 'سیستم در دوره‌های مشخص، پرونده یا سررسید جدید ایجاد می‌کند.' },
+  { key: 'EVENT_DRIVEN', label: 'رویدادمحور', desc: 'قاعده با وقوع یک رویداد مشخص فعال می‌شود.' },
+]
+
+const FREQ_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'DAY', label: 'روزانه' },
+  { key: 'WEEK', label: 'هفتگی' },
+  { key: 'MONTH', label: 'ماهانه' },
+  { key: 'QUARTER', label: 'سه‌ماهه' },
+  { key: 'HALF_YEAR', label: 'شش‌ماهه' },
+  { key: 'YEAR', label: 'سالانه' },
+  { key: 'CUSTOM', label: 'سفارشی' },
+]
+
+const PERIOD_BASIS_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'COMPANY_FISCAL_YEAR', label: 'سال مالی شرکت' },
+  { key: 'CALENDAR_YEAR', label: 'سال تقویمی' },
+  { key: 'CALENDAR_MONTH', label: 'ماه تقویمی' },
+  { key: 'CASE_PERIOD', label: 'دوره پرونده' },
+  { key: 'SOURCE_EVENT', label: 'تاریخ یا رویداد ثبت‌شده' },
+  { key: 'RULE_OUTPUT', label: 'خروجی یک قاعده دیگر' },
+]
+
+const GEN_TIMING_OPTIONS: Array<{ key: string; label: string; eventBased?: boolean }> = [
+  { key: 'PERIOD_START', label: 'آغاز دوره' },
+  { key: 'PERIOD_END', label: 'پایان دوره' },
+  { key: 'SOURCE_EVENT_RECEIVED', label: 'پس از ثبت رویداد مبنا', eventBased: true },
+  { key: 'MANUAL', label: 'به‌صورت دستی' },
+]
+
+// رویدادهای ساختاریافتهٔ سامانه (همان واژگان record_case_event) — ورود متن آزاد مجاز نیست
+const EVENT_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'ASSESSMENT', label: 'تشخیص/ارزیابی' },
+  { key: 'OBJECTION_SUBMITTED', label: 'ثبت اعتراض' },
+  { key: 'HEARING', label: 'جلسهٔ رسیدگی' },
+  { key: 'DECISION', label: 'صدور رأی/تصمیم' },
+  { key: 'PAYMENT_PLAN', label: 'پرداخت در اقساط' },
+  { key: 'PAYMENT', label: 'پرداخت' },
+  { key: 'SETTLEMENT_REQUEST', label: 'درخواست تسویه' },
+  { key: 'SETTLED', label: 'تسویه' },
+  { key: 'CLOSED', label: 'بستن پرونده' },
+  { key: 'NOTE', label: 'یادداشت' },
+]
+
+const EVENT_SOURCE_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'CASE_EVENT', label: 'رویداد پرونده' },
+  { key: 'RULE_OUTPUT', label: 'خروجی قاعدهٔ دیگر' },
+]
 
 function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
@@ -66,7 +119,17 @@ export default function RuleWizard({
   onClose: () => void
   onSaved: (ruleId: string) => Promise<void>
 }) {
-  const [stepIndex, setStepIndex] = useState(0)
+  const [stepIndex, setStepIndexState] = useState(0)
+  // گام با اعتبارسنجی: ادامه از صفحهٔ ۲ (تناوب و دوره‌سازی) بدون دادهٔ کامل ممکن نیست
+  const setStepIndex = (next: number | ((v: number) => number)) => {
+    const target = typeof next === 'function' ? next(stepIndex) : next
+    if (stepIndex === 1 && !isPenalty && target > stepIndex) {
+      const err = recPageError()
+      if (err) { setRecError(err); return }
+    }
+    setRecError('')
+    setStepIndexState(target)
+  }
   const [loading, setLoading] = useState(true)
   const [dirty, setDirty] = useState(false)
 
@@ -82,15 +145,22 @@ export default function RuleWizard({
   const [validTo, setValidTo] = useState('')
   const [code, setCode] = useState('')
 
-  // تناوب
-  const [recMode, setRecMode] = useState('ONCE')
-  const [recCalendar, setRecCalendar] = useState('iran_solar')
-  const [intervalValue, setIntervalValue] = useState('1')
-  const [intervalUnit, setIntervalUnit] = useState('MONTH')
-  const [periodBoundary, setPeriodBoundary] = useState('FROM_START')
-  const [fyPeriod, setFyPeriod] = useState('ANNUAL')
-  const [offsetValue, setOffsetValue] = useState('1')
-  const [offsetUnit, setOffsetUnit] = useState('MONTH')
+  // تناوب و دوره‌سازی (صفحه ۲)
+  const [scheduleMode, setScheduleMode] = useState<'ONE_TIME' | 'RECURRING' | 'EVENT_DRIVEN'>('ONE_TIME')
+  const [freqUnit, setFreqUnit] = useState('YEAR')
+  const [freqInterval, setFreqInterval] = useState('1')
+  const [periodBasis, setPeriodBasis] = useState('COMPANY_FISCAL_YEAR')
+  const [periodSourceKey, setPeriodSourceKey] = useState('')
+  const [genTiming, setGenTiming] = useState('PERIOD_END')
+  const [eventKey, setEventKey] = useState('')
+  const [eventSource, setEventSource] = useState('CASE_EVENT')
+  const [eventNewInstance, setEventNewInstance] = useState(true)
+  const [eventDedup, setEventDedup] = useState(true)
+  const [dedupKey, setDedupKey] = useState('')
+  const [rulesForOutput, setRulesForOutput] = useState<Array<{ id: string; code: string; title_fa: string }>>([])
+  const [recError, setRecError] = useState('')
+  // مبدأ رویداد صفحهٔ سوم (ساختاریافته)
+  const [baseEventKey, setBaseEventKey] = useState('')
 
   // مهلت
   const [dlMethod, setDlMethod] = useState('INTERVAL_FROM_BASE')
@@ -157,7 +227,6 @@ export default function RuleWizard({
   const [publishChecks, setPublishChecks] = useState<Array<{ key: string; ok: boolean; label: string }>>([])
 
   const isPenalty = kind === 'PENALTY'
-  const isDeadlineOnly = kind === 'DEADLINE'
   const pageCount = 6
 
   useEffect(() => {
@@ -197,6 +266,9 @@ export default function RuleWizard({
       } finally {
         setLoading(false)
       }
+      fetchRuleCenterRules()
+        .then((list) => setRulesForOutput(list.map((r) => ({ id: r.id, code: r.code, title_fa: r.title_fa }))))
+        .catch(() => { /* فهرست قواعد برای منبع RULE_OUTPUT؛ در نبود اتصال، انتخاب غیرفعال می‌ماند */ })
     })()
   }, [ruleId, versionId, mode])
 
@@ -205,11 +277,55 @@ export default function RuleWizard({
     const rec = def.recurrence ?? {}
     const calc = def.calculation ?? {}
     setInputs(inputList)
-    if (rec.mode) { setRecMode(rec.mode); setRecCalendar(rec.calendar ?? 'iran_solar'); setIntervalValue(String(rec.interval?.value ?? 1)); setIntervalUnit(rec.interval?.unit ?? 'MONTH'); setPeriodBoundary(rec.period_boundary ?? 'FROM_START'); setFyPeriod(rec.fiscal_year_period ?? 'ANNUAL'); setOffsetValue(String(rec.offset?.value ?? 1)); setOffsetUnit(rec.offset?.unit ?? 'MONTH') }
+    if (rec.schedule_mode) {
+      // قرارداد جدید صفحهٔ ۲
+      setScheduleMode(rec.schedule_mode)
+      setFreqUnit(rec.frequency_unit ?? 'YEAR')
+      setFreqInterval(String(rec.frequency_interval ?? 1))
+      setPeriodBasis(rec.period_basis ?? 'COMPANY_FISCAL_YEAR')
+      setPeriodSourceKey(rec.period_source_key ?? '')
+      setGenTiming(rec.instance_generation_timing ?? 'PERIOD_END')
+      const ec = rec.event_config ?? {}
+      setEventKey(ec.event_key ?? '')
+      setEventSource(ec.event_source ?? 'CASE_EVENT')
+      setEventNewInstance(ec.new_instance_per_occurrence !== false)
+      setEventDedup(ec.prevent_duplicate !== false)
+      setDedupKey(ec.dedup_key ?? '')
+    } else if (rec.mode) {
+      // سازگاری با ساختار قدیمی (backward compatibility)
+      const legacy = rec.mode
+      if (legacy === 'ONCE') {
+        setScheduleMode('ONE_TIME')
+      } else if (legacy === 'CALENDAR_PERIODS') {
+        setScheduleMode('RECURRING')
+        const u = rec.interval?.unit
+        setFreqUnit(u === 'QUARTER' ? 'QUARTER' : u === 'SEMI' ? 'HALF_YEAR' : u === 'YEAR' ? 'YEAR' : u === 'CUSTOM_MONTHS' ? 'CUSTOM' : 'MONTH')
+        setFreqInterval(String(rec.interval?.value ?? 1))
+        setPeriodBasis(['YEAR', 'QUARTER', 'HALF_YEAR'].includes(u) ? 'CALENDAR_YEAR' : 'CALENDAR_MONTH')
+        setPeriodSourceKey('')
+        setGenTiming('PERIOD_START')
+      } else if (legacy === 'FISCAL_YEAR_PERIODS') {
+        setScheduleMode('RECURRING')
+        const p = rec.fiscal_year_period
+        setFreqUnit(p === 'MONTHLY' ? 'MONTH' : p === 'QUARTERLY' ? 'QUARTER' : p === 'SEMI' ? 'HALF_YEAR' : p === 'CUSTOM_MONTHS' ? 'CUSTOM' : 'YEAR')
+        setFreqInterval('1')
+        setPeriodBasis('COMPANY_FISCAL_YEAR')
+        setPeriodSourceKey('case_fiscal_year')
+        setGenTiming('PERIOD_START')
+      } else if (legacy === 'EVENT' || legacy === 'OFFSET_FROM_EVENT') {
+        setScheduleMode('EVENT_DRIVEN')
+        setEventKey('')
+        setEventSource('CASE_EVENT')
+        setEventNewInstance(true)
+        setEventDedup(true)
+        setDedupKey('')
+      }
+    }
     if (dl.method) {
       setDlMethod(dl.method)
       setBaseInput(dl.interval?.base_input ?? '')
       setBaseFixed(dl.interval?.base ?? 'PERIOD_START')
+      setBaseEventKey(dl.interval?.base_event ?? '')
       setGapValue(String(dl.interval?.value ?? 10))
       setGapUnit(dl.interval?.unit ?? 'DAY')
       setDirection(dl.interval?.direction ?? 'AFTER')
@@ -291,7 +407,7 @@ export default function RuleWizard({
       : {
           method: dlMethod,
           interval: dlMethod === 'INTERVAL_FROM_BASE'
-            ? { value: Number(gapValue || 0), unit: gapUnit, direction, base_input: baseInput || null, base: baseInput ? null : baseFixed }
+            ? { value: Number(gapValue || 0), unit: gapUnit, direction, base_input: baseInput || null, base: baseInput ? null : baseFixed, base_event: baseFixed === 'CASE_EVENT' && baseEventKey ? baseEventKey : null }
             : { value: 0, unit: 'DAY', direction: 'AFTER' },
           fixed_date: dlMethod === 'FIXED_DATE' ? { month: Number(fixedMonth), day: Number(fixedDay) } : {},
           fixed_in_period: dlMethod === 'FIXED_IN_PERIOD' ? { position: periodPos, n: Number(periodN || 1) } : {},
@@ -302,16 +418,62 @@ export default function RuleWizard({
         }
     return {
       recurrence: {
-        mode: recMode,
-        calendar: recCalendar,
-        interval: { value: Number(intervalValue || 1), unit: intervalUnit },
-        period_boundary: periodBoundary,
-        fiscal_year_period: fyPeriod,
-        offset: { value: Number(offsetValue || 1), unit: offsetUnit, from: 'EVENT' },
+        schedule_mode: scheduleMode,
+        frequency_unit: scheduleMode === 'RECURRING' ? freqUnit : null,
+        frequency_interval: scheduleMode === 'RECURRING' ? Math.max(1, Math.floor(Number(freqInterval) || 1)) : null,
+        period_basis: scheduleMode === 'RECURRING' ? periodBasis : null,
+        period_source_key: scheduleMode === 'RECURRING' ? (periodSourceKey || null) : null,
+        instance_generation_timing: scheduleMode === 'RECURRING' ? genTiming : scheduleMode === 'EVENT_DRIVEN' ? 'SOURCE_EVENT_RECEIVED' : 'MANUAL',
+        event_config: scheduleMode === 'EVENT_DRIVEN' ? {
+          event_key: eventKey || null,
+          event_source: eventSource,
+          new_instance_per_occurrence: eventNewInstance,
+          prevent_duplicate: eventDedup,
+          dedup_key: dedupKey || null,
+        } : null,
       },
       deadline,
       reminders: reminders.map((r) => ({ offset_before: Number(r.offset_before || 0), unit: r.unit, role_key: r.role_key, channel: r.channel })),
     }
+  }
+
+  function recPageError(): string | null {
+    if (scheduleMode === 'RECURRING') {
+      if (!freqUnit) return 'تناوب تکرار را انتخاب کنید.'
+      const n = Number(freqInterval)
+      if (!Number.isInteger(n) || n < 1) return 'تکرار در هر چند دوره باید عدد صحیح بزرگ‌تر از صفر باشد.'
+      if (!periodBasis) return 'مبنای تشکیل دوره را انتخاب کنید.'
+      if (periodBasis === 'COMPANY_FISCAL_YEAR' && !periodSourceKey) return 'منبع سال مالی شرکت را انتخاب کنید.'
+      if (periodBasis === 'SOURCE_EVENT' && !periodSourceKey) return 'رویداد منبع دوره را انتخاب کنید.'
+      if (periodBasis === 'RULE_OUTPUT' && !periodSourceKey) return 'قاعده و خروجی منبع را انتخاب کنید.'
+    }
+    if (scheduleMode === 'EVENT_DRIVEN') {
+      if (!eventKey) return 'رویداد آغازگر را از فهرست انتخاب کنید.'
+      if (!eventSource) return 'منبع رویداد را انتخاب کنید.'
+      if (eventDedup && !dedupKey.trim()) return 'برای جلوگیری از نمونهٔ تکراری، کلید تشخیص تکراری را تعیین کنید.'
+    }
+    return null
+  }
+
+  function recurrenceSummary(): string {
+    if (scheduleMode === 'ONE_TIME') {
+      return 'این قاعده فقط یک بار برای هر پرونده اجرا می‌شود و دورهٔ جداگانه‌ای ایجاد نمی‌کند.'
+    }
+    if (scheduleMode === 'EVENT_DRIVEN') {
+      const ev = EVENT_OPTIONS.find((o) => o.key === eventKey)?.label ?? (eventKey ? eventKey : 'رویداد انتخاب‌شده')
+      const src = EVENT_SOURCE_OPTIONS.find((o) => o.key === eventSource)?.label ?? eventSource
+      const parts: string[] = [`با وقوع «${ev}» (${src}) این قاعده فعال می‌شود`]
+      if (eventNewInstance) parts.push('برای هر بار وقوع نمونهٔ جدید ساخته می‌شود')
+      if (eventDedup) parts.push('از نمونهٔ تکراری جلوگیری می‌شود')
+      return `${parts.join('؛ ')}. موعد قانونی در صفحهٔ بعد تعیین خواهد شد.`
+    }
+    const freq = FREQ_OPTIONS.find((o) => o.key === freqUnit)?.label ?? freqUnit
+    const basis = PERIOD_BASIS_OPTIONS.find((o) => o.key === periodBasis)?.label ?? periodBasis
+    const timing = GEN_TIMING_OPTIONS.find((o) => o.key === genTiming)?.label ?? genTiming
+    if (periodBasis === 'COMPANY_FISCAL_YEAR' && genTiming === 'PERIOD_END') {
+      return 'برای هر سال مالی تعریف‌شده شرکت، یک دوره مستقل ایجاد می‌شود. موعد قانونی هر دوره در صفحه بعد و بر اساس پایان همان سال مالی محاسبه خواهد شد.'
+    }
+    return `هر ${freqInterval || '۱'} ${freq} بر اساس ${basis}، نمونهٔ تعهد در «${timing}» ساخته می‌شود. موعد قانونی هر دوره در صفحهٔ بعد تعیین خواهد شد.`
   }
 
   async function saveDraft() {
@@ -420,13 +582,13 @@ export default function RuleWizard({
     }
     return [
       { key: 'spec', title: 'مشخصات و کاربرد' },
-      { key: 'rec', title: isDeadlineOnly ? '—' : 'زمان ایجاد نوبت' },
+      { key: 'rec', title: 'تناوب و دوره‌سازی' },
       { key: 'dl', title: 'روش تعیین موعد' },
       { key: 'count', title: 'شمارش و استثناها' },
       { key: 'io', title: 'ورودی‌ها، استفاده و یادآوری' },
       { key: 'test', title: 'آزمایش و تأیید' },
     ]
-  }, [isPenalty, isDeadlineOnly])
+  }, [isPenalty])
 
   if (loading) {
     return (
@@ -531,84 +693,147 @@ export default function RuleWizard({
           </div>
         )}
 
-        {stepIndex === 1 && !isPenalty && !isDeadlineOnly && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <FieldLabel>این تعهد چه زمانی ایجاد می‌شود؟</FieldLabel>
-              <select className={inputCls} value={recMode} onChange={(e) => { setRecMode(e.target.value); setDirty(true) }}>
-                <option value="ONCE">فقط یک بار</option>
-                <option value="EVENT">با وقوع یک رویداد مشخص</option>
-                <option value="CALENDAR_PERIODS">در دوره‌های تقویمی مشخص</option>
-                <option value="FISCAL_YEAR_PERIODS">در دوره‌های وابسته به سال مالی شرکت</option>
-                <option value="OFFSET_FROM_EVENT">پس از گذشت فاصله از تاریخ/رویداد</option>
-              </select>
+        {stepIndex === 1 && !isPenalty && (
+          <div className="space-y-5">
+            <div>
+              <h4 className="text-sm font-bold text-zinc-100">الگوی تکرار و ایجاد دوره</h4>
+              <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+                مشخص کنید این تعهد چند بار تکرار می‌شود و هر دوره بر اساس چه اطلاعاتی ایجاد می‌شود. تاریخ سررسید در صفحه بعد تعیین خواهد شد.
+              </p>
             </div>
-            {recMode === 'CALENDAR_PERIODS' && (
-              <>
+
+            {/* نوع اجرای قاعده */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              {EXECUTION_MODES.map((m) => (
+                <button
+                  key={m.key}
+                  type="button"
+                  onClick={() => { setScheduleMode(m.key); setRecError(''); setDirty(true) }}
+                  className={`rounded-xl border p-4 text-right transition ${scheduleMode === m.key ? 'border-amber-500/70 bg-amber-950/20' : 'border-zinc-800 bg-[#141615] hover:border-zinc-600'}`}
+                >
+                  <p className={`text-xs font-bold ${scheduleMode === m.key ? 'text-amber-300' : 'text-zinc-200'}`}>{m.label}</p>
+                  <p className="mt-1.5 text-[11px] leading-5 text-zinc-500">{m.desc}</p>
+                </button>
+              ))}
+            </div>
+
+            {scheduleMode === 'RECURRING' && (
+              <div className="grid gap-4 rounded-2xl border border-zinc-800 bg-[#101211] p-5 sm:grid-cols-2">
                 <div>
-                  <FieldLabel>تقویم</FieldLabel>
-                  <select className={inputCls} value={recCalendar} onChange={(e) => { setRecCalendar(e.target.value); setDirty(true) }}>
-                    <option value="iran_solar">شمسی</option>
-                    <option value="gregorian">میلادی</option>
+                  <FieldLabel>تناوب تکرار</FieldLabel>
+                  <select className={inputCls} value={freqUnit} onChange={(e) => { setFreqUnit(e.target.value); setRecError(''); setDirty(true) }}>
+                    {FREQ_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <FieldLabel>فاصله تکرار</FieldLabel>
-                  <div className="flex gap-2">
-                    <input className={inputCls} type="number" min="1" dir="ltr" value={intervalValue} onChange={(e) => { setIntervalValue(e.target.value); setDirty(true) }} />
-                    <select className={inputCls} value={intervalUnit} onChange={(e) => { setIntervalUnit(e.target.value); setDirty(true) }}>
-                      <option value="MONTH">ماه</option>
-                      <option value="QUARTER">فصل (۳ ماه)</option>
-                      <option value="SEMI">۶ ماه</option>
-                      <option value="YEAR">سال</option>
-                      <option value="CUSTOM_MONTHS">ماه سفارشی</option>
-                    </select>
-                  </div>
+                  <FieldLabel>تکرار در هر چند دوره</FieldLabel>
+                  <input className={inputCls} type="number" min="1" step="1" dir="ltr" value={freqInterval} onChange={(e) => { setFreqInterval(e.target.value); setRecError(''); setDirty(true) }} />
+                  <p className="mt-1 text-[11px] text-zinc-500">نمونه: هر {freqInterval || '—'} {freqUnit === 'DAY' ? 'روز' : freqUnit === 'WEEK' ? 'هفته' : freqUnit === 'MONTH' ? 'ماه' : freqUnit === 'QUARTER' ? 'سه‌ماهه' : freqUnit === 'HALF_YEAR' ? 'شش‌ماهه' : freqUnit === 'YEAR' ? 'سال' : 'دوره سفارشی'}</p>
                 </div>
                 <div>
-                  <FieldLabel>مرز دوره‌ها</FieldLabel>
-                  <select className={inputCls} value={periodBoundary} onChange={(e) => { setPeriodBoundary(e.target.value); setDirty(true) }}>
-                    <option value="FROM_START">از شروع برنامه</option>
-                    <option value="CALENDAR_FIXED">فصل‌های تقویم مشخص</option>
+                  <FieldLabel>مبنای تشکیل دوره</FieldLabel>
+                  <select className={inputCls} value={periodBasis} onChange={(e) => { setPeriodBasis(e.target.value); setPeriodSourceKey(''); setRecError(''); setDirty(true) }}>
+                    {PERIOD_BASIS_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
                   </select>
-                  {periodBoundary === 'CALENDAR_FIXED' && (
-                    <p className="mt-1 text-[11px] text-zinc-500">«هر سه ماه» باید معلوم کند سه ماه از شروع برنامه است یا فصل‌های تقویم.</p>
+                </div>
+                <div>
+                  <FieldLabel>منبع دوره</FieldLabel>
+                  {periodBasis === 'COMPANY_FISCAL_YEAR' && (
+                    <div className="space-y-1">
+                      <select className={inputCls} value={periodSourceKey} onChange={(e) => { setPeriodSourceKey(e.target.value); setRecError(''); setDirty(true) }}>
+                        <option value="">— انتخاب منبع —</option>
+                        <option value="case_fiscal_year">سال مالی منتخب پرونده</option>
+                      </select>
+                      <p className="text-[11px] leading-5 text-zinc-500">دوره از سال مالی واقعی همان پروندهٔ شرکت خوانده می‌شود؛ شروع سال مالی هر شرکت جدا است (لزوماً فروردین نیست) و تغییر آن در دوره‌های بعد، دوره‌های قبلی را تغییر نمی‌دهد.</p>
+                    </div>
+                  )}
+                  {periodBasis === 'SOURCE_EVENT' && (
+                    <div className="space-y-1">
+                      <select className={inputCls} value={periodSourceKey} onChange={(e) => { setPeriodSourceKey(e.target.value); setRecError(''); setDirty(true) }}>
+                        <option value="">— انتخاب رویداد —</option>
+                        {EVENT_OPTIONS.map((o) => <option key={o.key} value={`case_event:${o.key}`}>{o.label}</option>)}
+                      </select>
+                      <p className="text-[11px] text-zinc-500">رویداد از فهرست رویدادهای ثبت‌شده انتخاب می‌شود؛ ورود دستی نام رویداد مجاز نیست.</p>
+                    </div>
+                  )}
+                  {periodBasis === 'RULE_OUTPUT' && (
+                    <div className="space-y-1">
+                      <select className={inputCls} value={periodSourceKey} onChange={(e) => { setPeriodSourceKey(e.target.value); setRecError(''); setDirty(true) }}>
+                        <option value="">— انتخاب قاعده و خروجی —</option>
+                        {rulesForOutput.map((r) => (
+                          <optgroup key={r.id} label={`${r.title_fa} (${r.code})`}>
+                            <option value={`${r.id}::PERIOD_END`}>پایان دورهٔ محاسبه‌شده</option>
+                            <option value={`${r.id}::PERIOD_START`}>شروع دورهٔ محاسبه‌شده</option>
+                            <option value={`${r.id}::DEADLINE`}>موعد محاسبه‌شده</option>
+                          </optgroup>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-zinc-500">اتصال با شناسهٔ پایدار قاعده ذخیره می‌شود، نه عنوان آن. وابستگی حلقوی در محل اتصال رد می‌شود.</p>
+                    </div>
+                  )}
+                  {(periodBasis === 'CALENDAR_YEAR' || periodBasis === 'CALENDAR_MONTH' || periodBasis === 'CASE_PERIOD') && (
+                    <p className="rounded-lg border border-zinc-800 bg-[#141615] px-3 py-2 text-[11px] leading-5 text-zinc-400">
+                      {periodBasis === 'CALENDAR_YEAR' ? 'دوره‌ها بر اساس سال تقویمی انتخابی (شمسی/میلادی) خوانده می‌شوند.' : periodBasis === 'CALENDAR_MONTH' ? 'دوره‌ها بر اساس ماه‌های تقویم انتخابی شکل می‌گیرند.' : 'دوره از دورهٔ پروندهٔ همان شرکت خوانده می‌شود.'}
+                    </p>
                   )}
                 </div>
-              </>
-            )}
-            {recMode === 'FISCAL_YEAR_PERIODS' && (
-              <div className="sm:col-span-2">
-                <FieldLabel>دورهٔ سال مالی</FieldLabel>
-                <select className={inputCls} value={fyPeriod} onChange={(e) => { setFyPeriod(e.target.value); setDirty(true) }}>
-                  <option value="MONTHLY">ماهانه</option>
-                  <option value="QUARTERLY">سه‌ماهه</option>
-                  <option value="SEMI">شش‌ماهه</option>
-                  <option value="ANNUAL">سالانه</option>
-                  <option value="CUSTOM_MONTHS">ماه سفارشی</option>
-                </select>
-                <p className="mt-1.5 text-[11px] leading-5 text-zinc-500">
-                  دوره از سال مالی واقعی همان شرکت خوانده می‌شود؛ سال مالی لزوماً از فروردین شروع نمی‌شود و دورهٔ کوتاه/بلند ناشی از تغییر سال مالی شناسایی می‌شود.
-                </p>
+                <div>
+                  <FieldLabel>زمان ایجاد نمونهٔ تعهد</FieldLabel>
+                  <select className={inputCls} value={genTiming} onChange={(e) => { setGenTiming(e.target.value); setRecError(''); setDirty(true) }}>
+                    {GEN_TIMING_OPTIONS.map((o) => (
+                      <option key={o.key} value={o.key} disabled={o.eventBased && periodBasis !== 'SOURCE_EVENT' && periodBasis !== 'RULE_OUTPUT'}>{o.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-zinc-500">زمان ساخت نمونهٔ تعهد است و با تاریخ سررسید (صفحهٔ بعد) اشتباه نشود.</p>
+                </div>
               </div>
             )}
-            {recMode === 'OFFSET_FROM_EVENT' && (
-              <div className="sm:col-span-2">
-                <FieldLabel>فاصله پس از رویداد</FieldLabel>
-                <div className="flex gap-2">
-                  <input className={inputCls} type="number" min="1" dir="ltr" value={offsetValue} onChange={(e) => { setOffsetValue(e.target.value); setDirty(true) }} />
-                  <select className={inputCls} value={offsetUnit} onChange={(e) => { setOffsetUnit(e.target.value); setDirty(true) }}>
-                    <option value="DAY">روز</option>
-                    <option value="MONTH">ماه (شمسی)</option>
-                    <option value="YEAR">سال (شمسی)</option>
+
+            {scheduleMode === 'EVENT_DRIVEN' && (
+              <div className="grid gap-4 rounded-2xl border border-zinc-800 bg-[#101211] p-5 sm:grid-cols-2">
+                <div>
+                  <FieldLabel>رویداد آغازگر</FieldLabel>
+                  <select className={inputCls} value={eventKey} onChange={(e) => { setEventKey(e.target.value); setRecError(''); setDirty(true) }}>
+                    <option value="">— انتخاب رویداد —</option>
+                    {EVENT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                  </select>
+                  <p className="mt-1 text-[11px] text-zinc-500">رویداد از منابع واقعی سامانه انتخاب می‌شود؛ ورود متن آزاد برای شناسهٔ رویداد مجاز نیست.</p>
+                </div>
+                <div>
+                  <FieldLabel>منبع رویداد</FieldLabel>
+                  <select className={inputCls} value={eventSource} onChange={(e) => { setEventSource(e.target.value); setRecError(''); setDirty(true) }}>
+                    {EVENT_SOURCE_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
                   </select>
                 </div>
-                <p className="mt-1.5 text-[11px] text-zinc-500">«یک ماه پس از رویداد» با «۳۰ روز پس از رویداد» یکسان نیست؛ ماه با تقویم انتخابی جابه‌جا می‌شود.</p>
+                <label className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
+                  <input type="checkbox" checked={eventNewInstance} onChange={(e) => { setEventNewInstance(e.target.checked); setRecError(''); setDirty(true) }} className="accent-amber-500" />
+                  برای هر بار وقوع رویداد، نمونهٔ جدید ساخته شود
+                </label>
+                <label className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
+                  <input type="checkbox" checked={eventDedup} onChange={(e) => { setEventDedup(e.target.checked); setRecError(''); setDirty(true) }} className="accent-amber-500" />
+                  جلوگیری از ایجاد نمونهٔ تکراری
+                </label>
+                {eventDedup && (
+                  <div className="sm:col-span-2">
+                    <FieldLabel>کلید تشخیص تکراری بودن</FieldLabel>
+                    <input className={inputCls} dir="ltr" value={dedupKey} onChange={(e) => { setDedupKey(e.target.value); setRecError(''); setDirty(true) }} placeholder="مثال: case_id|event_key|occurred_date" />
+                    <p className="mt-1 text-[11px] text-zinc-500">دریافت دوبارهٔ همان رویداد، نوبت/جریمه/یادآوری تکراری نمی‌سازد.</p>
+                  </div>
+                )}
               </div>
             )}
-            <p className="sm:col-span-2 text-[11px] leading-5 text-zinc-500">
-              تولید دوبارهٔ یک رویداد یا اجرای دوبارهٔ برنامه، پرونده/نوبت تکراری نمی‌سازد؛ هویت نوبت به شرکت، تعهد، دوره یا رخداد متصل است.
-            </p>
+
+            {/* خلاصهٔ زنده */}
+            <div className="rounded-xl border border-zinc-800 bg-[#141615] p-4">
+              <p className="text-[11px] font-bold text-zinc-400">خلاصه</p>
+              <p className="mt-1.5 text-xs leading-6 text-zinc-200">{recurrenceSummary()}</p>
+            </div>
+
+            {recError && (
+              <p className="flex items-center gap-1.5 rounded-lg border border-red-900/50 bg-red-950/10 px-3 py-2 text-xs text-red-300">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {recError}
+              </p>
+            )}
           </div>
         )}
 
@@ -670,8 +895,8 @@ export default function RuleWizard({
                     <div>
                       <FieldLabel>مبدأ محاسبه</FieldLabel>
                       <select className={inputCls} value={baseInput || baseFixed} onChange={(e) => { const v = e.target.value; if (v.startsWith('INPUT:')) { setBaseInput(v.slice(6)); setBaseFixed('') } else { setBaseInput(''); setBaseFixed(v) } setDirty(true) }}>
-                        <option value="PERIOD_START">شروع دوره پرونده</option>
-                        <option value="PERIOD_END">پایان دوره پرونده</option>
+                        <option value="PERIOD_START">شروع دورهٔ تشکیل‌شده</option>
+                        <option value="PERIOD_END">پایان دورهٔ تشکیل‌شده</option>
                         <option value="FISCAL_YEAR_START">شروع سال مالی پرونده</option>
                         <option value="FISCAL_YEAR_END">پایان سال مالی پرونده</option>
                         <option value="CASE_EVENT">رویداد ثبت‌شده پرونده</option>
@@ -680,8 +905,12 @@ export default function RuleWizard({
                     </div>
                     {!baseInput && baseFixed === 'CASE_EVENT' && (
                       <div>
-                        <FieldLabel>کلید رویداد ساختاریافته</FieldLabel>
-                        <input className={inputCls} dir="ltr" placeholder="receipt_date" />
+                        <FieldLabel>رویداد آغازگر (ساختاریافته)</FieldLabel>
+                        <select className={inputCls} value={baseEventKey} onChange={(e) => { setBaseEventKey(e.target.value); setDirty(true) }}>
+                          <option value="">— انتخاب رویداد —</option>
+                          {EVENT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                        </select>
+                        <p className="mt-1 text-[11px] text-zinc-500">مبدأ از فهرست رویدادهای ثبت‌شده انتخاب می‌شود؛ متن آزاد مجاز نیست.</p>
                       </div>
                     )}
                     <div>
