@@ -342,6 +342,14 @@ begin
 end;
 $$;
 
+-- توابع کمکی تقویم صرفاً ریاضی هستند؛ آزمایش مستقیم و مصرف‌های بعدی برای احرازشده‌ها باید ممکن باشد.
+revoke all on function public.rule_center_jalali_leap(integer), public.rule_center_jalali_month_days(integer, integer),
+  public.rule_center_greg_to_jal(integer, integer, integer), public.rule_center_jalali_to_greg(integer, integer, integer),
+  public.rule_center_jalali_add_months(date, integer, text) from public, anon;
+grant execute on function public.rule_center_jalali_leap(integer), public.rule_center_jalali_month_days(integer, integer),
+  public.rule_center_greg_to_jal(integer, integer, integer), public.rule_center_jalali_to_greg(integer, integer, integer),
+  public.rule_center_jalali_add_months(date, integer, text) to authenticated;
+
 -- 8. اعتبارسنجی ساختاری تعریف قاعده (بدون اجرای کد؛ فقط قرارداد بسته)
 -- ==========================================================================
 create or replace function public.rule_center_validate_definition(
